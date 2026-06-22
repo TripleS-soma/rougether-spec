@@ -1,0 +1,110 @@
+# ERD / 데이터 모델
+
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **25 table**.
+
+컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
+
+> 표기: `*` = PK · `→table` = FK 대상 · `?` = nullable. 이미지/에셋은 전체 URL이 아니라 `*_key`(asset_key, cover_image_key, storage_key 등)로 저장한다.
+
+## 도메인별 table
+
+### 회원 / 재화
+- **users**: id* | nickname VARCHAR(30)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
+  - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
+
+### 캐릭터 (온보딩 · 방)
+- **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
+- **user_characters**: id* | user_id→users | character_id→characters | is_selected BOOLEAN | acquired_at | created_at | updated_at | deleted_at?
+
+### 목표 (온보딩)
+- **goals**: id* | code VARCHAR(50) | name VARCHAR(100) | sort_order INT | is_active BOOLEAN
+- **user_goals**: id* | user_id→users | goal_id→goals | is_primary BOOLEAN | created_at
+
+### 카테고리
+- **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | sort_order INT | created_at | updated_at | deleted_at?
+
+### 루틴 / 투두
+- **routines**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | auth_type VARCHAR(30) | visibility VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
+  - `auth_type`: 체크형 / 사진 인증형. `repeat_type`+`repeat_days`(JSON): 매일·매주(요일)·주 N회.
+- **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
+- **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
+  - `privacy_scope`: 나만 보기 / 집 구성원 공개. `ai_review_status`: AI 분석 동의·결과.
+- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
+- **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
+
+### 방 (개인)
+- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | updated_at
+- **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP
+- **room_guestbooks**: id* | content VARCHAR(500) | created_at | deleted_at? | room_owner_id→users | house_id→house | author_id→users
+
+### 상점 / 아이템 / 테마
+- **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | cover_image_key VARCHAR(255)? | is_active BOOLEAN
+- **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) | surface_slot_type VARCHAR(40)? | character_slot_type VARCHAR(40)? | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
+- **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at?
+
+### 뽑기
+- **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | (theme FK→themes)
+- **gacha_pool_entries**: id* | gacha_id→gacha | reward_type VARCHAR(30) | item_id→items? | currency_type VARCHAR(30)? | reward_amount INT? | rarity VARCHAR(30)? | weight INT | is_active BOOLEAN
+  - `reward_type`로 아이템 보상 / 재화(다이아) 보상을 구분. 중복 아이템은 다이아로 전환.
+
+### 집 (공동)
+- **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
+  - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
+- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at?
+- **house_goals**: id* | house_id→house | goal_id→goals
+- **house_missions**: id* | house_id→house | title VARCHAR(160) | mission_type VARCHAR(50) | target_value INT | status VARCHAR(30) | starts_at? | ends_at? | created_at
+- **house_mission_participants**: id* | mission_id→house_missions | membership_id→house_members | contribution_value INT | reward_claimed BOOLEAN | updated_at
+
+## 관계 다이어그램
+
+```mermaid
+erDiagram
+    users ||--|| personal_rooms : has
+    users ||--o{ user_wallets : owns
+    users ||--o{ user_characters : owns
+    users ||--o{ user_goals : sets
+    users ||--o{ categories : defines
+    users ||--o{ routines : creates
+    users ||--o{ todos : creates
+    users ||--o{ streaks : has
+    users ||--o{ user_items : owns
+    users ||--o{ house_members : joins
+    users ||--o{ house : owns
+
+    characters ||--o{ user_characters : selected_in
+    goals ||--o{ user_goals : chosen_as
+    goals ||--o{ house_goals : targeted_by
+
+    categories ||--o{ routines : groups
+    categories ||--o{ todos : groups
+    routines ||--o{ routine_logs : logged_as
+    routine_logs ||--o{ photo_verifications : verified_by
+
+    personal_rooms ||--o{ room_surface_slots : has
+    user_items ||--o{ room_surface_slots : placed_as
+    users ||--o{ room_guestbooks : writes
+
+    themes ||--o{ items : contains
+    items ||--o{ user_items : acquired_as
+    gacha ||--o{ gacha_pool_entries : has
+    items ||--o{ gacha_pool_entries : rewarded_as
+    themes ||--o{ gacha : themed_as
+
+    house ||--o{ house_members : has
+    house ||--o{ house_goals : targets
+    house ||--o{ house_missions : runs
+    house ||--o{ room_guestbooks : on
+    house_missions ||--o{ house_mission_participants : has
+    house_members ||--o{ house_mission_participants : participates
+```
+
+## 확정된 모델링 결정
+
+- 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.
+- `house.current_member_count`: 저장(계산 아님).
+- 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
+- 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
+- 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
+
+남은 미결정은 [open-questions.md](open-questions.md) 참고.
