@@ -101,6 +101,8 @@ erDiagram
 
 ## 확정된 모델링 결정
 
+- 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
+- `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
 - 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.
 - `house.current_member_count`: 저장(계산 아님).
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
