@@ -2,7 +2,7 @@
 
 루틴 달성을 개인 방의 성장·꾸미기로 시각화하는 도메인. 소유 table은 `personal_rooms`, `room_surface_slots`. 스트릭 표시는 `streaks`를 읽기만 한다.
 
-> 소유권 식별자(`user_id` = `personal_rooms` PK, `room_user_id`)는 인증 유예와 무관하게 유지한다. 이미지/에셋은 `*_key`로 참조한다.
+> 소유권 식별자(`user_id` = `personal_rooms` PK, `room_user_id`)로 인증된 사용자의 권한을 확인한다. 이미지/에셋은 `*_key`로 참조한다.
 
 ## 개인 방 성장 현황
 

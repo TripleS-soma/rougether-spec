@@ -1,6 +1,6 @@
 # 상점 / 아이템 / 재화 API
 
-[features.md](features.md) 기준 엔드포인트 초안. 공통 규칙(prefix `/api/v1`, key 기반 이미지, 목록 `items` 배열, 인증 유예·소유권 식별자 유지)은 [api.md](../../api.md)를 따른다. 상세 req/res는 구현 시 확정하며, 아래 필드는 핵심만.
+[features.md](features.md) 기준 엔드포인트 초안. 공통 규칙(prefix `/api/v1`, key 기반 이미지, 목록 `items` 배열, 인증된 사용자 기준 소유권 guard 적용)은 [api.md](../../api.md)를 따른다. 상세 req/res는 구현 시 확정하며, 아래 필드는 핵심만.
 
 ## GET /api/v1/items
 

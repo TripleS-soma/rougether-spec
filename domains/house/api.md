@@ -1,6 +1,6 @@
 # 공동 집 (House) — API 초안
 
-[features.md](features.md) 기준 엔드포인트 초안. 공통 규약은 [상위 api.md](../../api.md)를 따른다(prefix `/api/v1`, JSON 본문, ISO-8601+offset, 이미지/에셋은 `*_key`, 목록은 `items` 배열, 인증 MVP 유예·소유권 식별자 유지). 상세 req/res는 **미정**으로 둔 항목 다수.
+[features.md](features.md) 기준 엔드포인트 초안. 공통 규약은 [상위 api.md](../../api.md)를 따른다(prefix `/api/v1`, JSON 본문, ISO-8601+offset, 이미지/에셋은 `*_key`, 목록은 `items` 배열, 인증된 사용자 기준 소유권 guard 적용). 상세 req/res는 **미정**으로 둔 항목 다수.
 
 > path·필드는 draft. 확정 시 서버 repo `docs/`에 최종 정리.
 

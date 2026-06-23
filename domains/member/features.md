@@ -35,7 +35,7 @@
 | 내 정보 조회 | 닉네임·마지막 로그인 등 기본 정보 + 온보딩 완료 여부(목표·캐릭터 선택 존재) 조회. | `users`, `user_goals`, `user_characters` |
 
 - `users`: `nickname`, `last_login_at`, `created_at`, `updated_at`, `deleted_at`(soft delete).
-- 인증/인가 MVP 유예. 초기엔 dev/seed user의 `user_id`로 동작. `me`는 그 사용자를 가리킨다.
+- 인증/인가 MVP 포함(소셜 로그인 카카오·구글·애플). `me`는 인증된 사용자를 가리킨다. 로그인/회원가입은 회원 도메인 담당.
 
 ## 의존성 / 미정
 

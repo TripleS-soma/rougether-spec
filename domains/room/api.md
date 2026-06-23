@@ -1,6 +1,6 @@
 # 개인 방 API
 
-prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. 인증 유예 동안 `me`는 dev/seed user로 처리하되 소유권 식별자(`room_user_id`)는 응답에 유지한다. 이미지/에셋은 `*_key`로 내려준다.
+prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 인증된 사용자를 가리키며 소유권 식별자(`room_user_id`)로 guard를 적용한다. 이미지/에셋은 `*_key`로 내려준다.
 
 > draft. 요청/응답 상세는 구현 시 서버 repo `docs/`에서 확정. 아래는 합의 대상 초안이다.
 

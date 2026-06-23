@@ -2,7 +2,7 @@
 
 상위 공통 규약: [api.md](../../api.md) · 기능: [features.md](features.md) · 데이터: [erd.md](../../erd.md)
 
-> draft. 아래는 [features.md](features.md) 기준 엔드포인트 초안이며 path·필드는 확정 아님. 공통 규칙(prefix `/api/v1`, ISO-8601 + offset, 이미지/에셋 `*_key`, 목록은 `items` 배열, 보상은 쓰기 트랜잭션, 인증 유예·소유권 식별자 유지)은 상위 [api.md](../../api.md)를 따른다. 상세 req/res는 구현 시 서버 repo `docs/`에서 확정한다.
+> draft. 아래는 [features.md](features.md) 기준 엔드포인트 초안이며 path·필드는 확정 아님. 공통 규칙(prefix `/api/v1`, ISO-8601 + offset, 이미지/에셋 `*_key`, 목록은 `items` 배열, 보상은 쓰기 트랜잭션, 인증된 사용자 기준 소유권 guard 적용)은 상위 [api.md](../../api.md)를 따른다. 상세 req/res는 구현 시 서버 repo `docs/`에서 확정한다.
 
 ## 카테고리 (`categories`)
 

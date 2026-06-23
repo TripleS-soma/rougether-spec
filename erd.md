@@ -8,8 +8,10 @@
 
 ## 도메인별 table
 
-### 회원 / 재화
+### 회원 / 재화 / 인증
 - **users**: id* | nickname VARCHAR(30)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **oauth_accounts** (추가 예정 — ERDCloud 정본 반영 필요): id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
+  - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 
@@ -101,6 +103,7 @@ erDiagram
 
 ## 확정된 모델링 결정
 
+- 인증은 **소셜 로그인(카카오·구글·애플) + JWT**. 로그인 수단은 `oauth_accounts` 테이블로 분리(users엔 인증정보 안 둠) → ERDCloud 정본에 `oauth_accounts` 추가 필요.
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
 - `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
 - 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.

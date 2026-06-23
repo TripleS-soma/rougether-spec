@@ -4,9 +4,7 @@
 
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
-- **에러 응답 형태**: `code`/`message`/`fieldErrors` 구조?
-- **응답 envelope**: 리소스를 바로 내려줄지, `{ success, data, error }`로 감쌀지?
-- **페이지네이션**: cursor vs offset, 적용 도메인(상점·집 탐색)?
+- **인증/인가 상세**: 소셜 provider 우선순위(카카오 먼저?), JWT 만료·refresh 정책, `oauth_accounts` 스키마 확정 + ERDCloud 반영, 회원 탈퇴 시 oauth 연결 처리?
 
 ## 프로덕트 (PRD / 멘토 피드백)
 

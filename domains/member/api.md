@@ -1,6 +1,6 @@
 # 회원 / 온보딩 API
 
-공통 규칙은 전체 [api.md](../../api.md) 참조 (prefix `/api/v1`, 목록은 `items` 배열, 이미지/에셋은 `*_key`, 인증 MVP 유예·소유권 식별자 유지).
+공통 규칙은 전체 [api.md](../../api.md) 참조 (prefix `/api/v1`, 목록은 `items` 배열, 이미지/에셋은 `*_key`, 인증된 사용자 기준 소유권 guard 적용).
 
 > 아래는 **설계 중(draft)**. method/path/목적과 핵심 필드만 합의하고, 상세 req/res는 구현 시 서버 repo `docs/`에서 확정한다.
 
@@ -21,7 +21,7 @@
 
 - `PUT /api/v1/onboarding/goals`: `goalIds`가 빈 배열이면 거부(최소 1개). `primaryGoalId`는 `goalIds`에 포함돼야 함.
 - `PUT /api/v1/onboarding/character`: 이전 대표 캐릭터의 `is_selected`는 false로, 새 캐릭터만 true로 묶어서 쓰기 트랜잭션 처리.
-- 선택값은 모두 `user_id`(소유권 식별자)에 귀속. 초기엔 dev/seed user로 처리.
+- 선택값은 모두 `user_id`(소유권 식별자)에 귀속. 인증된 사용자 기준.
 
 ## 회원 기본 정보
 
