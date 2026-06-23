@@ -6,13 +6,13 @@
 
 ## 카테고리 관리 (`categories`)
 
-- **등록**: 이름(`name`)·색상(`color_hex`)·아이콘(`icon_key`)·정렬 순서(`sort_order`)로 카테고리를 만든다. 소유자는 `user_id`. (공개범위 단위는 미정 — open-questions)
+- **등록**: 이름(`name`)·색상(`color_hex`)·아이콘(`icon_key`)·정렬 순서(`sort_order`)·**공개 범위(`visibility`)**로 카테고리를 만든다. **공개 범위는 카테고리 단위로 적용**(루틴별 아님). 소유자는 `user_id`.
 - **수정**: 이름·색상·아이콘·정렬 순서를 변경한다.
 - **삭제**: soft delete(`deleted_at`). 삭제 시 해당 카테고리에 속한 루틴·투두는 **미분류 처리**(`routines.category_id` / `todos.category_id`를 NULL로) 한다. 두 컬럼 모두 nullable이라 미분류 상태를 표현할 수 있다.
 
 ## 루틴 관리 (`routines`)
 
-- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·공개 범위(`visibility`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. 소유자는 `user_id`. 초기 상태는 `status`로 표현(값 미정).
+- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음). 소유자는 `user_id`. 초기 상태는 `status`로 표현(값 미정).
 - **인증 방식 선택** (`auth_type`): **체크형** / **사진 인증형** 중 선택. 사진 인증형은 사진 저장 정책 + AI 분석 동의를 함께 확인한다(동의 결과는 인증 등록 시 `photo_verifications.ai_review_status`에 반영).
 - **반복 조건** (`repeat_type`, `repeat_days` JSON):
   - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일) / `WEEKLY_COUNT`(주 N회, 요일 자유).
