@@ -14,7 +14,10 @@
 
 - **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·공개 범위(`visibility`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. 소유자는 `user_id`. 초기 상태는 `status`로 표현(값 미정).
 - **인증 방식 선택** (`auth_type`): **체크형** / **사진 인증형** 중 선택. 사진 인증형은 사진 저장 정책 + AI 분석 동의를 함께 확인한다(동의 결과는 인증 등록 시 `photo_verifications.ai_review_status`에 반영).
-- **반복 조건** (`repeat_type`, `repeat_days` JSON): 매일 / 매주(특정 요일) / 주 N회. 요일·횟수는 `repeat_days`(JSON)로 표현. (정확한 값 스펙 미정 — open-questions)
+- **반복 조건** (`repeat_type`, `repeat_days` JSON):
+  - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일) / `WEEKLY_COUNT`(주 N회, 요일 자유).
+  - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`, `WEEKLY_COUNT` → `{ "timesPerWeek": 3 }`. 요일은 `MON`~`SUN`.
+  - `scheduled_time`(수행 시간)·`starts_on`/`ends_on`(지속 기간)은 별도 컬럼.
 - **수행 시간 / 기간**: `scheduled_time`(TIME), `starts_on`·`ends_on`(DATE)으로 시간순 정렬 및 노출 기간을 정한다.
 - **수정**: 위 필드 변경.
 - **삭제**: soft delete(`deleted_at`). 기존 수행 기록(`routine_logs`)은 통계 보존 정책에 따라 **숨김 처리**(보존 범위 미정 — open-questions).

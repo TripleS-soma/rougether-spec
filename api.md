@@ -6,6 +6,7 @@
 
 - prefix: `/api/v1`
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
+- 타임존: 모든 날짜·당일/자정 판정은 **`Asia/Seoul`(KST, UTC+9)** 기준. 시각 저장도 KST로 통일한다 (`+9` 하드코딩 말고 `Asia/Seoul` 설정값으로).
 - 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.
 - 목록 응답은 `items` 배열로 감싼다.
 - 인증/인가는 **MVP에 포함**한다(멘토 결정). **소셜 로그인(카카오·구글·애플) + JWT** 기반. `me` path는 인증된 사용자를 가리키며, 소유권 식별자(`user_id`, `owner_user_id`, `house_id`, `room_user_id`, `membership_id`)로 권한(guard)을 실제 적용한다. 토큰/세션 상세는 [open-questions.md](open-questions.md).
