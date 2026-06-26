@@ -8,9 +8,9 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/categories` | 내 카테고리 목록 | — | `items[]`: `id`, `name`, `colorHex`, `iconKey`, `sortOrder` |
-| `POST /api/v1/categories` | 카테고리 등록 | `name`, `colorHex?`, `iconKey?`, `sortOrder?` | 생성된 category |
-| `PUT /api/v1/categories/{id}` | 수정 | `name?`, `colorHex?`, `iconKey?`, `sortOrder?` | 수정된 category |
+| `GET /api/v1/categories` | 내 카테고리 목록 | — | `items[]`: `id`, `name`, `visibility`, `colorHex`, `iconKey`, `sortOrder` |
+| `POST /api/v1/categories` | 카테고리 등록 | `name`, `visibility`, `colorHex?`, `iconKey?`, `sortOrder?` | 생성된 category |
+| `PUT /api/v1/categories/{id}` | 수정 | `name?`, `visibility?`, `colorHex?`, `iconKey?`, `sortOrder?` | 수정된 category |
 | `DELETE /api/v1/categories/{id}` | 삭제(soft) | — | 결과. 소속 routines/todos `categoryId` → NULL(미분류) |
 
 ## 루틴 (`routines`)
