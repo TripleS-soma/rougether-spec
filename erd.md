@@ -24,15 +24,15 @@
 - **user_goals**: id* | user_id→users | goal_id→goals | is_primary BOOLEAN | created_at
 
 ### 카테고리
-- **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | sort_order INT | **visibility VARCHAR(30) (추가 예정)** | created_at | updated_at | deleted_at?
-  - 공개 범위는 **카테고리 단위**(`categories.visibility`). `routines.visibility`는 제거(공개는 카테고리를 따름) → ERDCloud 정본 반영 필요.
+- **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | sort_order INT | visibility VARCHAR(30) | created_at | updated_at | deleted_at?
+  - 공개 범위는 **카테고리 단위**(`categories.visibility`: `PRIVATE`/`HOUSE`, 기본 `PRIVATE`). `routines`에는 `visibility` 없음(공개는 카테고리를 따름) → ERDCloud 정본 반영 필요.
 
 ### 루틴 / 투두
-- **routines**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | auth_type VARCHAR(30) | visibility VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
-  - `auth_type`: 체크형 / 사진 인증형. `repeat_type`+`repeat_days`(JSON): 매일·매주(요일)·주 N회.
+- **routines**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
+  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`/`PAUSED`/`ARCHIVED`. `repeat_type`: `DAILY`/`WEEKLY`, `repeat_days`(JSON): `WEEKLY`일 때 `{"daysOfWeek":[...]}`. `visibility` 없음(공개는 카테고리를 따름).
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
-  - `privacy_scope`: 나만 보기 / 집 구성원 공개. `ai_review_status`: AI 분석 동의·결과.
+  - `privacy_scope`: `PRIVATE`(나만) / `HOUSE`(집 구성원 공개). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(저장 시 `APPROVED` 고정, 미노출).
 - **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
