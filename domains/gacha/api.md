@@ -6,10 +6,10 @@
 
 ## GET /api/v1/gacha
 
-운영 중인 뽑기 머신 목록 조회.
+운영 중인 뽑기 머신 목록 조회. 테마별 아이템 뽑기와 테마 무관 캐릭터 뽑기가 함께 내려간다.
 
-- **목적**: 테마별 머신·비용·운영 기간 노출. `is_active`·운영 기간 필터.
-- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`, `isActive`. 테마 커버는 `coverImageKey`(`themes.cover_image_key`).
+- **목적**: 머신·비용·운영 기간 노출. `is_active`·운영 기간 필터.
+- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`(캐릭터 뽑기는 `null`), `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`, `isActive`. 테마 커버는 `coverImageKey`(`themes.cover_image_key`, 캐릭터 뽑기는 `null`).
 - **관련 table**: `gacha` (+ theme 조인 `themes`).
 
 ## GET /api/v1/gacha/{id}
@@ -22,14 +22,23 @@
 
 ## POST /api/v1/gacha/{id}/draw
 
-테마별 뽑기 실행 (코인 소모 → 보상 지급).
+뽑기 실행 (코인 소모 → 보상 지급). 아이템 뽑기와 캐릭터 뽑기가 같은 엔드포인트를 쓰며, `reward_type`으로 보상이 갈린다.
 
-- **목적**: 코인 `cost_amount` 차감 → `draw_count` 추첨 → 아이템/다이아 지급. 중복 아이템은 다이아 전환.
+- **목적**: 코인 `cost_amount` 차감 → `draw_count` 추첨 → 아이템/캐릭터/재화 지급. 중복 아이템은 다이아 전환, **중복 캐릭터는 코인 200 환급**.
 - **요청 핵심 필드**: (path `id`) 머신 식별. 본문은 인증된 사용자(`me`) 기준 — 소유권 식별자 `userId`로 guard 적용. 추가 옵션 **미정**(예: 연속 뽑기 수).
-- **응답 핵심 필드**: `results[]` — 각 추첨에 대해 `rewardType`(item/currency), 아이템이면 `itemId`·`assetKey`·`rarity`·`converted`(중복 전환 여부), 전환·재화 보상이면 `currencyType`·`amount`(다이아). 갱신된 지갑 잔액(`wallet`: 코인·다이아) 포함 권장.
-- **검증/예외**: 보유 코인 부족, `is_active=false`, 운영 기간 밖 → 거부. 차감·지급은 단일 쓰기 트랜잭션.
-- **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_wallets`.
-- **상세 req/res**: 미정 → 서버 repo `docs/`에서 확정 후 끌어온다.
+- **응답 핵심 필드**: `results[]` — 각 추첨에 대해 `rewardType`(`ITEM`/`CHARACTER`/`CURRENCY`), `rarity`, `converted`(중복 여부).
+  - 아이템 보상이면 `itemId`·`assetKey`.
+  - **캐릭터 보상이면 `characterId`·`assetKey`**(`characters.base_asset_key`)·`name`. 중복이면 `converted=true`로 캐릭터 대신 코인 환급(`refundAmount`).
+  - 재화/환급이면 `currencyType`·`refundAmount`(아이템 중복=다이아, 캐릭터 중복=코인 200).
+  - 갱신된 지갑 잔액(`wallet`: `currencyType`·`balance`) 포함.
+- **검증/예외**: 보유 코인 부족, `is_active=false`, 운영 기간 밖 → 거부. 차감·지급·환급은 단일 쓰기 트랜잭션.
+- **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
+
+### 캐릭터 뽑기 (테마 무관 전용 머신)
+
+- 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, `costAmount = 1000`.
+- 풀은 캐릭터 6개 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 200 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 200`).
+- 신규 캐릭터는 `user_characters`로 지급되고 응답에 `characterId`·`assetKey`가 포함된다.
 
 ## 미정 / 의존
 
