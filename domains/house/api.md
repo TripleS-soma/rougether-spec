@@ -7,26 +7,34 @@
 ## 집 탐색 / 참여
 
 ### GET /api/v1/houses
-집 탐색. 목표 카테고리·인원·활동 수준 필터로 집 목록 조회.
-- query(미정): `goalCode`, `hasSlot`, `activityLevel` 등 필터
-- res(items[]): `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`
+집 탐색. 최신 생성순 기본, 페이지네이션 적용. 탐색·추천 겸용(별도 추천 엔드포인트 없음).
+- query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속)
+- res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`)
+- 삭제된 집(`deleted_at`)은 제외
 - table: `house`, `house_goals`
 
+### GET /api/v1/me/houses
+내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 먼저 가입한 집 먼저, 페이지네이션 없음(다중 가입 소수 전제).
+- res: `{ items }` / items[]: `houseId`, `name`, `coverImageKey`, `level`, `currentMemberCount`, `maxMembers`, `myRole`, `joinedAt`
+- 삭제된 집(`deleted_at`)·탈퇴(left) membership 은 제외
+- table: `house_members`, `house`
+
 ### POST /api/v1/houses/{houseId}/join
-탐색 결과에서 선택한 집에 참여(요청). 즉시 가입 vs 요청→승인 흐름 **미정**.
+탐색 결과에서 선택한 집에 참여. **즉시가입** — 초대코드 참여와 동일 정책(role=member·status=active, 승인 흐름 없음, 탈퇴 이력 재가입은 기존 row 재활성화).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
-- 예외: 같은 집 중복 가입(`(house_id, user_id)`) → 충돌
+- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
 - table: `house_members`, `house`(`current_member_count` 갱신)
 
 ### POST /api/v1/houses/join-by-code
-초대코드/링크로 참여. 코드로 집 정보·구성원 수 확인 후 합류.
+초대코드/링크로 참여. **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다(승인 흐름 없음).
 - req: `inviteCode`
 - res: `membershipId`, `houseId`, `status`
-- 예외: 만료 코드(`invite_expires_at` 경과), 중복 참여
+- 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
+- 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
 - table: `house`, `house_members`
 
 ### GET /api/v1/houses/by-code/{inviteCode}
-참여 전 코드로 집 미리보기(이름·구성원 수·목표). (참여와 분리, 선택)
+참여 전 코드로 집 미리보기(이름·구성원 수·정원). 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용).
 - res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`
 - table: `house`
 
@@ -34,8 +42,11 @@
 
 ### POST /api/v1/houses
 집 생성. 생성자가 `owner`.
-- req: `name`, `description?`, `coverImageKey?`, `maxMembers?`, `goalIds[]`
+- req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
+- 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
+- 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
+- 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400)
 - table: `house`, `house_members`(owner row), `house_goals`
 
 ### GET /api/v1/houses/{houseId}

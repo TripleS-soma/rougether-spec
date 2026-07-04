@@ -7,13 +7,13 @@
 ## 집 탐색 / 참여
 
 - **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. (`house`, `house_goals`)
-- **탐색 참여**: 탐색 결과에서 집 선택 → 참여 요청. 참여 시 `house_members` 행 생성, `house.current_member_count` 증가. (`house_members`, `house`)
-- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 만료 코드(`house.invite_expires_at` 경과)·중복 참여(같은 집 `(house_id, user_id)` 존재) 예외 처리. (`house`, `house_members`)
+- **탐색 참여**: 탐색 결과에서 집 선택 → **즉시가입**(초대코드 참여와 동일 정책 — role=member·status=active, 승인 흐름 없음). 참여 시 `house_members` 행 생성(탈퇴 이력은 재활성화), `house.current_member_count` 증가. (`house_members`, `house`)
+- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 참여는 **즉시가입**(role=member·status=active, 승인 흐름 없음). 만료 코드(`house.invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. (`house`, `house_members`)
   - 다중 집 가입 허용: 다른 집에 이미 속해 있어도 새 집 참여 가능. 같은 집 중복만 차단.
 
 ## 집 관리
 
-- **집 생성**: 이름·대표 이미지(`cover_image_key`)·집 목표·참여 제한(`max_members`) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`로 등록. 초대코드·링크 공유 가능. (`house`, `house_members`, `house_goals`)
+- **집 생성**: 이름(2~30자)·대표 이미지(`cover_image_key`)·집 목표(`goal_ids` 필수 1~3개, 활성 goal 만)·참여 제한(`max_members` 1~10, 기본 4) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`·`status=active`로 즉시 등록(`current_member_count=1`). 집은 레벨 0·성장 포인트 0에서 시작. 생성 시 초대코드(영대문자+숫자 8자, 혼동문자 I,O,L,0,1 제외, 만료 7일) 발급. (`house`, `house_members`, `house_goals`)
 - **설정 수정**: 이름·소개글(`description`)·대표 이미지(`cover_image_key`)·최대 인원(`max_members`) 수정. 소유자만. (`house`)
 - **초대코드 재발급**: 새 `invite_code` 발급 + `invite_expires_at` 갱신. 재발급 시 기존 코드 즉시 만료. (`house`)
 
@@ -42,7 +42,7 @@
 
 ## 미결정 사항
 
-- 탐색 참여가 즉시 가입인지 요청→승인 흐름인지, `house_members.status` enum 값 미확정.
+- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **즉시가입으로 확정**. `house_members.status` 는 active/left 2값으로 시작(승인·강퇴 상태는 필요 시 확장).
 - 강퇴/탈퇴를 `status` 전환으로 표현할지 `left_at`만으로 표현할지(둘 다 컬럼 존재) 미확정.
 - 단체 미션 보상 분배 규칙(공동/개인 비율, 기여도 반영), 미션 기여 트리거 규칙 미정.
 - 집 레벨업 곡선·테마 매핑 미정.
