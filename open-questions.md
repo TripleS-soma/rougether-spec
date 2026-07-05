@@ -4,7 +4,7 @@
 
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
-- **인증/인가 상세**: 소셜 provider 우선순위(카카오 먼저?), JWT 만료·refresh 정책, `oauth_accounts` 스키마 확정 + ERDCloud 반영, 회원 탈퇴 시 oauth 연결 처리?
+- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글(id token JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (미결) 애플 연동(구글과 동일 id token 방식 예정), 회원 탈퇴 시 oauth 연결 처리.
 
 ## 프로덕트 (PRD / 멘토 피드백)
 

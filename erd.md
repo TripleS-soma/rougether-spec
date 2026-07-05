@@ -9,8 +9,9 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
-- **oauth_accounts** (추가 예정 — ERDCloud 정본 반영 필요): id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
+- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
+  - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
+- **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
