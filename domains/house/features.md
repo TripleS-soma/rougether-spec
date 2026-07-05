@@ -20,7 +20,7 @@
 ## 구성원 관리
 
 - **강퇴**: 소유자만 가능. 대상 `house_members.status`를 강퇴 상태로 전환(또는 `left_at` 기록), `current_member_count` 감소. 강퇴 구성원에게 알림(알림 발송은 의존 도메인). (`house_members`, `house`)
-- **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지, 이후 참여 불가. `current_member_count` 감소. (`house_members`, `house`)
+- **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지되며 집 활동·미션에는 더는 참여하지 못한다. **재가입은 허용**(기존 row 재활성화). `current_member_count` 감소. 마지막 1인 탈퇴 시 집 soft delete. (`house_members`, `house`)
 - **소유자 양도 후 탈퇴**: 소유자는 탈퇴 전 다른 구성원에게 소유권 양도 필요. 대상 구성원 `role=owner`로 변경 + `house.owner_user_id` 갱신 후 기존 소유자 탈퇴. (`house_members`, `house`)
 
 ## 구성원 방 방문
@@ -42,7 +42,7 @@
 
 ## 미결정 사항
 
-- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **즉시가입으로 확정**. `house_members.status` 는 active/left 2값으로 시작(승인·강퇴 상태는 필요 시 확장).
+- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **즉시가입으로 확정**. `house_members.status` = active/left/kicked 3값 확정(left 재가입 가능, kicked 재가입 불가).
 - 강퇴/탈퇴를 `status` 전환으로 표현할지 `left_at`만으로 표현할지(둘 다 컬럼 존재) 미확정.
 - 단체 미션 보상 분배 규칙(공동/개인 비율, 기여도 반영), 미션 기여 트리거 규칙 미정.
 - 집 레벨업 곡선·테마 매핑 미정.

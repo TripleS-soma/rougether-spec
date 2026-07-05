@@ -76,16 +76,22 @@
 - table: `house_members`
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
-강퇴. 소유자만. 알림 발송은 알림 도메인 의존.
-- table: `house_members`(상태 전환/`left_at`), `house`(`current_member_count` 감소)
+강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 알림 발송은 알림 도메인 의존.
+- res: 204 / 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 자기 자신 `HOUSE_KICK_SELF`(400) · 대상 무효 `HOUSE_MEMBER_NOT_FOUND`(404) · 없는/삭제 집 404
+- table: `house_members`(status=kicked/`left_at`), `house`(`current_member_count` 감소)
 
 ### DELETE /api/v1/houses/{houseId}/members/me
-탈퇴. 기여 기록 유지, 이후 참여 불가. 소유자는 양도 후 가능(아래 선행).
+탈퇴. status=left + `left_at` 기록, `current_member_count` 감소. 기여 기록은 유지되며 **재가입은 허용**(기존 row 재활성화 - 탈퇴하면 집 활동·미션에 더는 참여하지 못한다는 의미).
+- 소유자는 다른 active 구성원이 있으면 **양도 선행** 필요 → `HOUSE_OWNER_MUST_TRANSFER`(409)
+- **마지막 1인 탈퇴 시 집 soft delete**(`deleted_at`) - 빈 집이 탐색에 남지 않음
+- res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
 - table: `house_members`(`left_at`), `house`
 
 ### POST /api/v1/houses/{houseId}/transfer-ownership
-소유권 양도. 대상 구성원을 `owner`로, `house.owner_user_id` 갱신.
-- req: `targetMembershipId`
+소유권 양도. **소유자만**. 대상 구성원을 `owner`로 승격 + 기존 소유자는 `member`로 + `house.owner_user_id` 갱신 - 단일 트랜잭션.
+- req: `targetMembershipId` (같은 집의 다른 active 구성원)
+- res: `houseId`, `newOwnerMembershipId`, `newOwnerUserId`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대상 무효(비구성원/비활성/자기자신/타집) `HOUSE_TRANSFER_TARGET_INVALID`(400) · 없는/삭제 집 404
 - table: `house_members`(role 변경), `house`(`owner_user_id`)
 
 ## 구성원 방 방문
