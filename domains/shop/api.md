@@ -16,9 +16,9 @@
 인벤토리(보유 아이템) 조회. 카테고리/슬롯별 그룹.
 관련 table: `user_items`, `items`, `themes`.
 
-- 요청(query): `categoryCode?` 또는 슬롯 타입 필터(형태 미정)
-- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `surfaceSlotType?`, `characterSlotType?`, `theme`, `acquiredAt`
-- 비고: `deleted_at` IS NULL인 보유분만. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
+- 요청(query): `categoryCode?` (문자열 pass-through, enum 검증 없음). 슬롯 타입 필터는 슬롯 enum 확정 전까지 제외.
+- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `surfaceSlotType?`, `characterSlotType?`, `theme`(`id`, `code`, `name`, `coverImageKey?`), `acquiredAt`
+- 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). 정렬 `acquired_at DESC`, 페이지네이션 없음. `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
 
 ## POST /api/v1/items/{id}/purchase
 

@@ -12,11 +12,11 @@
 
 ## 루틴 관리 (`routines`)
 
-- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음). 소유자는 `user_id`. 초기 상태는 `status`로 표현(값 미정).
-- **인증 방식 선택** (`auth_type`): **체크형** / **사진 인증형** 중 선택. 사진 인증형은 사진 저장 정책 + AI 분석 동의를 함께 확인한다(동의 결과는 인증 등록 시 `photo_verifications.ai_review_status`에 반영).
+- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`/`PAUSED`/`ARCHIVED`, 등록 시 `ACTIVE`.
+- **인증 방식 선택** (`auth_type`): **체크형(`CHECK`)** / **사진 인증형(`PHOTO`)** 중 선택. (사진 인증형의 AI 분석은 현재 범위에서 제외 — 사진 인증 항목 참고)
 - **반복 조건** (`repeat_type`, `repeat_days` JSON):
-  - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일) / `WEEKLY_COUNT`(주 N회, 요일 자유).
-  - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`, `WEEKLY_COUNT` → `{ "timesPerWeek": 3 }`. 요일은 `MON`~`SUN`.
+  - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일).
+  - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`. 요일은 `MON`~`SUN`.
   - `scheduled_time`(수행 시간)·`starts_on`/`ends_on`(지속 기간)은 별도 컬럼.
 - **수행 시간 / 기간**: `scheduled_time`(TIME), `starts_on`·`ends_on`(DATE)으로 시간순 정렬 및 노출 기간을 정한다.
 - **수정**: 위 필드 변경.
@@ -37,18 +37,18 @@
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
-- **완료 체크**: 당일 `routine_logs` 생성/갱신 — `routine_date`, `status`(완료), `completed_at`(수행 시간) 기록. 보상으로 `reward_currency_type`(코인)·`reward_amount`를 기록하고 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date`를 갱신한다.
-- **완료 취소**: **당일 내**만 가능. 해당 `routine_logs.status`를 취소 상태로 되돌리고, 지급 코인과 스트릭을 **롤백**한다. ("당일" 타임존 기준 미정 — open-questions)
+- **완료 체크**: 당일 `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. 보상은 **COIN 10 고정**(`reward_currency_type`/`reward_amount` 기록), 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date`를 갱신한다. 완료는 오늘(KST)만 허용, 같은 날 중복 완료는 거부.
+- **완료 취소**: **당일(KST) 내**만 가능. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 지급 코인과 스트릭을 **롤백**한다.
 
 ## 투두 완료 처리 (`todos`, → `user_wallets`)
 
-- **완료 체크**: `todos.status`(완료)·`completed_at` 기록 + 코인 지급(`reward_currency_type`/`reward_amount` 기록 후 지갑 반영). 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
-- **완료 취소**: **당일 내**만 가능. `status`/`completed_at`을 되돌리고 지급 코인을 롤백한다.
+- **완료 체크**: `todos.status`(완료)·`completed_at` 기록 + 코인 지급(**COIN 5 고정**, 지갑 반영). 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
+- **완료 취소**: 완료가 **오늘(KST)** 인 경우만 가능. `status`(PENDING)/`completed_at`을 되돌리고 지급 코인을 롤백한다.
 
 ## 사진 인증 (`photo_verifications`)
 
-- **등록**: 사진 인증형 루틴 완료 시 카메라/앨범에서 업로드 → 해당 `routine_logs`에 연결된 `photo_verifications` 레코드 생성. 저장 키는 `storage_key`(전체 URL 아님), 업로드 시각 `uploaded_at`, AI 분석 동의/결과는 `ai_review_status`.
-- **공개 범위** (`privacy_scope`): **나만 보기** / **집 구성원 공개**. "집 구성원 공개"의 노출 대상은 집 도메인(`house_members`)에 의존.
+- **등록**: 사진 인증형 루틴 완료 시 카메라/앨범에서 업로드 → 해당 `routine_logs`에 연결된 `photo_verifications` 레코드 생성. 저장 키는 `storage_key`(전체 URL 아님), 업로드 시각 `uploaded_at`. **AI 분석은 현재 범위에서 제외** — 사진 업로드 자체를 인증 완료로 간주하고 `ai_review_status`는 노출하지 않는다(컬럼은 유지, AI 재도입 시 의미만 복원).
+- **공개 범위** (`privacy_scope`): **나만 보기(`PRIVATE`)** / **집 구성원 공개(`HOUSE`)**, 기본 `PRIVATE`. "집 구성원 공개"의 노출 대상은 집 도메인(`house_members`)에 의존.
 - **공개 범위 변경**: `privacy_scope` 갱신.
 - **삭제**: soft delete(`deleted_at`). **사진만 제거**하고 루틴 완료 상태(`routine_logs`)는 **유지**한다.
 

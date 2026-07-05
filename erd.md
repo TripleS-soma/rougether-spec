@@ -9,8 +9,9 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
-- **oauth_accounts** (추가 예정 — ERDCloud 정본 반영 필요): id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
+- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
+  - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
+- **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
@@ -25,14 +26,14 @@
 
 ### 카테고리
 - **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | sort_order INT | visibility VARCHAR(30) | created_at | updated_at | deleted_at?
-  - 공개 범위는 **카테고리 단위**(`categories.visibility`). 루틴은 개별 공개 설정 없이 카테고리를 따른다(`routines.visibility` 없음). → ERDCloud 정본 반영 필요.
+  - 공개 범위는 **카테고리 단위**(`categories.visibility`: `PRIVATE`/`HOUSE`, 기본 `PRIVATE`). `routines`에는 `visibility` 없음(공개는 카테고리를 따름) → ERDCloud 정본 반영 필요.
 
 ### 루틴 / 투두
 - **routines**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
-  - `auth_type`: 체크형 / 사진 인증형. `repeat_type`+`repeat_days`(JSON): 매일·매주(요일)·주 N회.
+  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`/`PAUSED`/`ARCHIVED`. `repeat_type`: `DAILY`/`WEEKLY`, `repeat_days`(JSON): `WEEKLY`일 때 `{"daysOfWeek":[...]}`. `visibility` 없음(공개는 카테고리를 따름).
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
-  - `privacy_scope`: 나만 보기 / 집 구성원 공개. `ai_review_status`: AI 분석 동의·결과.
+  - `privacy_scope`: `PRIVATE`(나만) / `HOUSE`(집 구성원 공개). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(저장 시 `APPROVED` 고정, 미노출).
 - **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
