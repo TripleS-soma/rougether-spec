@@ -50,9 +50,11 @@
 - table: `house`, `house_members`(owner row), `house_goals`
 
 ### GET /api/v1/houses/{houseId}
-집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수).
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`
-- table: `house`, `house_goals`
+집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수). **ACTIVE 구성원만** 조회 가능.
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`(`goalId`,`code`,`name`), `myRole`, `inviteCode`, `inviteExpiresAt`
+- `inviteCode`/`inviteExpiresAt` 는 **소유자에게만** 값, 그 외 null. `myRole` 은 화면의 소유자 UI 분기용
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house`, `house_members`, `house_goals`
 
 ### PUT /api/v1/houses/{houseId}
 설정 수정(이름·소개글·대표 이미지·최대 인원). 소유자만.
@@ -60,15 +62,17 @@
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
-초대코드 재발급. 기존 코드 즉시 만료.
+초대코드 재발급. **소유자만**. 기존 코드 즉시 만료(새 코드로 교체), 만료 7일 갱신. 코드 규칙은 생성과 동일(영대문자+숫자 8자).
 - res: `inviteCode`, `inviteExpiresAt`
+- 예외: 소유자 아님(비구성원 포함) `HOUSE_NOT_OWNER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
 - table: `house`
 
 ## 구성원 관리
 
 ### GET /api/v1/houses/{houseId}/members
-구성원 목록 조회.
-- res(items[]): `membershipId`, `userId`, `nickname`, `role`, `status`, `joinedAt`
+구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
+- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
 - table: `house_members`
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
