@@ -23,13 +23,13 @@
 
 ## 방 / 상점
 
-- `room_surface_slots.slot_type` 값 집합(바닥·벽·천장 등)과 `items.placement_type`/`surface_slot_type` 매핑?
+- ~~`room_surface_slots.slot_type` 값 집합과 `items.placement_type`/`surface_slot_type` 매핑?~~ → **확정**: surface 3종(wallpaper/floor/background) + positioned 8종(topLeft/topCenter/topRight/midLeft/midRight/bottomLeft/bottomCenter/bottomRight - 방 한가운데 midCenter 는 캐릭터 자리라 없음). 프론트 FurnitureSlot 과 동일 표기.
 - 방 스냅샷 생성 시점·저장 위치(어떤 key로 저장할지)?
 - 캐릭터 악세사리 `character_slot_type` 값 집합?
 
 ## 뽑기 / 재화
 
-- 중복 **아이템** → 다이아 전환 비율? (캐릭터 중복 환급은 아래에서 확정)
+- ~~중복 **아이템** → 다이아 전환 비율?~~ → **확정: 다이아 30** (캐릭터 중복은 코인 200 환급).
 - `gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합? (캐릭터 뽑기는 균등이라 해당 없음, 아이템 뽑기만 미정)
 - 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 1000으로 확정)
 

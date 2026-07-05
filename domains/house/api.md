@@ -57,8 +57,10 @@
 - table: `house`, `house_members`, `house_goals`
 
 ### PUT /api/v1/houses/{houseId}
-설정 수정(이름·소개글·대표 이미지·최대 인원). 소유자만.
-- req: `name?`, `description?`, `coverImageKey?`, `maxMembers?`
+설정 수정(이름·소개글·대표 이미지·최대 인원). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
+- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가)
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
