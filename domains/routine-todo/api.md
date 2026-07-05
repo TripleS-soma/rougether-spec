@@ -55,13 +55,15 @@
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. 완료 보상은 **COIN 5 고정**(루틴 10과 별도), 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 `completed_at`이 오늘(KST)일 때만. 투두는 스트릭에 포함하지 않는다.
 
-## 오늘 현황 (`routines`, `routine_logs`, `todos`, `streaks`)
+## 오늘 현황 · 캘린더 (`routines`, `routine_logs`, `todos`, `streaks`)
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
 | `GET /api/v1/today` | 오늘 루틴·투두·진행률·스트릭 | `date?`(기본 오늘) | 카테고리별 routine/todo 목록(루틴 `scheduledTime` 시간순), `completedCount`, `remainingCount`, `progressRate`, `streak`(`currentCount` 등) |
+| `GET /api/v1/calendar` | 캘린더에서 특정 날짜의 루틴·투두·진행률 | `date`(필수) | 카테고리별 routine/todo 목록, `completedCount`, `remainingCount`, `progressRate` |
 
 > `/api/v1/today`는 상위 [api.md](../../api.md)의 오늘 현황 엔드포인트와 동일. 방 도메인의 스트릭 표시와 `streaks` 데이터를 공유한다.
+> `/api/v1/calendar`는 달력에서 날짜를 클릭해 그날의 현황을 보는 용도다. `/today`와 달리 **투두는 마감일(`dueDate`)이 그 날짜인 것만** 포함하고(지난 마감을 누적하지 않음), 응답에 `streak`을 포함하지 않는다. 루틴은 그 날짜의 반복 대상만, 완료 여부는 그 날짜 `routine_logs`(`routine_date`)로 판정한다. 과거·미래 날짜 모두 조회할 수 있다.
 
 ## 확정된 허용값
 
