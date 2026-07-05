@@ -30,7 +30,7 @@
 
 ### 루틴 / 투두
 - **routines**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
-  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`/`PAUSED`/`ARCHIVED`. `repeat_type`: `DAILY`/`WEEKLY`, `repeat_days`(JSON): `WEEKLY`일 때 `{"daysOfWeek":[...]}`. `visibility` 없음(공개는 카테고리를 따름).
+  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`, `repeat_days`(JSON): `WEEKLY`일 때 `{"daysOfWeek":[...]}`. `visibility` 없음(공개는 카테고리를 따름).
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
   - `privacy_scope`: `PRIVATE`(나만) / `HOUSE`(집 구성원 공개). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(저장 시 `APPROVED` 고정, 미노출).

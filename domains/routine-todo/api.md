@@ -8,18 +8,20 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/categories` | 내 카테고리 목록 | — | `items[]`: `id`, `name`, `colorHex`, `iconKey`, `sortOrder`, `visibility` |
+| `GET /api/v1/categories` | 내 카테고리 목록 | filter: `includeDeleted?`(기본 `false`) | `items[]`: `id`, `name`, `colorHex`, `iconKey`, `sortOrder`, `visibility`, `deleted` |
 | `POST /api/v1/categories` | 카테고리 등록 | `name`, `colorHex?`, `iconKey?`, `sortOrder?`, `visibility?`(기본 `PRIVATE`) | 생성된 category |
 | `PUT /api/v1/categories/{id}` | 수정 | `name?`, `colorHex?`, `iconKey?`, `sortOrder?`, `visibility?` | 수정된 category |
-| `DELETE /api/v1/categories/{id}` | 삭제(soft) | — | 결과. 소속 routines/todos `categoryId` → NULL(미분류) |
+| `DELETE /api/v1/categories/{id}` | 삭제(soft) | — | 결과. 살아있는 루틴이 있으면 `CATEGORY_IN_USE`(409)로 차단. 소속 routines/todos `categoryId`는 유지 |
+
+> 삭제 차단은 **루틴만** 검사하며 루틴 상태와 무관하다(루틴은 `ACTIVE`만 존재) — 살아있는 루틴이 하나라도 참조하면 차단하고, 투두는 상태(`PENDING` 포함)와 무관하게 삭제를 막지 않는다. 삭제 후에도 루틴·투두의 `categoryId`는 NULL로 밀지 않고 유지한다. 기본 목록에는 삭제분이 노출되지 않으며, `includeDeleted=true`이면 삭제분까지 반환하고 각 항목의 `deleted` 플래그로 구분한다 — 이름·색상은 여기서 resolve하고 삭제된 카테고리 이름도 이 경로로 조회한다.
 
 ## 루틴 (`routines`)
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`, `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status` |
+| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status` |
 | `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`), `repeatDays?`, `scheduledTime?`, `startsOn?`, `endsOn?` | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
-| `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세 |
+| `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세(목록과 동일 필드). 카테고리는 `categoryId`만 담고, 이름·색상은 `GET /api/v1/categories`에서 resolve |
 | `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드 | 수정된 routine |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 결과. 기존 `routine_logs`는 숨김 처리 |
 
@@ -55,18 +57,27 @@
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. 완료 보상은 **COIN 5 고정**(루틴 10과 별도), 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 `completed_at`이 오늘(KST)일 때만. 투두는 스트릭에 포함하지 않는다.
 
-## 오늘 현황 (`routines`, `routine_logs`, `todos`, `streaks`)
+## 오늘 현황 · 캘린더 (`routines`, `routine_logs`, `todos`, `streaks`)
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
 | `GET /api/v1/today` | 오늘 루틴·투두·진행률·스트릭 | `date?`(기본 오늘) | 카테고리별 routine/todo 목록(루틴 `scheduledTime` 시간순), `completedCount`, `remainingCount`, `progressRate`, `streak`(`currentCount` 등) |
+| `GET /api/v1/calendar` | 캘린더에서 특정 날짜의 루틴·투두·진행률 | `date`(필수) | 카테고리별 routine/todo 목록, `completedCount`, `remainingCount`, `progressRate` |
 
+> today·calendar의 카테고리 그룹은 `categoryId`만 담고 카테고리 이름·색상은 embed하지 않는다(루틴·투두 응답과 동일 규칙 — `GET /api/v1/categories`에서 resolve). 미분류 그룹은 `categoryId=null`.
 > `/api/v1/today`는 상위 [api.md](../../api.md)의 오늘 현황 엔드포인트와 동일. 방 도메인의 스트릭 표시와 `streaks` 데이터를 공유한다.
+> today·calendar 모두 **투두는 마감일(`dueDate`)이 기준일과 정확히 같은 것만** 포함한다(지난 마감·미래 마감을 누적하지 않으며, 마감일 없는 투두는 제외). 두 엔드포인트의 투두 소싱 규칙은 동일하다.
+> `/api/v1/calendar`는 달력에서 날짜를 클릭해 그날의 현황을 보는 용도다. `/today`와 달리 응답에 `streak`을 포함하지 않고, 과거·미래 날짜 모두 조회할 수 있다.
+> 루틴 소싱은 조회 날짜가 오늘(KST) 기준 과거인지에 따라 갈린다.
+> - **오늘·미래(`date >= 오늘 KST`)**: 그 날짜의 반복 대상 루틴을 live 재계산해 노출하고, 완료 여부는 그 날짜 `routine_logs`(`routine_date`)로 판정한다.
+> - **과거(`date < 오늘 KST`)**: 실제 기록으로만 소싱한다. 그날 완료(`COMPLETED`) `routine_logs`가 있는 루틴만 노출하며(미완료 과거 루틴은 표시하지 않는다), 이들은 모두 완료 상태다. 투두는 동일하게 마감일이 그날인 것만 포함한다. 과거 진행률·총계는 완료 루틴 + 그날 투두 기준으로 계산한다.
+>
+> 과거 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 **현재 루틴 엔티티(soft-deleted 포함)** 에서 읽으므로, 로그 이후 rename하면 과거 조회에도 최신값이 반영된다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
 
 ## 확정된 허용값
 
 - `repeatType`: `DAILY`/`WEEKLY` (`repeatDays`는 `WEEKLY`일 때 `{"daysOfWeek":["MON",...]}`)
-- `routine.status`: `ACTIVE`/`PAUSED`/`ARCHIVED` (등록 시 `ACTIVE`)
+- `routine.status`: `ACTIVE` (등록 시 `ACTIVE`. `status` 필드·필터 파라미터는 유지하되 현재 유효값은 `ACTIVE`만)
 - `authType`: `CHECK`/`PHOTO`
 - `todo.status`: `PENDING`/`COMPLETED`
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`/`HOUSE`

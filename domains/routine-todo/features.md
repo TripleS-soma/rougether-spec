@@ -8,11 +8,11 @@
 
 - **등록**: 이름(`name`)·색상(`color_hex`)·아이콘(`icon_key`)·정렬 순서(`sort_order`)·**공개 범위(`visibility`)**로 카테고리를 만든다. **공개 범위는 카테고리 단위로 적용**(루틴별 아님). 소유자는 `user_id`.
 - **수정**: 이름·색상·아이콘·정렬 순서를 변경한다.
-- **삭제**: soft delete(`deleted_at`). 삭제 시 해당 카테고리에 속한 루틴·투두는 **미분류 처리**(`routines.category_id` / `todos.category_id`를 NULL로) 한다. 두 컬럼 모두 nullable이라 미분류 상태를 표현할 수 있다.
+- **삭제**: soft delete(`deleted_at`). 해당 카테고리를 참조하는 **살아있는 루틴이 있으면 삭제를 차단**한다(루틴 상태와 무관 — 루틴은 `ACTIVE`만 존재, 투두는 상태와 무관하게 차단하지 않음). 삭제해도 루틴·투두의 `category_id`는 **NULL로 밀지 않고 유지**한다. 루틴 조회 응답은 카테고리를 `category_id`로만 담고 요약을 embed하지 않으며, 이름·색상은 카테고리 목록 조회에서 resolve한다. 삭제된 카테고리는 기본 목록(picker)에는 노출되지 않고, `includeDeleted=true`로 조회하면 `deleted` 플래그와 함께 반환돼 과거 루틴·투두의 카테고리 이름을 조회할 수 있다.
 
 ## 루틴 관리 (`routines`)
 
-- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`/`PAUSED`/`ARCHIVED`, 등록 시 `ACTIVE`.
+- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`만 유효(등록 시 `ACTIVE`. 필드·필터는 유지).
 - **인증 방식 선택** (`auth_type`): **체크형(`CHECK`)** / **사진 인증형(`PHOTO`)** 중 선택. (사진 인증형의 AI 분석은 현재 범위에서 제외 — 사진 인증 항목 참고)
 - **반복 조건** (`repeat_type`, `repeat_days` JSON):
   - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일).
