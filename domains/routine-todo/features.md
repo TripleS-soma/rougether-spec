@@ -19,8 +19,9 @@
   - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`. 요일은 `MON`~`SUN`.
   - `scheduled_time`(수행 시간)·`starts_on`/`ends_on`(지속 기간)은 별도 컬럼.
 - **수행 시간 / 기간**: `scheduled_time`(TIME), `starts_on`·`ends_on`(DATE)으로 시간순 정렬 및 노출 기간을 정한다.
-- **수정**: 위 필드 변경.
-- **삭제**: soft delete(`deleted_at`). 기존 수행 기록(`routine_logs`)은 통계 보존 정책에 따라 **숨김 처리**(보존 범위 미정 — open-questions).
+- **시간버전(temporal versioning)** (`origin_routine_id`): 루틴은 버전 계보로 관리한다. `origin_routine_id`는 계보 루트 row의 id로, 생성 시 자기 id, 버전 분기 시 부모의 값을 승계한다. 버전 유효기간은 `created_at`~`deleted_at`으로 판정하며, 과거 캘린더는 그날 유효했던 버전으로 재구성된다(자세한 규칙은 [api.md](./api.md) 캘린더 참고).
+- **수정**: 위 필드 변경. 반복 스케줄 필드(`repeat_type`·`repeat_days`·`starts_on`·`ends_on`)를 바꾸고 **이미 경과한 날이 있는(`created_at`이 오늘 이전) 버전**이면, 옛 버전을 닫고(`deleted_at`) 새 버전 row로 **분기**한다(응답 `id`가 바뀜, `origin_routine_id` 승계). 그 외(제목·카테고리·시각·인증 변경, 또는 오늘 생성분의 스케줄 변경)는 **제자리 수정**이라 과거 표시에도 반영된다. 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다.
+- **삭제**: soft delete(`deleted_at`). 기존 수행 기록(`routine_logs`)은 통계 보존 정책에 따라 **숨김 처리**(보존 범위 미정 — open-questions). 삭제해도 그 버전은 자기 유효기간 안의 과거 조회에는 남아 보인다.
 
 ## 투두 관리 (`todos`)
 

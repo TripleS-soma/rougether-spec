@@ -19,10 +19,10 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status` |
+| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status`, `originRoutineId`(버전 계보 루트 id — 스케줄 수정으로 `id`가 바뀌어도 불변, 프론트 목록 key로 사용) |
 | `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`), `repeatDays?`, `scheduledTime?`, `startsOn?`, `endsOn?` | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
 | `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세(목록과 동일 필드). 카테고리는 `categoryId`만 담고, 이름·색상은 `GET /api/v1/categories`에서 resolve |
-| `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드 | 수정된 routine |
+| `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드 | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고) |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 결과. 기존 `routine_logs`는 숨김 처리 |
 
 ## 루틴 완료/취소 (`routine_logs`, `streaks`, → `user_wallets`)
@@ -70,9 +70,11 @@
 > `/api/v1/calendar`는 달력에서 날짜를 클릭해 그날의 현황을 보는 용도다. `/today`와 달리 응답에 `streak`을 포함하지 않고, 과거·미래 날짜 모두 조회할 수 있다.
 > 루틴 소싱은 조회 날짜가 오늘(KST) 기준 과거인지에 따라 갈린다.
 > - **오늘·미래(`date >= 오늘 KST`)**: 그 날짜의 반복 대상 루틴을 live 재계산해 노출하고, 완료 여부는 그 날짜 `routine_logs`(`routine_date`)로 판정한다.
-> - **과거(`date < 오늘 KST`)**: 실제 기록으로만 소싱한다. 그날 완료(`COMPLETED`) `routine_logs`가 있는 루틴만 노출하며(미완료 과거 루틴은 표시하지 않는다), 이들은 모두 완료 상태다. 투두는 동일하게 마감일이 그날인 것만 포함한다. 과거 진행률·총계는 완료 루틴 + 그날 투두 기준으로 계산한다.
+> - **과거(`date < 오늘 KST`)**: 그날 **유효했던 루틴 버전을 재구성**해 소싱한다. 그날 반복 대상인 유효 버전이면 완료 로그가 없어도(=미완료) 노출하고, 완료 여부는 그날 완료(`COMPLETED`) `routine_logs`로 판정한다. 여기에 그날 완료 로그가 가리키는 루틴을 합쳐(`id`로 dedup) 노출한다(유효기간 밖에서 완료한 루틴도 포함). 투두는 동일하게 마감일이 그날인 것만 포함한다. 과거 진행률·총계는 노출 루틴 + 그날 투두 기준으로 계산한다.
 >
-> 과거 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 **현재 루틴 엔티티(soft-deleted 포함)** 에서 읽으므로, 로그 이후 rename하면 과거 조회에도 최신값이 반영된다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
+> **루틴 시간버전(temporal versioning)**: 반복 스케줄(`repeatType`·`repeatDays`·`startsOn`·`endsOn`)을 바꾸고 이미 경과한 날이 있는 버전이면, 옛 버전을 그대로 닫고(`deleted_at`) 새 버전 row를 만든다(응답 `id`가 바뀐다). 버전 유효기간은 `created_at`~`deleted_at`(KST)로 판정한다 — "그날 유효한 버전" = `created_at(KST) ≤ date` 이고 (`deleted_at` 없음 또는 `deleted_at(KST) > date`). 분기 경계에서 옛/새 버전의 유효기간은 겹치거나 비지 않는다. 같은 버전 계보는 `originRoutineId`(계보 루트 id)로 잇고, 목록·정렬은 `originRoutineId` 기준이라 버전이 바뀌어도 위치가 유지된다. `startsOn`/`endsOn`은 사용자 스케줄 값으로 그대로 노출·복사하며 버전 경계로 쓰지 않는다.
+>
+> 과거 노출 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 그날 유효한 **버전 row**에서 읽는다. 스케줄을 바꾸지 않는 수정(제목·카테고리·시각·인증 변경, 또는 오늘 생성분)은 제자리 수정이라 과거 조회에도 최신값이 반영되지만, 스케줄 변경으로 버전이 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다. 완료 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
 
 ## 확정된 허용값
 
