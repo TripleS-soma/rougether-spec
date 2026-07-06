@@ -26,24 +26,24 @@
 ## 구성원 방 방문
 
 - **구성원 루틴 현황**: 같은 집 구성원의 오늘 루틴 완료 여부·최근 참여율 조회. 공개 범위는 사용자 설정에 따름. 루틴 데이터 자체는 **루틴/투두 도메인 의존**(`routines`, `routine_logs`, `streaks`) — 본 도메인은 집 구성원 컨텍스트(`house_members`)로 접근 경로만 제공.
-- **방명록 작성**: 방문한 구성원 방에 메시지 작성. `room_owner_id`(방 주인), `house_id`(방문 맥락 집), `author_id`(작성자), `content` 저장. (`room_guestbooks`)
-- **방명록 조회**: 특정 구성원 방의 방명록 최신순 조회(`created_at` desc), 삭제된 글(`deleted_at`) 제외. (`room_guestbooks`)
+- **방명록 작성**: 방 주인과 **같은 집의 ACTIVE 구성원만**(방 주인 본인 포함) 작성 가능(확정 2026-07-05). `room_owner_id`(방 주인), `house_id`(방문 맥락 집), `author_id`(작성자), `content`(1~500자) 저장. (`room_guestbooks`)
+- **방명록 조회**: 같은 집 구성원만, 최신순(**커서 기반 무한스크롤**, id desc), 삭제된 글(`deleted_at`) 제외. 삭제 API 는 후속. (`room_guestbooks`)
 
 ## 단체 미션
 
-- **미션 등록**: 미션명(`title`)·유형(`mission_type`)·목표 조건(`target_value`)·기간(`starts_at`, `ends_at`) 입력. 보상 정책은 미정. (`house_missions`)
-- **미션 조회**: 집의 미션 목록·진행률 조회. 진행률은 참여자 기여 합(`house_mission_participants.contribution_value`)과 `target_value`로 산출. (`house_missions`, `house_mission_participants`)
-- **미션 기여**: 구성원의 루틴 수행이 미션 기여로 누적(`contribution_value` 증가). 기여 트리거 규칙은 루틴/투두 도메인 연동 — **의존**. (`house_mission_participants`, `house_members`)
-- **미션 달성**: 목표 조건 충족 시 `house_missions.status` 달성으로 전환, 공동 보상 + 개인 보상 지급(`reward_claimed`), 집 성장 포인트(`house.growth_points`) 증가. 재화 지급은 회원/재화 도메인 의존. (`house_missions`, `house_mission_participants`, `house`)
+- **미션 등록**: 소유자(OWNER)만. 미션명(`title` 1~160자)·유형(`mission_type` — MVP는 DAILY_MEMBER_RATE/WEEKLY_MEMBER_COUNT 2종, STREAK_DAYS 미지원)·목표 조건(`target_value` 1~1000)·기간(`starts_at`, `ends_at` 선택) 입력, 등록 즉시 ACTIVE. (`house_missions`)
+- **미션 조회**: 집의 미션 목록(최신 생성순)·진행률 조회, 구성원 전용. 진행률은 참여자 기여 합(`house_mission_participants.contribution_value`)과 `target_value`로 산출. (`house_missions`, `house_mission_participants`)
+- **미션 기여**: 구성원이 **공동 미션 자체를 직접 수행 체크**(`POST .../contribute`, 본인 +1·KST 하루 1회)한다 — 모델 확정 2026-07-05. 개인 루틴 완료와는 무관(루틴 자동 연동은 검토 후 폐기, 이슈 #93·PR #94 미머지 클로즈). 수행 인증(사진 등)은 후속. (`house_mission_participants`, `house_members`)
+- **미션 달성**: 기여 합이 목표 이상일 때 구성원 누구나 보상 수령(claim, 미션당 최초 1회). `house_missions.status` COMPLETED 전환 + 집 성장 포인트 +100(`house.growth_points`, 개인 재화 보상 없음 — 후속 검토) + 참여자 `reward_claimed` 일괄 true. 동시 claim 은 행 락으로 이중 지급 방지. (`house_missions`, `house_mission_participants`, `house`)
 
 ## 집 레벨
 
-- **집 레벨 / 성장**: 단체 미션 보상이 `house.growth_points`로 누적되고 임계값 도달 시 `house.level` 상승. 레벨 상승 시 **집 테마 보상** 해금. 테마 마스터·해금 처리는 상점/테마 도메인 의존. (`house.level`, `house.growth_points`)
+- **집 레벨 / 성장**: 단체 미션 보상(+100)이 `house.growth_points`로 누적되고 **레벨 = growth_points / 100 선형**(레벨당 100pt, 확정 2026-07-05)으로 상승. 레벨 상승 시 **집 테마 보상** 해금. 테마 마스터·해금 처리는 상점/테마 도메인 의존. (`house.level`, `house.growth_points`)
 
 ## 미결정 사항
 
 - ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **즉시가입으로 확정**. `house_members.status` = active/left/kicked 3값 확정(left 재가입 가능, kicked 재가입 불가).
 - 강퇴/탈퇴를 `status` 전환으로 표현할지 `left_at`만으로 표현할지(둘 다 컬럼 존재) 미확정.
-- 단체 미션 보상 분배 규칙(공동/개인 비율, 기여도 반영), 미션 기여 트리거 규칙 미정.
+- 단체 미션 보상은 집 성장 포인트 +100만으로 확정(2026-07-05) — 개인 재화 보상(기여도 반영 분배 등)은 후속 검토. 미션 기여 트리거는 임시 수동 API로 우선 제공, 루틴 완료 이벤트 연동 규칙은 루틴/투두 도메인 협의 미정.
 - 집 레벨업 곡선·테마 매핑 미정.
 - 구성원 루틴 현황 공개 범위 단위(루틴별 vs 카테고리별)는 루틴/투두 도메인 open question 연동.
