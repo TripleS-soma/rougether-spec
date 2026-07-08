@@ -49,7 +49,7 @@
 ## 사진 인증 (`photo_verifications`)
 
 - **등록**: 사진 인증형 루틴 완료 시 카메라/앨범에서 업로드 → 해당 `routine_logs`에 연결된 `photo_verifications` 레코드 생성. 저장 키는 `storage_key`(전체 URL 아님), 업로드 시각 `uploaded_at`. **AI 분석은 현재 범위에서 제외** — 사진 업로드 자체를 인증 완료로 간주하고 `ai_review_status`는 노출하지 않는다(컬럼은 유지, AI 재도입 시 의미만 복원).
-- **공개 범위** (`privacy_scope`): **나만 보기(`PRIVATE`)** / **집 구성원 공개(`HOUSE`)**, 기본 `PRIVATE`. "집 구성원 공개"의 노출 대상은 집 도메인(`house_members`)에 의존.
+- **공개 범위** (`privacy_scope`): 카테고리 `visibility`와 같은 값 집합 — **비공개(`PRIVATE`)** / **친한친구(`FRIENDS`)** / **집(`HOUSE`)** / **공개(`PUBLIC`)**, 기본 `PRIVATE`. 사진 인증은 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중. `HOUSE`의 노출 대상은 집 도메인(`house_members`)에 의존.
 - **공개 범위 변경**: `privacy_scope` 갱신.
 - **삭제**: soft delete(`deleted_at`). **사진만 제거**하고 루틴 완료 상태(`routine_logs`)는 **유지**한다.
 
