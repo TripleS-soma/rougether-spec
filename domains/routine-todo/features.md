@@ -38,13 +38,22 @@
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
-- **완료 체크**: 당일 `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. 보상은 **COIN 10 고정**(`reward_currency_type`/`reward_amount` 기록), 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date`를 갱신한다. 완료는 오늘(KST)만 허용, 같은 날 중복 완료는 거부.
+- **완료 체크**: 당일 `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. 보상은 **COIN 10**(`reward_currency_type`/`reward_amount` 기록, 일일 보상 상한 적용 — 아래 섹션), 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date`를 갱신한다. 완료는 오늘(KST)만 허용, 같은 날 중복 완료는 거부.
 - **완료 취소**: **당일(KST) 내**만 가능. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 지급 코인과 스트릭을 **롤백**한다.
 
 ## 투두 완료 처리 (`todos`, → `user_wallets`)
 
-- **완료 체크**: `todos.status`(완료)·`completed_at` 기록 + 코인 지급(**COIN 5 고정**, 지갑 반영). 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
+- **완료 체크**: `todos.status`(완료)·`completed_at` 기록 + 코인 지급(**COIN 5**, 일일 보상 상한 적용 — 아래 섹션, 지갑 반영). 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
 - **완료 취소**: 완료가 **오늘(KST)** 인 경우만 가능. `status`(PENDING)/`completed_at`을 되돌리고 지급 코인을 롤백한다.
+
+## 일일 보상 상한 (루틴+투두 합산, → `user_wallets`)
+
+- **상한**: 루틴 완료와 투두 완료를 합쳐 하루(KST) **4건**까지만 코인을 지급한다. 단위는 건수(코인 총량 아님) — 완료 순서 선착순 지급이라 하루 최대 코인은 조합에 따라 20~40.
+- **초과 완료**: 5번째 이후도 완료 자체는 정상 성공하되 `reward_amount=0`으로 기록하고 지갑은 불변. 완료를 거부하지 않는다.
+- **카운트 기준**: 오늘 실제 지급된(`reward_amount > 0`) 완료 건수 합산 — 루틴은 `routine_date`, 투두는 `completed_at`의 KST 날짜 기준.
+- **취소와 상한**: 취소하면 지급 슬롯이 복구된다(카운트가 실지급 건수 기준이라 자동). 0 지급 완료의 취소는 지갑 불변.
+- **삭제와 상한**: 지급된 완료 투두를 삭제해도 코인은 회수하지 않으므로 상한 집계에 그대로 포함한다 — 삭제로 지급 슬롯이 복구되지 않는다.
+- **스트릭**: 상한과 무관 — 코인 미지급 완료도 스트릭에는 정상 반영된다.
 
 ## 사진 인증 (`photo_verifications`)
 
