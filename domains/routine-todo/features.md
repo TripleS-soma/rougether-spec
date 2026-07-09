@@ -38,12 +38,12 @@
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
-- **완료 체크**: 당일 `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. 보상은 **COIN 10**(`reward_currency_type`/`reward_amount` 기록, 일일 보상 상한 적용 — 아래 섹션), 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date`를 갱신한다. 완료는 오늘(KST)만 허용, 같은 날 중복 완료는 거부.
-- **완료 취소**: **당일(KST) 내**만 가능. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 지급 코인과 스트릭을 **롤백**한다.
+- **완료 체크**: `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. **과거 날짜 완료를 허용**하고 미래 날짜는 거부한다(KST 기준). 보상은 **당일(`routine_date` = 오늘) 완료만 COIN 10**(일일 보상 상한 적용 — 아래 섹션), 과거 날짜 완료는 0 지급 — `reward_amount`에는 **실제 지급액**을 기록한다(취소 시 정확 환불 근거). 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date` 갱신도 **당일 완료에만** 반응한다(과거 완료는 스트릭 미반영). 같은 날짜 중복 완료는 거부.
+- **완료 취소**: 오늘 이전 날짜(**과거 포함, 미래 제외**, KST 기준)의 완료를 취소할 수 있다. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 기록된 `reward_amount`만큼 코인을 회수한다(과거 완료는 0 환불). 스트릭 **롤백은 당일 완료 취소에만** 적용한다.
 
 ## 투두 완료 처리 (`todos`, → `user_wallets`)
 
-- **완료 체크**: `todos.status`(완료)·`completed_at` 기록 + 코인 지급(**COIN 5**, 일일 보상 상한 적용 — 아래 섹션, 지갑 반영). 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
+- **완료 체크**: `todos.status`(완료)·`completed_at` 기록. 마감일(`due_date`)이 **미래(KST 기준)인 투두는 완료 불가**, 마감일이 지난 투두는 완료 가능. 코인은 **`due_date` = 오늘인 완료만 COIN 5**(일일 보상 상한 적용 — 아래 섹션, 지갑 반영), 마감일이 지났거나 없는(`due_date` null) 완료는 0 지급 — `reward_amount`에 실제 지급액을 기록한다. 투두는 스트릭에 포함하지 않는다(스트릭은 루틴 기준).
 - **완료 취소**: 완료가 **오늘(KST)** 인 경우만 가능. `status`(PENDING)/`completed_at`을 되돌리고 지급 코인을 롤백한다.
 
 ## 일일 보상 상한 (루틴+투두 합산, → `user_wallets`)
@@ -53,7 +53,7 @@
 - **카운트 기준**: 오늘 실제 지급된(`reward_amount > 0`) 완료 건수 합산 — 루틴은 `routine_date`, 투두는 `completed_at`의 KST 날짜 기준.
 - **취소와 상한**: 취소하면 지급 슬롯이 복구된다(카운트가 실지급 건수 기준이라 자동). 0 지급 완료의 취소는 지갑 불변.
 - **삭제와 상한**: 지급된 완료 투두를 삭제해도 코인은 회수하지 않으므로 상한 집계에 그대로 포함한다 — 삭제로 지급 슬롯이 복구되지 않는다.
-- **스트릭**: 상한과 무관 — 코인 미지급 완료도 스트릭에는 정상 반영된다.
+- **스트릭**: 상한과 무관 — 상한 초과로 코인 미지급된 **당일** 완료도 스트릭에는 정상 반영된다(과거 날짜 완료는 상한과 별개로 스트릭 미반영 — 루틴 완료 처리 참고).
 
 ## 사진 인증 (`photo_verifications`)
 
