@@ -7,26 +7,34 @@
 ## 집 탐색 / 참여
 
 ### GET /api/v1/houses
-집 탐색. 목표 카테고리·인원·활동 수준 필터로 집 목록 조회.
-- query(미정): `goalCode`, `hasSlot`, `activityLevel` 등 필터
-- res(items[]): `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`
+집 탐색. 최신 생성순 기본, 페이지네이션 적용. 탐색·추천 겸용(별도 추천 엔드포인트 없음).
+- query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속)
+- res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`)
+- 삭제된 집(`deleted_at`)은 제외
 - table: `house`, `house_goals`
 
+### GET /api/v1/me/houses
+내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 먼저 가입한 집 먼저, 페이지네이션 없음(다중 가입 소수 전제).
+- res: `{ items }` / items[]: `houseId`, `name`, `coverImageKey`, `level`, `currentMemberCount`, `maxMembers`, `myRole`, `joinedAt`
+- 삭제된 집(`deleted_at`)·탈퇴(left) membership 은 제외
+- table: `house_members`, `house`
+
 ### POST /api/v1/houses/{houseId}/join
-탐색 결과에서 선택한 집에 참여(요청). 즉시 가입 vs 요청→승인 흐름 **미정**.
+탐색 결과에서 선택한 집에 참여. **즉시가입** — 초대코드 참여와 동일 정책(role=member·status=active, 승인 흐름 없음, 탈퇴 이력 재가입은 기존 row 재활성화).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
-- 예외: 같은 집 중복 가입(`(house_id, user_id)`) → 충돌
+- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
 - table: `house_members`, `house`(`current_member_count` 갱신)
 
 ### POST /api/v1/houses/join-by-code
-초대코드/링크로 참여. 코드로 집 정보·구성원 수 확인 후 합류.
+초대코드/링크로 참여. **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다(승인 흐름 없음).
 - req: `inviteCode`
 - res: `membershipId`, `houseId`, `status`
-- 예외: 만료 코드(`invite_expires_at` 경과), 중복 참여
+- 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
+- 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
 - table: `house`, `house_members`
 
 ### GET /api/v1/houses/by-code/{inviteCode}
-참여 전 코드로 집 미리보기(이름·구성원 수·목표). (참여와 분리, 선택)
+참여 전 코드로 집 미리보기(이름·구성원 수·정원). 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용).
 - res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`
 - table: `house`
 
@@ -34,43 +42,58 @@
 
 ### POST /api/v1/houses
 집 생성. 생성자가 `owner`.
-- req: `name`, `description?`, `coverImageKey?`, `maxMembers?`, `goalIds[]`
+- req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
+- 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
+- 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
+- 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400)
 - table: `house`, `house_members`(owner row), `house_goals`
 
 ### GET /api/v1/houses/{houseId}
-집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수).
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`
-- table: `house`, `house_goals`
+집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수). **ACTIVE 구성원만** 조회 가능.
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`(`goalId`,`code`,`name`), `myRole`, `inviteCode`, `inviteExpiresAt`
+- `inviteCode`/`inviteExpiresAt` 는 **소유자에게만** 값, 그 외 null. `myRole` 은 화면의 소유자 UI 분기용
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house`, `house_members`, `house_goals`
 
 ### PUT /api/v1/houses/{houseId}
-설정 수정(이름·소개글·대표 이미지·최대 인원). 소유자만.
-- req: `name?`, `description?`, `coverImageKey?`, `maxMembers?`
+설정 수정(이름·소개글·대표 이미지·최대 인원). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
+- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가)
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
-초대코드 재발급. 기존 코드 즉시 만료.
+초대코드 재발급. **소유자만**. 기존 코드 즉시 만료(새 코드로 교체), 만료 7일 갱신. 코드 규칙은 생성과 동일(영대문자+숫자 8자).
 - res: `inviteCode`, `inviteExpiresAt`
+- 예외: 소유자 아님(비구성원 포함) `HOUSE_NOT_OWNER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
 - table: `house`
 
 ## 구성원 관리
 
 ### GET /api/v1/houses/{houseId}/members
-구성원 목록 조회.
-- res(items[]): `membershipId`, `userId`, `nickname`, `role`, `status`, `joinedAt`
+구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
+- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
 - table: `house_members`
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
-강퇴. 소유자만. 알림 발송은 알림 도메인 의존.
-- table: `house_members`(상태 전환/`left_at`), `house`(`current_member_count` 감소)
+강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 알림 발송은 알림 도메인 의존.
+- res: 204 / 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 자기 자신 `HOUSE_KICK_SELF`(400) · 대상 무효 `HOUSE_MEMBER_NOT_FOUND`(404) · 없는/삭제 집 404
+- table: `house_members`(status=kicked/`left_at`), `house`(`current_member_count` 감소)
 
 ### DELETE /api/v1/houses/{houseId}/members/me
-탈퇴. 기여 기록 유지, 이후 참여 불가. 소유자는 양도 후 가능(아래 선행).
+탈퇴. status=left + `left_at` 기록, `current_member_count` 감소. 기여 기록은 유지되며 **재가입은 허용**(기존 row 재활성화 - 탈퇴하면 집 활동·미션에 더는 참여하지 못한다는 의미).
+- 소유자는 다른 active 구성원이 있으면 **양도 선행** 필요 → `HOUSE_OWNER_MUST_TRANSFER`(409)
+- **마지막 1인 탈퇴 시 집 soft delete**(`deleted_at`) - 빈 집이 탐색에 남지 않음
+- res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
 - table: `house_members`(`left_at`), `house`
 
 ### POST /api/v1/houses/{houseId}/transfer-ownership
-소유권 양도. 대상 구성원을 `owner`로, `house.owner_user_id` 갱신.
-- req: `targetMembershipId`
+소유권 양도. **소유자만**. 대상 구성원을 `owner`로 승격 + 기존 소유자는 `member`로 + `house.owner_user_id` 갱신 - 단일 트랜잭션.
+- req: `targetMembershipId` (같은 집의 다른 active 구성원)
+- res: `houseId`, `newOwnerMembershipId`, `newOwnerUserId`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대상 무효(비구성원/비활성/자기자신/타집) `HOUSE_TRANSFER_TARGET_INVALID`(400) · 없는/삭제 집 404
 - table: `house_members`(role 변경), `house`(`owner_user_id`)
 
 ## 구성원 방 방문
@@ -81,45 +104,61 @@
 - 의존: 루틴/투두 도메인(`routines`, `routine_logs`, `streaks`) — 본 도메인은 집 구성원 접근 경로만 제공
 - table: `house_members` (+ 루틴/투두 도메인 의존)
 
+방명록은 **방 주인과 같은 집(houseId)의 ACTIVE 구성원만** 조회·작성할 수 있다(방 주인 본인 포함, 위반 403 `HOUSE_NOT_MEMBER`, 집 없음/삭제 404 `HOUSE_NOT_FOUND`). path 는 `rooms` 하위로 확정(2026-07-05, 서버 구현 완료).
+
 ### GET /api/v1/rooms/{roomOwnerId}/guestbooks
-방명록 조회(최신순). `house_id` 맥락으로 필터 가능.
-- query: `houseId?`
-- res(items[]): `guestbookId`, `authorId`, `authorNickname`, `content`, `createdAt`
+방명록 조회(최신순 = `guestbookId` 내림차순). **커서 기반 무한스크롤** — offset 페이징은 새 글 유입 시 중복/누락이 생겨 배제.
+- query: `houseId`(필수), `cursor?`(이전 응답의 nextCursor, 첫 요청 생략), `size?`(기본 20, 최대 50)
+- res: `items[]`(`guestbookId`, `authorId`, `authorNickname`, `content`, `createdAt`) + `nextCursor`(더 없으면 null) + `hasNext`
+- 삭제된 글(`deleted_at` not null)은 제외
 - table: `room_guestbooks`
 
 ### POST /api/v1/rooms/{roomOwnerId}/guestbooks
-방명록 작성.
-- req: `houseId`, `content`
-- res: `guestbookId`, `roomOwnerId`, `authorId`, `houseId`, `createdAt`
+방명록 작성. → 201
+- req: `houseId`, `content`(1~500자)
+- res: `guestbookId`, `roomOwnerId`, `authorId`, `houseId`, `content`, `createdAt`
 - table: `room_guestbooks`
 
-> 방명록 path가 `houses` 하위인지 `rooms` 하위인지는 방 도메인과 협의 **미정**. `room_guestbooks`가 `room_owner_id`·`house_id`·`author_id`를 모두 갖는 점만 확정.
+> 삭제 API 는 MVP 범위 외(후속 — 작성자/방 주인 soft delete 안 검토). `deleted_at` 컬럼은 그 후속용.
 
 ## 단체 미션
 
+전부 해당 집의 ACTIVE 구성원 전용(비구성원 403 `HOUSE_NOT_MEMBER`). 보상은 **집 성장 포인트 +100만** 지급(개인 재화 보상 없음 — 후속 검토), 레벨은 `growth_points / 100` 선형(확정 2026-07-05, 서버 구현 완료 PR #81).
+
 ### GET /api/v1/houses/{houseId}/missions
-집 미션 목록·진행률 조회.
-- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(기여 합산), `status`, `startsAt`, `endsAt`
+집 미션 목록·진행률 조회. 최신 생성순.
+- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(기여 합산), `status`, `startsAt`, `endsAt`, `createdAt`
 - table: `house_missions`, `house_mission_participants`
 
 ### POST /api/v1/houses/{houseId}/missions
-미션 등록. 보상 정책 **미정**.
-- req: `title`, `missionType`, `targetValue`, `startsAt?`, `endsAt?`
-- res: `missionId`, `status`
+미션 등록. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). 등록 즉시 `status=ACTIVE`. → 201
+- req: `title`(1~160자), `missionType`, `targetValue`(1~1000), `startsAt?`, `endsAt?`(둘 다 지정 시 endsAt > startsAt, 위반 400 `HOUSE_MISSION_PERIOD_INVALID`)
+- `missionType`은 MVP에서 `DAILY_MEMBER_RATE`·`WEEKLY_MEMBER_COUNT` 2종만 허용 — `STREAK_DAYS`는 400 `HOUSE_MISSION_TYPE_NOT_SUPPORTED`
+- res: 미션 상세와 동일 형식 (`currentValue=0`, `myContribution=0`)
 - table: `house_missions`
 
 ### GET /api/v1/houses/{houseId}/missions/{missionId}
-미션 상세·참여자별 기여 조회.
-- res: `missionId`, `targetValue`, `currentValue`, `participants[]`(`membershipId`, `contributionValue`, `rewardClaimed`)
+미션 상세·내 기여 조회.
+- res: 목록 항목 + `myContribution`(내 누적 기여), `achieved`(currentValue >= targetValue)
+- 참여자별 기여 목록(participants[])은 화면 요구 확정 전까지 미노출
 - table: `house_missions`, `house_mission_participants`
 
+### POST /api/v1/houses/{houseId}/missions/{missionId}/contribute
+**정식 기여 API**(모델 확정 2026-07-05) — 공동 미션은 구성원이 **미션 자체를 직접 수행 체크**하는 방식이다. 개인 루틴 완료와는 무관하며, 프론트 미션 화면의 "오늘 수행" 액션이 이 API 를 호출한다. 수행 인증(사진 등) 강화는 후속.
+- 구성원 본인 기여 +1, **KST(Asia/Seoul) 기준 하루 1회**(참여 row `updated_at` 판정)
+- `status=ACTIVE`이고 미션 기간 내일 때만 가능(위반 409 `HOUSE_MISSION_NOT_ACTIVE`), 같은 날 재기여 409 `HOUSE_MISSION_ALREADY_CONTRIBUTED`
+- res: `missionId`, `myContribution`, `currentValue`, `achieved`
+- table: `house_mission_participants`
+
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/claim
-미션 달성·보상 수령. 공동+개인 보상 지급, 집 성장 포인트 증가.
-- res: `rewardClaimed`, `growthPoints`, `level`
-- 의존: 재화 지급(`user_wallets`, 회원/재화 도메인), 집 테마 해금(상점/테마 도메인)
+미션 보상 수령. 구성원 누구나 실행 가능, **미션당 최초 1회**.
+- 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
+- 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
+- res: `missionId`, `status`, `grantedGrowthPoints`(=100), `houseGrowthPoints`, `houseLevel`
 - table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house`(`growth_points`, `level`)
-- 미션 기여 누적(`contribution_value`) 트리거는 루틴/투두 도메인 연동 — 별도 엔드포인트 vs 이벤트 기반 **미정**
+
+에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409)
 
 ## 집 레벨
 
-집 레벨·성장 포인트는 별도 조회 엔드포인트 없이 `GET /api/v1/houses/{houseId}`의 `level`·`growthPoints`로 노출. 레벨 상승 트리거는 미션 달성(`.../claim`)에서 발생, 테마 보상 해금은 상점/테마 도메인 의존. 레벨업 곡선·테마 매핑 **미정**. (`house.level`, `house.growth_points`)
+집 레벨·성장 포인트는 별도 조회 엔드포인트 없이 `GET /api/v1/houses/{houseId}`의 `level`·`growthPoints`로 노출. 레벨 상승 트리거는 미션 달성(`.../claim`)에서 발생하며 **레벨 = growth_points / 100 선형**(레벨당 100pt, 확정 2026-07-05). 테마 보상 해금은 상점/테마 도메인 의존 — 테마 매핑 **미정**. (`house.level`, `house.growth_points`)

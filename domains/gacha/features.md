@@ -6,11 +6,11 @@
 
 ## 뽑기 목록 조회
 
-운영 중인 테마별 뽑기 머신을 노출한다.
+운영 중인 뽑기 머신을 노출한다. 머신은 크게 **테마별 꾸미기 아이템 뽑기**와 **테마 무관 캐릭터 뽑기**로 나뉜다.
 
-- **머신 목록**: `is_active`이고 운영 기간(`starts_at`~`ends_at`) 내인 머신을 테마별로 표시. (`gacha`)
-  - 표시 필드: `name`, 테마(theme FK→`themes`), 비용(`cost_currency_type`·`cost_amount`), 1회 뽑기 수(`draw_count`), 운영 기간(`starts_at`/`ends_at`).
-  - 테마 커버 이미지는 `themes.cover_image_key`로 참조(전체 URL 아님).
+- **머신 목록**: `is_active`이고 운영 기간(`starts_at`~`ends_at`) 내인 머신을 표시. (`gacha`)
+  - 표시 필드: `name`, 테마(theme FK→`themes`, 캐릭터 뽑기는 NULL), 비용(`cost_currency_type`·`cost_amount`), 1회 뽑기 수(`draw_count`), 운영 기간(`starts_at`/`ends_at`).
+  - 테마 커버 이미지는 `themes.cover_image_key`로 참조(전체 URL 아님). 캐릭터 뽑기는 `theme_id`가 NULL이라 커버가 없다.
 - **머신 상세(선택)**: 단일 머신의 비용·기간·구성 요약. 풀 내부 확률 공개 여부는 미정. (`gacha`, `gacha_pool_entries`)
 
 ## 테마별 뽑기
@@ -19,9 +19,19 @@
 
 - **뽑기 실행**: 머신 선택 → 코인 `cost_amount` 차감 → `draw_count`만큼 풀에서 추첨. (`gacha`, `gacha_pool_entries`)
   - 추첨은 활성 엔트리(`gacha_pool_entries.is_active`)를 `weight` 기반으로 뽑는다.
-  - `reward_type`으로 아이템 보상(`item_id`→`items`) / 재화 보상(`currency_type`·`reward_amount`, 다이아) 구분.
+  - `reward_type`으로 아이템 보상(`item_id`→`items`) / 캐릭터 보상(`character_id`→`characters`) / 재화 보상(`currency_type`·`reward_amount`) 구분.
 - **비용 검증·차감**: 보유 코인 < `cost_amount`이면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
 - **운영 기간·활성 검증**: `is_active`가 false거나 운영 기간 밖이면 실행 거부.
+
+## 캐릭터 뽑기
+
+온보딩 기본 캐릭터 외 나머지 캐릭터를 획득하는 전용 머신이다. 테마별 아이템 뽑기와 별개의 흐름을 쓴다.
+
+- **전용 머신**: 캐릭터 뽑기는 **테마 무관 머신 1개**로 운영한다(`gacha.theme_id`는 NULL). 풀 엔트리는 모두 `reward_type = CHARACTER`이며 `character_id`→`characters`를 가리킨다. (`gacha`, `gacha_pool_entries`)
+- **비용**: **코인 1000**(`cost_currency_type = COIN`, `cost_amount = 1000`). 보유 코인이 부족하면 실행 거부.
+- **추첨**: 캐릭터 **6개 전체를 균등 추첨**한다(캐릭터 엔트리는 등급/`weight` 차등 없이 동일 확률). 온보딩 기본 캐릭터도 풀에 포함된다.
+- **중복 시 코인 환급**: 이미 보유한 캐릭터(`user_characters` 보유)가 나오면 지급 대신 **코인 200을 환급**한다. 신규 캐릭터는 `user_characters`로 지급하고 `acquired_at`을 기록한다. (`user_characters`, `user_wallets` — 의존)
+  - 캐릭터 중복 환급은 **다이아가 아니라 코인**으로 돌려준다(아이템 뽑기의 다이아 전환과 다름).
 
 ## 뽑기 결과 확인
 
@@ -34,11 +44,12 @@
 
 ## 관련 table 요약
 
-- **gacha**: 머신 정의 — `code`, `name`, `cost_currency_type`, `cost_amount`, `draw_count`, `starts_at`, `ends_at`, `is_active`, theme FK→`themes`.
-- **gacha_pool_entries**: 머신별 보상 풀 — `gacha_id`→`gacha`, `reward_type`, `item_id`→`items`?, `currency_type`?, `reward_amount`?, `rarity`?, `weight`, `is_active`.
+- **gacha**: 머신 정의 — `code`, `name`, `cost_currency_type`, `cost_amount`, `draw_count`, `starts_at`, `ends_at`, `is_active`, theme FK→`themes`?(캐릭터 뽑기는 NULL).
+- **gacha_pool_entries**: 머신별 보상 풀 — `gacha_id`→`gacha`, `reward_type`(`ITEM`/`CHARACTER`/`CURRENCY`), `item_id`→`items`?, `character_id`→`characters`?, `currency_type`?, `reward_amount`?, `rarity`?, `weight`, `is_active`.
 
 ## 의존 도메인 (이 도메인이 다루지 않음)
 
-- `user_wallets` 코인 차감·다이아 적립 → 재화/회원 도메인.
+- `user_wallets` 코인 차감·환급 → 재화/회원 도메인.
 - `items` 정의·`user_items` 인벤토리 추가 → 상점/아이템 도메인.
+- `characters` 정의·`user_characters` 보유 → 회원/온보딩 도메인. (캐릭터 뽑기는 `characters`를 보상으로 참조, `user_characters`로 지급)
 - `themes` 테마 정의 → 상점/테마 도메인.
