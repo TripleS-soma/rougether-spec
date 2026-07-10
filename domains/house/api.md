@@ -96,12 +96,30 @@
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대상 무효(비구성원/비활성/자기자신/타집) `HOUSE_TRANSFER_TARGET_INVALID`(400) · 없는/삭제 집 404
 - table: `house_members`(role 변경), `house`(`owner_user_id`)
 
-## 구성원 방 방문
+## 구성원 방 방문 / 활동 열람
 
-### GET /api/v1/houses/{houseId}/members/{membershipId}/routine-status
-구성원 오늘 루틴 현황·최근 참여율. 공개 범위는 사용자 설정.
-- res: `userId`, `todayCompleted`, `recentParticipationRate` (형태 **미정**)
-- 의존: 루틴/투두 도메인(`routines`, `routine_logs`, `streaks`) — 본 도메인은 집 구성원 접근 경로만 제공
+초안의 `routine-status`(오늘 현황·참여율) 단일 엔드포인트는 방/그날 현황/완료 내역 3개로 재설계해 구현했다. 공통 규칙: **요청자·조회 대상 모두 그 집(houseId)의 ACTIVE 구성원**이어야 하며(본인 조회 가능), 위반 시 403 `HOUSE_NOT_MEMBER`. 참여율(`recentParticipationRate`) 계산값은 제공하지 않고 raw 완료 내역으로 대체(집계는 프론트).
+
+### GET /api/v1/houses/{houseId}/members/{membershipId}/room
+구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, surface(벽지/바닥/배경)·positioned 슬롯별 배치, 스트릭.
+- res: `GET /api/v1/rooms/me`와 동일 계약
+- 예외: 대상이 방 미생성(내 방 화면 미방문) `ROOM_NOT_FOUND`(404)
+- table: `house_members`, `personal_rooms`, `room_surface_slots` (+ 방 도메인 의존)
+
+### GET /api/v1/houses/{houseId}/members/{membershipId}/day
+구성원의 그날 현황(루틴 + 투두, 완료 여부 포함). 반복 대상·완료 판정은 `GET /api/v1/today`·캘린더와 동일 규칙.
+- query: `date?`(YYYY-MM-DD, 미지정 시 오늘 KST)
+- res: `date`, `routines[]`(`id`, `originRoutineId`, `title`, `scheduledTime?`, `authType`, `categoryId`, `completed`), `todos[]`(`id`, `title`, `status`, `completedAt?`, `categoryId`)
+- 정렬: 루틴 수행 예정 시각 오름차순, 투두 id 오름차순
+- 공개 범위: 카테고리 `visibility`가 HOUSE/PUBLIC 인 루틴·투두만 노출. PRIVATE/FRIENDS·미분류는 제외(본인 조회에도 동일 적용 — 내 화면은 `GET /api/v1/today` 사용)
+- table: `house_members` (+ 루틴/투두 도메인 의존)
+
+### GET /api/v1/houses/{houseId}/members/{membershipId}/routine-completions
+구성원 루틴 완료 내역 기간 조회.
+- query: `from?`, `to?`(YYYY-MM-DD) — `to` 미지정 시 오늘(KST), `from` 미지정 시 `to` 기준 최근 14일. 기간 최대 92일, `from` > `to`는 400 `HOUSE_ACTIVITY_PERIOD_INVALID`
+- res: `from`, `to`(실제 적용된 기간), `items[]`(`date`, `completedAt`, `routineId`, `originRoutineId`, `title`, `categoryId`)
+- 정렬: 완료 날짜 내림차순(같은 날짜는 완료 시각 내림차순). 공개 범위 필터는 `/day`와 동일(HOUSE/PUBLIC만)
+- 비고: 스케줄 수정으로 루틴 버전이 갈려도 과거 완료는 포함 — 같은 루틴 묶음 판별은 `originRoutineId` 사용
 - table: `house_members` (+ 루틴/투두 도메인 의존)
 
 방명록은 **방 주인과 같은 집(houseId)의 ACTIVE 구성원만** 조회·작성할 수 있다(방 주인 본인 포함, 위반 403 `HOUSE_NOT_MEMBER`, 집 없음/삭제 404 `HOUSE_NOT_FOUND`). path 는 `rooms` 하위로 확정(2026-07-05, 서버 구현 완료).
