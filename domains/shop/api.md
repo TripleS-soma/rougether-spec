@@ -8,7 +8,7 @@
 관련 table: `items`, `themes`, `user_items`.
 
 - 요청(query): `tab`(방 꾸미기/캐릭터 악세사리 — 값 집합 미정), `themeId?`, 페이지네이션(형태 미정)
-- 응답: `items[]` — `id`, `name`, `assetKey`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `categoryCode`, `purchaseCurrencyType?`, `priceAmount?`, `isLimited`, `theme`(`id`/`code`/`name`/`coverImageKey?`), `owned`(boolean)
+- 응답: `items[]` — `id`, `name`, `assetKey`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`(positioned 가구의 기본 배치 슬롯, admin 에서 조정), `categoryCode`, `purchaseCurrencyType?`, `priceAmount?`, `isLimited`, `theme`(`id`/`code`/`name`/`coverImageKey?`), `owned`(boolean)
 - 비고: 활성 테마·활성 아이템만. `owned`는 요청 user의 `user_items`로 판정.
 
 ## GET /api/v1/me/items
@@ -17,8 +17,9 @@
 관련 table: `user_items`, `items`, `themes`.
 
 - 요청(query): `categoryCode?` (문자열 pass-through, enum 검증 없음). 슬롯 타입 필터는 슬롯 enum 확정 전까지 제외.
-- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `surfaceSlotType?`, `characterSlotType?`, `theme`(`id`, `code`, `name`, `coverImageKey?`), `acquiredAt`
-- 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). 정렬 `acquired_at DESC`, 페이지네이션 없음. `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
+- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`, `theme`(`id`, `code`, `name`, `coverImageKey?`), `acquiredAt`
+- 정렬: 최근 획득 먼저(`acquired_at DESC`), 페이지네이션 없음. `placementType`/`defaultSlot` 은 방 배치용(GET /items 와 동일 계약).
+- 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
 
 ## POST /api/v1/items/{id}/purchase
 
@@ -26,17 +27,18 @@
 관련 table: `items`, `user_items`, `user_wallets`.
 
 - 경로: `{id}` = `items.id`
-- 요청 body: 미정(멱등키 등 사용 여부 미정)
+- 요청 body: 없음 (멱등키 미사용 - 중복 보유 차단이 이중 구매를 방지)
 - 응답: `userItemId`, `itemId`, `acquiredAt`, `wallet`(차감 후 다이아 `currencyType`/`balance`)
-- 실패: 다이아 부족 / 비활성·뽑기 전용 아이템(구매 불가) / 중복 보유 시 동작 — 각 예외 응답 형태는 공통 에러 규약(미정)에 따름.
+- 실패(확정): 다이아 부족 `SHOP_INSUFFICIENT_BALANCE`(409) / 비활성·뽑기 전용 `SHOP_ITEM_NOT_PURCHASABLE`(409) / **중복 보유 재구매 불가** `SHOP_ALREADY_OWNED`(409) / 없는 아이템 `SHOP_ITEM_NOT_FOUND`(404)
+- 정합: 지갑 행 락 + `user_wallets`/`user_items` UNIQUE 제약으로 동시 요청의 이중 차감·이중 지급 방지.
 
 ## GET /api/v1/me/wallets
 
 보유 재화(코인·다이아) 잔액 조회. 상점·구매 화면에서 사용.
 관련 table: `user_wallets`.
 
-- 응답: `items[]` — `currencyType`, `balance`
-- 비고: 코인 적립/다이아 충전은 본 도메인 밖(루틴·투두 / 뽑기). 본 엔드포인트는 조회 전용. 엔드포인트 위치(상점 도메인 vs 회원 공통)는 **미정**.
+- 응답: `items[]` — `currencyType`, `balance`. **모든 재화를 항상 포함**(지갑 미발급 재화는 balance 0)
+- 비고: 코인 적립/다이아 충전은 본 도메인 밖(루틴·투두 / 뽑기). 본 엔드포인트는 조회 전용. 위치는 **me 경로로 확정**(서버 구현은 재화 담당인 상점·뽑기 쪽이 소유).
 
 ## 의존성
 

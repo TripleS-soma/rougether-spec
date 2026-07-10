@@ -20,12 +20,13 @@
 
 | 하위 기능 | 설명 | 관련 table |
 | --- | --- | --- |
-| 캐릭터 목록 조회 | 제공 캐릭터 노출. `is_active = true`만, `sort_order` 정렬. 에셋은 `base_asset_key`(key)로 내려줌. | `characters` |
-| 캐릭터 선택 저장 | 고른 캐릭터를 대표 캐릭터로 저장. | `user_characters` (`user_id`, `character_id`) |
+| 캐릭터 목록 조회 | 제공 캐릭터(6개) 노출. `is_active = true`만, `sort_order` 정렬. 에셋은 `base_asset_key`(key)로 내려줌. | `characters` |
+| 기본 캐릭터 무료 선택 | 6개 중 하나를 기본 캐릭터로 **무료** 선택해 대표로 저장. 온보딩에서는 1개만 무료. | `user_characters` (`user_id`, `character_id`) |
 | 대표 캐릭터 표시 | 현재 대표 캐릭터를 `is_selected`로 표시. 선택 시 `acquired_at` 기록. | `user_characters.is_selected`, `user_characters.acquired_at` |
 | 선택 캐릭터 조회 | 사용자의 대표 캐릭터 조회(개인 방 배치 입력으로 사용). | `user_characters`, `characters` |
 
 - 선택한 대표 캐릭터는 개인 방에 배치된다. **배치 렌더링은 방 도메인** 담당, 이 도메인은 "어떤 캐릭터를 골랐는지"까지 책임진다.
+- 온보딩에서는 6개 중 **기본 1개만 무료**로 획득한다. **나머지 캐릭터는 캐릭터 뽑기로 획득**하며, 뽑기로 얻은 캐릭터도 `user_characters`로 기록된다. (뽑기 머신·환급 로직은 [뽑기 도메인](../gacha/features.md) 담당)
 - 캐릭터 에셋은 전체 URL이 아니라 `characters.base_asset_key`(key)로 참조한다.
 
 ## 회원 기본 정보
