@@ -22,6 +22,7 @@
 | 상점 / 재화 | [domains/shop/api.md](domains/shop/api.md) |
 | 뽑기 | [domains/gacha/api.md](domains/gacha/api.md) |
 | 공동 집 | [domains/house/api.md](domains/house/api.md) |
+| 알림 | [domains/notification/api.md](domains/notification/api.md) |
 
 ## 에러 응답
 
