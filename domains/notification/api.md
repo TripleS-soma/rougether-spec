@@ -20,7 +20,7 @@
 
 - `type`(`NotificationType`) 초기값: `HOUSE_KICK`, `ROUTINE_REMINDER`. 발송 트리거 로직은 후속(강퇴 알림은 house 도메인 이벤트 발행 필요, 루틴 리마인드는 별도 배치).
 - 등록된 토큰(`user_device_token`) 전체로 멀티캐스트 발송하고, FCM이 `UNREGISTERED`/`INVALID_ARGUMENT`로 응답한 token은 삭제한다.
-- firebase 서비스 계정 JSON은 환경변수/외부 경로로 주입한다(커밋 금지). 로컬·테스트 환경은 실제 발송 없이 stub으로 동작한다.
+- firebase 서비스 계정 JSON은 환경변수(`FIREBASE_CREDENTIALS_PATH`)/외부 경로로 주입한다(커밋 금지). 발송 활성화는 프로필이 아니라 자격증명 주입 여부 기준 — 미주입 환경은 실제 발송 없이 stub으로 동작하고, 로컬도 자격증명을 주입하면 실발송된다. 테스트는 항상 stub으로 고정된다.
 - 브로커(RabbitMQ/Kafka)는 아직 도입하지 않는다(다중 인스턴스·발송량 증가 시 재검토).
 
 ## 연동 (다른 도메인)
