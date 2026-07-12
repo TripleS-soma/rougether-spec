@@ -29,10 +29,10 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `POST /api/v1/routines/{id}/logs` | 당일 완료 체크 | `routineDate`(기본 오늘) | 생성된 log: `id`, `routineDate`, `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` + 갱신된 streak 요약 |
-| `DELETE /api/v1/routines/{id}/logs/{logId}` | 완료 취소(당일 내) | — | 롤백 결과(코인·스트릭 롤백). 트랜잭션 처리 |
+| `POST /api/v1/routines/{id}/logs` | 완료 체크(과거 허용·미래 불가) | `routineDate`(기본 오늘) | 생성된 log: `id`, `routineDate`, `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` + streak 요약 |
+| `DELETE /api/v1/routines/{id}/logs` | 완료 취소(과거 허용·미래 불가) | `date`(취소할 완료 날짜, query) | 롤백 결과(반영된 streak 요약). 트랜잭션 처리 |
 
-> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 완료 보상은 **COIN 10 고정**. 완료 취소는 log row를 **hard delete**하고 코인·스트릭을 롤백한다(취소 상태로 남기지 않음). "당일"·완료 가능 범위는 모두 **KST(`Asia/Seoul`)** 기준, 완료는 오늘만 허용.
+> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변, 클라이언트는 `rewardAmount > 0`으로 지급 여부 판별). 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 log row를 **hard delete**하고 기록된 `rewardAmount`만큼 코인을 회수한다(취소 상태로 남기지 않음).
 
 ## 사진 인증 (`photo_verifications`)
 
@@ -52,10 +52,10 @@
 | `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?` | 생성된 todo |
 | `PUT /api/v1/todos/{id}` | 수정 | 위 필드 | 수정된 todo |
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 결과. 완료 기록 함께 정리 |
-| `POST /api/v1/todos/{id}/complete` | 완료 체크 | — | `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
+| `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(당일 내) | — | 롤백 결과(코인 롤백) |
 
-> 완료/취소는 `/complete`(POST/DELETE)로 확정. 완료 보상은 **COIN 5 고정**(루틴 10과 별도), 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 `completed_at`이 오늘(KST)일 때만. 투두는 스트릭에 포함하지 않는다.
+> 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 5**(루틴 10과 별도) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 `rewardAmount=0`(완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 `completed_at`이 오늘(KST)일 때만, 환불은 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
 
 ## 오늘 현황 · 캘린더 (`routines`, `routine_logs`, `todos`, `streaks`)
 
@@ -84,6 +84,7 @@
 - `todo.status`: `PENDING`/`COMPLETED`
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개)
 - 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 5 고정
+- 완료 허용 범위: 과거 허용·미래 거부(루틴 `routineDate`, 투두 `dueDate` 기준). 코인·스트릭은 당일 완료에만 반영(과거 완료는 `rewardAmount=0`)
 
 ## 미정
 
