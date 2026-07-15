@@ -25,6 +25,10 @@
 | `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드 | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고) |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 결과. 기존 `routine_logs`는 숨김 처리 |
 
+> 루틴 `startsOn`/`endsOn` 검증(KST 기준):
+> - `startsOn` 미지정이면 생성일(오늘)로 기본 지정한다. 등록 시 `startsOn`을 오늘 이전 과거로 보내면 거부한다(`ROUTINE_STARTS_ON_BEFORE_TODAY`, 400). 수정 시에는 `startsOn`을 실제로 바꿀 때만 검사해 과거로 옮기는 경우만 거부하고, 기존값을 그대로 재전송하는 것은 통과한다(멱등).
+> - `startsOn`은 `endsOn`보다 늦을 수 없다(`ROUTINE_STARTS_ON_AFTER_ENDS_ON`, 400). 등록은 기본 지정된 `startsOn` 기준으로, 수정은 적용될 `startsOn`과 새 `endsOn` 조합으로 검사한다.
+
 ## 루틴 완료/취소 (`routine_logs`, `streaks`, → `user_wallets`)
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
