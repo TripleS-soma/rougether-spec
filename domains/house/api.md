@@ -40,13 +40,21 @@
 
 ## 집 관리
 
+### GET /api/v1/houses/cover-images
+집 생성·설정 화면에서 선택할 수 있는 커버 이미지 목록. 인증된 사용자 전용이며 페이지네이션하지 않는다.
+- res: `{ items }` / items[]: `coverImageKey`
+- 서버의 게시 승인 manifest에 등록된 PNG/JPEG/WebP `coverImageKey`만 key 오름차순으로 반환한다. S3 `house/` prefix의 초안·중복 파일은 자동 노출하지 않는다.
+- 프론트는 공통 규약대로 CDN base URL과 `coverImageKey`를 조합해 이미지를 표시한다.
+- 이미지가 없으면 200 `{ "items": [] }`를 반환한다.
+- storage: 설정 기반 published manifest, DB table 없음
+
 ### POST /api/v1/houses
 집 생성. 생성자가 `owner`.
 - req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
 - 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
 - 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
-- 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400)
+- 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400) · 목록에 없는 `coverImageKey` → `HOUSE_COVER_IMAGE_INVALID`(400)
 - table: `house`, `house_members`(owner row), `house_goals`
 
 ### GET /api/v1/houses/{houseId}
@@ -60,7 +68,7 @@
 설정 수정(이름·소개글·대표 이미지·최대 인원). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
 - req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가)
 - res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`
-- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 목록에 없는 `coverImageKey` `HOUSE_COVER_IMAGE_INVALID`(400) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
