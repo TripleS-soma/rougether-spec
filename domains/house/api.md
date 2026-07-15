@@ -42,8 +42,9 @@
 
 ### GET /api/v1/houses/cover-images
 집 생성·설정 화면에서 선택할 수 있는 커버 이미지 목록. 인증된 사용자 전용이며 페이지네이션하지 않는다.
-- res: `{ items }` / items[]: `coverImageKey`
-- 서버의 게시 승인 manifest에 등록된 PNG/JPEG/WebP `coverImageKey`만 key 오름차순으로 반환한다. S3 `house/` prefix의 초안·중복 파일은 자동 노출하지 않는다.
+- res: `{ items }` / items[]: `code`, `name`, `coverImageKey`
+- `code`는 프론트 식별용 영문 snake_case 코드, `name`은 화면 표시용 한국어 이름이다. 실제 공동집의 사용자 지정 `name`과는 별개다.
+- 서버의 게시 승인 manifest에 등록된 PNG/JPEG/WebP 후보만 `code` 오름차순으로 반환한다. S3 `house/` prefix의 초안·중복 파일은 자동 노출하지 않는다.
 - 프론트는 공통 규약대로 CDN base URL과 `coverImageKey`를 조합해 이미지를 표시한다.
 - 이미지가 없으면 200 `{ "items": [] }`를 반환한다.
 - storage: 설정 기반 published manifest, DB table 없음
