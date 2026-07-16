@@ -19,6 +19,7 @@
 
 - **뽑기 실행**: 머신 선택 → 코인 `cost_amount` 차감 → `draw_count`만큼 풀에서 추첨. (`gacha`, `gacha_pool_entries`)
   - 추첨은 활성 엔트리(`gacha_pool_entries.is_active`)를 `weight` 기반으로 뽑는다.
+  - 회수(`characters.is_active=false`)된 캐릭터는 배출되지 않는다 — 캐릭터 회수 시 해당 풀 엔트리도 함께 비활성 처리한다(엔트리 활성과 보상 캐릭터 활성을 모두 충족해야 배출).
   - `reward_type`으로 아이템 보상(`item_id`→`items`) / 캐릭터 보상(`character_id`→`characters`) / 재화 보상(`currency_type`·`reward_amount`) 구분.
 - **비용 검증·차감**: 보유 코인 < `cost_amount`이면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
 - **운영 기간·활성 검증**: `is_active`가 false거나 운영 기간 밖이면 실행 거부.
@@ -31,6 +32,7 @@
 - **비용**: **코인 1000**(`cost_currency_type = COIN`, `cost_amount = 1000`). 보유 코인이 부족하면 실행 거부.
 - **추첨**: 캐릭터 **6개 전체를 균등 추첨**한다(캐릭터 엔트리는 등급/`weight` 차등 없이 동일 확률). 온보딩 기본 캐릭터도 풀에 포함된다.
 - **중복 시 코인 환급**: 이미 보유한 캐릭터(`user_characters` 보유)가 나오면 지급 대신 **코인 200을 환급**한다. 신규 캐릭터는 `user_characters`로 지급하고 `acquired_at`을 기록한다. (`user_characters`, `user_wallets` — 의존)
+  - 보유 판정·지급은 다른 획득 경로(온보딩 스타터 선택, 착용 교체)와 동일한 유저 행 비관적 락으로 직렬화한다 — 동시 실행이 같은 캐릭터를 중복 보유시키거나 환급 판정을 우회할 수 없다.
   - 캐릭터 중복 환급은 **다이아가 아니라 코인**으로 돌려준다(아이템 뽑기의 다이아 전환과 다름).
 
 ## 뽑기 결과 확인

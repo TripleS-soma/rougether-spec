@@ -24,7 +24,7 @@
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
 | `GET /api/v1/goals` | 선택 가능한 목표 목록 | res: `items[]` = `{ id, code, name, sortOrder }` (`isActive=true`만) | `goals` |
-| `GET /api/v1/characters` | 선택 가능한 캐릭터 목록 | res: `items[]` = `{ id, code, name, baseAssetKey, sortOrder }` (`isActive=true`만) | `characters` |
+| `GET /api/v1/characters` | 선택 가능한 캐릭터 목록 | res: `items[]` = `{ id, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, sortOrder }` (`isActive=true`만) | `characters` |
 
 ## 온보딩 (목표 · 캐릭터 선택)
 
@@ -35,9 +35,23 @@
 | `PUT /api/v1/onboarding/character` | 대표 캐릭터 선택 저장 | req: `characterId` → res: `selectedCharacterId` | `user_characters` |
 
 - `PUT /api/v1/onboarding/goals`: 전체 교체(기존 `user_goals` 삭제 후 재구성, 단일 트랜잭션). `goalIds`가 빈 배열이면 거부(최소 1개, `GOAL_REQUIRED`), 상한 없음. 중복 `goalId`는 dedupe. 모든 `goalId`는 존재 + `isActive=true`여야 함(아니면 `INVALID_GOAL`). `primaryGoalId`는 선택(생략 시 대표 없음), 지정 시 `goalIds`에 포함돼야 함(아니면 `PRIMARY_GOAL_NOT_IN_SELECTION`).
-- `PUT /api/v1/onboarding/character`: 대상 `characterId`는 존재 + `isActive=true` 마스터여야 함(아니면 `CHARACTER_NOT_FOUND`). 보유(`deleted_at` null) 중이면 이전 대표 `is_selected=false`·대상 `is_selected=true`로 무료 교체. 미보유 + 보유 0개(최초)면 대상을 보유 등록(`acquired_at` 기록)+선택(스타터 지급). 미보유 + 보유 1개 이상이면 거부(`CHARACTER_NOT_OWNED`) — 신규 획득은 뽑기/상점 도메인 소관. 이전 대표 해제 + 신규 선택/등록은 단일 트랜잭션이며 `is_selected` 유일성을 보장(대상 유저 행 비관적 락으로 동시 요청 직렬화). 이미 선택된 캐릭터 재선택은 무해(idempotent).
+- `PUT /api/v1/onboarding/character`: 대상 `characterId`는 존재 + `isActive=true` 마스터여야 함(아니면 `CHARACTER_NOT_FOUND`). 보유(`deleted_at` null) 중이면 이전 대표 `is_selected=false`·대상 `is_selected=true`로 무료 교체. 미보유 + 보유 0개(최초)면 대상을 보유 등록(`acquired_at` 기록)+선택(스타터 지급). 미보유 + 보유 1개 이상이면 거부(`CHARACTER_NOT_OWNED`) — 신규 획득은 뽑기/상점 도메인 소관. 이전 대표 해제 + 신규 선택/등록은 단일 트랜잭션이며 `is_selected` 유일성을 보장(대상 유저 행 비관적 락으로 동시 요청 직렬화). 이미 선택된 캐릭터 재선택은 무해(idempotent). 온보딩 이후의 착용 교체는 `PUT /api/v1/me/characters/select`(보유 캐릭터 전용) 사용을 권장한다 — 이 경로의 교체 동작은 하위호환으로 유지.
 - `completed`는 (선택 목표 ≥1개) && (대표 캐릭터 존재)로 계산. `primaryGoalId`는 optional이라 완료 기준에서 제외. 온보딩 요약(`completed`·`primaryGoalId`·`selectedCharacterId`)은 `GET /api/v1/onboarding`과 `GET /api/v1/me`가 동일 read model을 공유.
 - 선택값은 모두 `user_id`(소유권 식별자)에 귀속. 인증된 사용자 기준.
+
+## 보유 캐릭터 / 착용
+
+캐릭터(마스터·보유·착용) 계약은 방·뽑기 도메인과 동일 담당 소관이다(회원 도메인에서 이관). 문서 위치는 온보딩 흐름과의 연속성을 위해 유지한다.
+
+| method · path | 목적 | 핵심 필드 | 관련 table |
+| --- | --- | --- | --- |
+| `GET /api/v1/me/characters` | 내 보유 캐릭터 목록 | res: `items[]` = `{ userCharacterId, characterId, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, selected, acquiredAt }` (마스터 `sortOrder` ASC) | `user_characters`, `characters` |
+| `PUT /api/v1/me/characters/select` | 착용(대표) 캐릭터 교체 | req: `characterId` → res: `selectedCharacterId` | `user_characters` |
+
+- 착용 교체는 **보유 캐릭터만** 가능(미보유 `CHARACTER_NOT_OWNED`). 보유 중이어도 회수(`isActive=false`)된 캐릭터는 착용 불가(`CHARACTER_NOT_FOUND`). 이전 대표 해제 + 신규 착용은 단일 트랜잭션이며, 온보딩 선택·뽑기 지급과 동일한 유저 행 비관적 락으로 직렬화해 `is_selected` 유일성과 중복 보유 방지를 보장한다. 이미 착용 중 재선택은 무해(idempotent).
+- 회수(`isActive=false`)된 캐릭터는 보유 중이어도 **목록에서 제외**한다. 보유 레코드 자체는 유지되며 뽑기 중복 환급 판정에는 계속 사용된다.
+- `animations`는 asset key 묶음 — `characters/{code}/animations/{idle|pose-cycle|wave}.webp` (무손실 애니메이션 WebP, 프레임 지연 보존). key는 `code`에서 파생되므로 **새 캐릭터를 마스터에 등록하기 전에 애니메이션 3종 적재가 전제 조건**이다. 클라이언트는 key를 유추하지 않고 응답 필드를 그대로 사용한다.
+- `name`은 한국어 표기(예: 고양이, 호랑이). `code`는 영문 식별자로 불변.
 
 ## 회원 기본 정보
 
