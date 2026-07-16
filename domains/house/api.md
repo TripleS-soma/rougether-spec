@@ -184,7 +184,14 @@
 - res: `missionId`, `status`, `grantedGrowthPoints`(=100), `houseGrowthPoints`, `houseLevel`
 - table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house`(`growth_points`, `level`)
 
-에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409)
+### DELETE /api/v1/houses/{houseId}/missions/{missionId}
+미션 삭제. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). soft delete — 삭제된 미션은 목록·상세에서 제외되고 기여·claim 도 404. → 204
+- 진행 중(ACTIVE) 미션은 기여가 있어도 삭제 가능(잘못 만든 미션 정리 용도). 기여 이력(participants)은 보존하고 조회에서만 숨긴다.
+- 보상 수령(COMPLETED) 미션은 삭제 불가(409 `HOUSE_MISSION_ALREADY_CLAIMED`) — 집 성장 포인트 지급 이력 보존.
+- 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
+- table: `house_missions`(`deleted_at`)
+
+에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
 
 ## 집 레벨
 
