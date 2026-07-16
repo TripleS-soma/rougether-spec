@@ -67,7 +67,7 @@
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
 - **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at?
 - **house_goals**: id* | house_id→house | goal_id→goals
-- **house_missions**: id* | house_id→house | title VARCHAR(160) | mission_type VARCHAR(50) | target_value INT | status VARCHAR(30) | starts_at? | ends_at? | created_at
+- **house_missions**: id* | house_id→house | title VARCHAR(160) | mission_type VARCHAR(50) | target_value INT | status VARCHAR(30) | starts_at? | ends_at? | created_at | deleted_at?(soft delete — 소유자 삭제, 기여 이력은 보존)
   - `mission_type`: `DAILY_MEMBER_RATE`(오늘 멤버 N% 달성) / `WEEKLY_MEMBER_COUNT`(주 N회) / `STREAK_DAYS`(N일 연속). MVP는 앞 2개. `target_value`=목표 수치. 미션 주제(운동/공부 등)는 `title`·`house_goals`로.
 - **house_mission_participants**: id* | mission_id→house_missions | membership_id→house_members | contribution_value INT | reward_claimed BOOLEAN | updated_at
 
