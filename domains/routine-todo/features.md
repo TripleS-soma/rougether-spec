@@ -15,8 +15,10 @@
 - **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`만 유효(등록 시 `ACTIVE`. 필드·필터는 유지).
 - **인증 방식 선택** (`auth_type`): **체크형(`CHECK`)** / **사진 인증형(`PHOTO`)** 중 선택. (사진 인증형의 AI 분석은 현재 범위에서 제외 — 사진 인증 항목 참고)
 - **반복 조건** (`repeat_type`, `repeat_days` JSON):
-  - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일).
-  - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`. 요일은 `MON`~`SUN`.
+  - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일) / `BIWEEKLY`(격주 특정 요일) / `MONTHLY`(매월 특정 일) / `YEARLY`(매년 특정 월일).
+  - `repeat_days`(JSON 객체): `DAILY` → `null`, `WEEKLY`/`BIWEEKLY` → `{ "daysOfWeek": ["MON","WED","FRI"] }`(요일은 `MON`~`SUN`), `MONTHLY` → `{ "dayOfMonth": 15 }`, `YEARLY` → `{ "month": 7, "day": 12 }`.
+  - `BIWEEKLY`는 `starts_on`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격으로 `daysOfWeek`에 반복한다 — 기준일이 필요하므로 `starts_on`이 필수다.
+  - `MONTHLY`/`YEARLY`는 지정한 날짜가 해당 월/해에 없으면(예: `dayOfMonth=31`인 2월, `month=2,day=29`인 평년) 그 기간엔 대상에서 자연히 제외된다(별도 보정 없음).
   - `scheduled_time`(수행 시간)·`starts_on`/`ends_on`(지속 기간)은 별도 컬럼.
 - **수행 시간 / 기간**: `scheduled_time`(TIME), `starts_on`·`ends_on`(DATE)으로 시간순 정렬 및 노출 기간을 정한다.
 - **시간버전(temporal versioning)** (`origin_routine_id`): 루틴은 버전 계보로 관리한다. `origin_routine_id`는 계보 루트 row의 id로, 생성 시 자기 id, 버전 분기 시 부모의 값을 승계한다. 버전 유효기간은 `created_at`~`deleted_at`으로 판정하며, 과거 캘린더는 그날 유효했던 버전으로 재구성된다(자세한 규칙은 [api.md](./api.md) 캘린더 참고).
