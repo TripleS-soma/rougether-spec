@@ -32,7 +32,7 @@
 
 공용 진입점 `NotificationService.send(userId, type, title, body[, refId])` — 알림 내역을 `notification` 테이블에 저장(동기)하고 FCM push를 비동기로 발송한다. push가 실패해도 내역은 남는다(best-effort). `refId`는 발송 원인 리소스 ID(예: 리마인드면 routineId)로 중복 발송 판정에 쓰며, 생략하면 null.
 
-- `type`(`NotificationType`) 초기값: `HOUSE_KICK`, `ROUTINE_REMINDER`. 루틴 리마인드 발송 트리거는 스케줄러(아래)로 구현됨. 강퇴 알림은 house 도메인 이벤트 발행이 후속.
+- `type`(`NotificationType`) 초기값: `HOUSE_KICK`, `ROUTINE_REMINDER`. 루틴 리마인드(`ROUTINE_REMINDER`) 발송 트리거는 별도 batch worker로 구현됨(5분 주기, 같은 분 재실행은 중복 발송 방지로 스킵; 상세는 아래 스케줄러 절). 강퇴(`HOUSE_KICK`) 알림 트리거는 후속(house 도메인 이벤트 발행 필요).
 - 등록된 토큰(`user_device_token`) 전체로 멀티캐스트 발송하고, FCM이 `UNREGISTERED`/`INVALID_ARGUMENT`로 응답한 token은 삭제한다.
 - 발송 결과는 `notification.push_status`(`PENDING`/`SENT`/`FAILED`)로 추적한다: 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`. `FAILED` 재시도는 없다(MVP). 상태 갱신은 알림 목록 응답에 노출하지 않는다.
 - firebase 서비스 계정 JSON은 환경변수(`FIREBASE_CREDENTIALS_PATH`)/외부 경로로 주입한다(커밋 금지). 발송 활성화는 프로필이 아니라 자격증명 주입 여부 기준 — 미주입 환경은 실제 발송 없이 stub으로 동작하고, 로컬도 자격증명을 주입하면 실발송된다. 테스트는 항상 stub으로 고정된다.
