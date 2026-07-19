@@ -2,7 +2,7 @@
 
 상위 공통 규약: [api.md](../../api.md) · 기능: [features.md](features.md) · 데이터: [erd.md](../../erd.md)
 
-> path·필드는 서버 구현 기준으로 확정(photo_verifications만 미구현). 공통 규칙(prefix `/api/v1`, ISO-8601 + offset, 이미지/에셋 `*_key`, 목록은 `items` 배열, 보상은 쓰기 트랜잭션, 인증된 사용자 기준 소유권 guard 적용)은 상위 [api.md](../../api.md)를 따른다. 상세 req/res·에러코드는 서버 repo `docs/work/routine-todo/`에서 관리한다.
+> path·필드는 서버 구현 기준으로 확정(photo_verifications만 미구현). 시각 입력(루틴 `scheduledTime`, 투두 `dueTime`)은 **5분 단위**(분이 5의 배수)만 허용하며 위반 시 400 `VALIDATION_FAILED`. 공통 규칙(prefix `/api/v1`, ISO-8601 + offset, 이미지/에셋 `*_key`, 목록은 `items` 배열, 보상은 쓰기 트랜잭션, 인증된 사용자 기준 소유권 guard 적용)은 상위 [api.md](../../api.md)를 따른다. 상세 req/res·에러코드는 서버 repo `docs/work/routine-todo/`에서 관리한다.
 
 ## 카테고리 (`categories`)
 
@@ -20,10 +20,14 @@
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
 | `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status`, `originRoutineId`(버전 계보 루트 id — 스케줄 수정으로 `id`가 바뀌어도 불변, 프론트 목록 key로 사용) |
-| `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`), `repeatDays?`, `scheduledTime?`, `startsOn?`, `endsOn?` | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
+| `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`), `repeatDays?`, `scheduledTime?`(5분 단위), `startsOn?`, `endsOn?` | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
 | `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세(목록과 동일 필드). 카테고리는 `categoryId`만 담고, 이름·색상은 `GET /api/v1/categories`에서 resolve |
 | `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드 | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고) |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 결과. 기존 `routine_logs`는 숨김 처리 |
+
+> 루틴 `startsOn`/`endsOn` 검증(KST 기준):
+> - `startsOn` 미지정이면 생성일(오늘)로 기본 지정한다. 등록 시 `startsOn`을 오늘 이전 과거로 보내면 거부한다(`ROUTINE_STARTS_ON_BEFORE_TODAY`, 400). 수정 시에는 `startsOn`을 실제로 바꿀 때만 검사해 과거로 옮기는 경우만 거부하고, 기존값을 그대로 재전송하는 것은 통과한다(멱등).
+> - `startsOn`은 `endsOn`보다 늦을 수 없다(`ROUTINE_STARTS_ON_AFTER_ENDS_ON`, 400). 등록은 기본 지정된 `startsOn` 기준으로, 수정은 적용될 `startsOn`과 새 `endsOn` 조합으로 검사한다.
 
 ## 루틴 완료/취소 (`routine_logs`, `streaks`, → `user_wallets`)
 
@@ -32,7 +36,9 @@
 | `POST /api/v1/routines/{id}/logs` | 완료 체크(과거 허용·미래 불가) | `routineDate`(기본 오늘) | 생성된 log: `id`, `routineDate`, `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` + streak 요약 |
 | `DELETE /api/v1/routines/{id}/logs` | 완료 취소(과거 허용·미래 불가) | `date`(취소할 완료 날짜, query) | 롤백 결과(반영된 streak 요약). 트랜잭션 처리 |
 
-> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변, 클라이언트는 `rewardAmount > 0`으로 지급 여부 판별). 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 log row를 **hard delete**하고 기록된 `rewardAmount`만큼 코인을 회수한다(취소 상태로 남기지 않음).
+> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변, 클라이언트는 `rewardAmount > 0`으로 지급 여부 판별). 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 기록된 `rewardAmount`만큼 코인을 회수하고, log row 처리는 날짜·수행 대상 여부에 따라 갈린다 — **과거 날짜(`date < 오늘 KST`)이고 그날 수행 대상이었던 완료는 `FAILED`로 복원**한다(status 전이 + `completedAt` null + 보상 필드 초기화, row 유지). 당일 취소와 그날 수행 대상이 아니었던 과거 완료(유효기간 밖 완료)는 기존대로 **hard delete** 한다(복원할 `FAILED` 상태가 성립하지 않음). 수행 대상 판정은 day-end 배치와 같은 기준이다(그날 유효했던 버전 + 반복 규칙, 계보 단위).
+> 응답 `status` 허용값은 `PENDING`/`COMPLETED`/`FAILED`(하루 마감 배치가 전날 미수행 루틴에 기록). 과거 날짜 완료 시 그 날짜에 `FAILED` 로그가 있으면 새 row를 만들지 않고 그 row를 `COMPLETED`로 **전이(UPDATE)** 한다 — 응답 `id`는 기존 row의 id이고, 보상 0·스트릭 미반영은 과거 완료 규칙 그대로. 전이된 완료의 취소는 위 취소 규칙에 따라 다시 `FAILED`로 복원된다. 배치는 지나간 날짜의 로그를 재생성하지 않는다.
+> 과거 날짜의 완료·취소는 과거 캘린더가 내려주는 **닫힌(soft-deleted) 버전 id로도 호출할 수 있다**(소유권 검증은 동일 — 내 계보의 닫힌 버전만). 당일 완료·취소는 살아있는 현재 버전 id만 허용한다(삭제된 루틴의 당일 완료로 보상을 받는 경로 차단).
 
 ## 사진 인증 (`photo_verifications`)
 
@@ -48,8 +54,8 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?` (미정) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `status`, `completedAt` |
-| `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?` | 생성된 todo |
+| `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?` (미정) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `dueTime`, `status`, `completedAt` |
+| `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?`, `dueTime?`(마감 시각, 5분 단위) | 생성된 todo |
 | `PUT /api/v1/todos/{id}` | 수정 | 위 필드 | 수정된 todo |
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 결과. 완료 기록 함께 정리 |
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
@@ -70,15 +76,16 @@
 > `/api/v1/calendar`는 달력에서 날짜를 클릭해 그날의 현황을 보는 용도다. `/today`와 달리 응답에 `streak`을 포함하지 않고, 과거·미래 날짜 모두 조회할 수 있다.
 > 루틴 소싱은 조회 날짜가 오늘(KST) 기준 과거인지에 따라 갈린다.
 > - **오늘·미래(`date >= 오늘 KST`)**: 그 날짜의 반복 대상 루틴을 live 재계산해 노출하고, 완료 여부는 그 날짜 `routine_logs`(`routine_date`)로 판정한다.
-> - **과거(`date < 오늘 KST`)**: 그날 **유효했던 루틴 버전을 재구성**해 소싱한다. 그날 반복 대상인 유효 버전이면 완료 로그가 없어도(=미완료) 노출하고, 완료 여부는 그날 완료(`COMPLETED`) `routine_logs`로 판정한다. 여기에 그날 완료 로그가 가리키는 루틴을 합쳐(`id`로 dedup) 노출한다(유효기간 밖에서 완료한 루틴도 포함). 투두는 동일하게 마감일이 그날인 것만 포함한다. 과거 진행률·총계는 노출 루틴 + 그날 투두 기준으로 계산한다.
+> - **과거(`date < 오늘 KST`)**: 그날 `routine_logs`(`COMPLETED`+`FAILED`)를 **단독 조회**해 소싱한다(버전 재구성 없음). 완료 여부는 로그 `status`로 판정하고, 로그가 없는 루틴은 그날 수행 대상이었더라도 노출하지 않는다 — 미수행 판정·기록은 day-end 배치의 책임이다. 로그가 없는 날은 빈 응답이며, day-end 배치 도입 이전 날짜도 로그가 없어 빈 응답이다(소급 backfill 없음). 유효기간 밖에서 완료한 루틴도 완료 로그가 있으므로 노출된다. 투두는 동일하게 마감일이 그날인 것만 포함한다. 과거 진행률·총계는 노출 로그의 루틴 + 그날 투두 기준으로 계산한다.
 >
 > **루틴 시간버전(temporal versioning)**: 반복 스케줄(`repeatType`·`repeatDays`·`startsOn`·`endsOn`)을 바꾸고 이미 경과한 날이 있는 버전이면, 옛 버전을 그대로 닫고(`deleted_at`) 새 버전 row를 만든다(응답 `id`가 바뀐다). 버전 유효기간은 `created_at`~`deleted_at`(KST)로 판정한다 — "그날 유효한 버전" = `created_at(KST) ≤ date` 이고 (`deleted_at` 없음 또는 `deleted_at(KST) > date`). 분기 경계에서 옛/새 버전의 유효기간은 겹치거나 비지 않는다. 같은 버전 계보는 `originRoutineId`(계보 루트 id)로 잇고, 목록·정렬은 `originRoutineId` 기준이라 버전이 바뀌어도 위치가 유지된다. `startsOn`/`endsOn`은 사용자 스케줄 값으로 그대로 노출·복사하며 버전 경계로 쓰지 않는다.
 >
-> 과거 노출 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 그날 유효한 **버전 row**에서 읽는다. 스케줄을 바꾸지 않는 수정(제목·카테고리·시각·인증 변경, 또는 오늘 생성분)은 제자리 수정이라 과거 조회에도 최신값이 반영되지만, 스케줄 변경으로 버전이 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다. 완료 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
+> 과거 노출 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 **로그가 가리키는 버전 row**에서 읽는다(루틴은 soft delete라 버전 row가 남는다). 스케줄을 바꾸지 않는 수정(제목·카테고리·시각·인증 변경, 또는 오늘 생성분)은 제자리 수정이라 과거 조회에도 최신값이 반영되지만, 스케줄 변경으로 버전이 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다. 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
+> 과거 응답의 루틴 `id`는 로그가 가리키는 버전 id다 — 버전 분기 전 날짜에는 닫힌 옛 버전 id가 내려간다. 이 id로 그 날짜의 완료·취소를 그대로 호출할 수 있다(루틴 완료/취소의 닫힌 버전 id 허용 규칙 참고).
 
 ## 확정된 허용값
 
-- `repeatType`: `DAILY`/`WEEKLY` (`repeatDays`는 `WEEKLY`일 때 `{"daysOfWeek":["MON",...]}`)
+- `repeatType`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`. `repeatDays`는 `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":["MON",...]}`, `MONTHLY`일 때 `{"dayOfMonth":15}`, `YEARLY`일 때 `{"month":7,"day":12}`. `BIWEEKLY`는 `startsOn`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격으로 반복하므로 `startsOn`이 필수다. `MONTHLY`/`YEARLY`는 지정한 날짜가 해당 월/해에 없으면(31일 지정인 2월, 2/29 지정인 평년) 그 기간엔 자연히 제외된다.
 - `routine.status`: `ACTIVE` (등록 시 `ACTIVE`. `status` 필드·필터 파라미터는 유지하되 현재 유효값은 `ACTIVE`만)
 - `authType`: `CHECK`/`PHOTO`
 - `todo.status`: `PENDING`/`COMPLETED`

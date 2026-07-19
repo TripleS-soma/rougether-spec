@@ -9,7 +9,7 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | last_login_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
 - **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
@@ -32,12 +32,13 @@
 
 ### 루틴 / 투두
 - **routines**: id* | user_id→users | category_id→categories? | origin_routine_id→routines? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
-  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`, `repeat_days`(JSON): `WEEKLY`일 때 `{"daysOfWeek":[...]}`. `visibility` 없음(공개는 카테고리를 따름).
-  - `origin_routine_id`: 루틴 시간버전 계보 루트(최초 생성 시 자기 자신). 스케줄 수정으로 버전이 갈려도 불변 — 캘린더 과거 재구성·같은 루틴 묶음 판별에 사용.
+  - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`, `repeat_days`(JSON): `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":[...]}`, `MONTHLY`일 때 `{"dayOfMonth":N}`, `YEARLY`일 때 `{"month":M,"day":D}`. `BIWEEKLY`는 `starts_on`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격 판정하므로 `starts_on` 필수. `visibility` 없음(공개는 카테고리를 따름).
+  - `origin_routine_id`: 루틴 시간버전 계보 루트(최초 생성 시 자기 자신). 스케줄 수정으로 버전이 갈려도 불변 — 완료·취소의 계보 판정(중복 완료 가드·`FAILED` 전이/복원·day-end 배치)과 같은 루틴 묶음 판별에 사용.
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
+  - `status`(`RoutineLogStatus`): `COMPLETED`/`FAILED`(미사용 잠정값 `MISSED`는 제거). `FAILED`는 day-end 배치가 기록하는 미수행 로그 — `completed_at` null, 보상 0. 늦은(과거) 완료 시 `FAILED` row는 `COMPLETED`로 전이(UPDATE)되고, 과거 수행 대상 완료를 취소하면 다시 `FAILED`로 복원된다(당일·유효기간 밖 완료의 취소는 hard delete). 과거 캘린더는 이 로그를 단독 소싱한다. unique(`routine_id`, `routine_date`)가 같은 날짜 중복 로그를 막는다(배치 멱등성의 기반).
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
   - `privacy_scope`: `categories.visibility`와 같은 값 집합(`PRIVATE`/`FRIENDS`/`HOUSE`/`PUBLIC`). 단, 사진 인증 API는 현재 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중(컬럼은 스키마상 유지). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(저장 시 `APPROVED` 고정, 미노출).
-- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
+- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
 ### 방 (개인)
@@ -59,8 +60,8 @@
 ### 알림
 - **user_device_token**: id* | user_id→users | token VARCHAR(255) UNIQUE | platform VARCHAR(20) | created_at | updated_at
   - `platform`: `IOS`/`ANDROID`. 사용자당 여러 개(멀티디바이스) 허용. 등록은 멱등(같은 token 재등록 시 `updated_at` 갱신), 다른 사용자가 등록했던 token이면 소유자 이전(기기 재로그인).
-- **notification**: id* | user_id→users | type VARCHAR(30) | title VARCHAR(255) | body VARCHAR(1000) | ref_id BIGINT? | is_read BOOLEAN | created_at
-  - 알림 내역. `type`(`NotificationType`) 초기값: `HOUSE_KICK`/`ROUTINE_REMINDER`(발송 로직은 후속, 값만 선정의). `ref_id`는 발송 원인 리소스 ID(예: 리마인드면 routineId)로 중복 발송 판정에 쓰이며 nullable. 발송은 공용 진입점 `NotificationService.send(userId, type, title, body)`가 담당하고, 알림 내역 저장(동기)과 FCM push(비동기, best-effort — 실패해도 내역은 남음)를 분리한다. FCM은 사용자 토큰 전체로 멀티캐스트 발송하고 `UNREGISTERED`/`INVALID_ARGUMENT` 응답 token은 `user_device_token`에서 삭제한다. firebase 서비스 계정 JSON은 환경변수/외부 경로로 주입(커밋 금지). 신규 엔드포인트 없음(내부 인프라).
+- **notification**: id* | user_id→users | type VARCHAR(30) | title VARCHAR(255) | body VARCHAR(1000) | ref_id BIGINT? | is_read BOOLEAN | push_status VARCHAR(20) | created_at
+  - 알림 내역. `type`(`NotificationType`) 초기값: `HOUSE_KICK`/`ROUTINE_REMINDER`. `ROUTINE_REMINDER` 발송은 별도 batch worker로 구현됨(5분 주기 트리거, 같은 분 재실행은 중복 발송 방지로 스킵) — `HOUSE_KICK` 발송 트리거는 후속. `ref_id`는 발송 원인 리소스 ID(예: 리마인드면 routineId)로 중복 발송 판정에 쓰이며 nullable. `push_status`(`PushStatus`: `PENDING`/`SENT`/`FAILED`)는 FCM push 발송 결과를 추적한다 — 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`로 갱신한다. `FAILED` 재시도는 없다. 목록 API 응답에는 노출하지 않는다. 발송은 공용 진입점 `NotificationService.send(userId, type, title, body[, refId])`가 담당하고, 알림 내역 저장(동기)과 FCM push(비동기, best-effort — 실패해도 내역은 남음)를 분리한다. FCM은 사용자 토큰 전체로 멀티캐스트 발송하고 `UNREGISTERED`/`INVALID_ARGUMENT` 응답 token은 `user_device_token`에서 삭제한다. firebase 서비스 계정 JSON은 환경변수/외부 경로로 주입(커밋 금지). 신규 엔드포인트 없음(내부 인프라).
 
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
