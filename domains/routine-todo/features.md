@@ -40,8 +40,9 @@
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
-- **완료 체크**: `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. **과거 날짜 완료를 허용**하고 미래 날짜는 거부한다(KST 기준). 보상은 **당일(`routine_date` = 오늘) 완료만 COIN 10**(일일 보상 상한 적용 — 아래 섹션), 과거 날짜 완료는 0 지급 — `reward_amount`에는 **실제 지급액**을 기록한다(취소 시 정확 환불 근거). 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date` 갱신도 **당일 완료에만** 반응한다(과거 완료는 스트릭 미반영). 같은 날짜 중복 완료는 거부.
-- **완료 취소**: 오늘 이전 날짜(**과거 포함, 미래 제외**, KST 기준)의 완료를 취소할 수 있다. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 기록된 `reward_amount`만큼 코인을 회수한다(과거 완료는 0 환불). 스트릭 **롤백은 당일 완료 취소에만** 적용한다.
+- **완료 체크**: `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. **과거 날짜 완료를 허용**하고 미래 날짜는 거부한다(KST 기준). 보상은 **당일(`routine_date` = 오늘) 완료만 COIN 10**(일일 보상 상한 적용 — 아래 섹션), 과거 날짜 완료는 0 지급 — `reward_amount`에는 **실제 지급액**을 기록한다(취소 시 정확 환불 근거). 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date` 갱신도 **당일 완료에만** 반응한다(과거 완료는 스트릭 미반영). 같은 날짜 중복 완료는 거부. 과거 날짜 완료 시 그 날짜에 실패 기록(`FAILED`, 아래 배치)이 있으면 새 row를 만들지 않고 그 row를 완료로 **전이(UPDATE)** 한다(`completed_at` 기록) — 보상 0·스트릭 미반영은 과거 완료 규칙 그대로.
+- **완료 취소**: 오늘 이전 날짜(**과거 포함, 미래 제외**, KST 기준)의 완료를 취소할 수 있다. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 기록된 `reward_amount`만큼 코인을 회수한다(과거 완료는 0 환불). 스트릭 **롤백은 당일 완료 취소에만** 적용한다. 전이된 완료의 취소도 동일하게 row를 hard delete하며, 하루 마감 배치는 지나간 날짜의 로그를 재생성하지 않는다(그 날짜 기록은 사라짐 — 의도된 동작).
+- **하루 마감 실패 기록(배치)**: 매일 00:00 KST 직후, 전날(KST) 수행 대상이었는데 그날 로그가 없는 루틴을 `routine_logs`에 `FAILED`로 저장한다(`routine_date`=전날, `completed_at` null, `reward_amount` 0 — 실패로 코인을 차감하지 않으며, 스트릭 처리(BROKEN 전환)는 이 배치 범위 밖). 수행 대상 판정은 캘린더 과거 조회와 동일 — 전날 시점에 유효했던 루틴 버전(`origin_routine_id` 계보, `created_at`~`deleted_at` KST) + `starts_on`/`ends_on` + 반복 규칙(`DAILY`/`WEEKLY`+`repeat_days`). 로그 부재는 버전이 아니라 **계보 기준**으로 판정한다(같은 날 완료 후 버전이 분기돼도 실패로 오판하지 않음). 재실행해도 `UNIQUE(routine_id, routine_date)`와 로그 부재 필터로 중복 insert되지 않는다(멱등).
 
 ## 투두 완료 처리 (`todos`, → `user_wallets`)
 
