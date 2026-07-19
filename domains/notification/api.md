@@ -40,10 +40,11 @@
 
 ## 루틴 리마인드 스케줄러 (내부, 신규 엔드포인트 없음)
 
-예약 시각이 도래한 당일 미완료 루틴에 FCM 리마인드를 발송한다. `@Scheduled` 매분 폴링(KST, `Asia/Seoul`), 단일 인스턴스 전제. 쓰기는 공용 진입점 `NotificationService.send(...)` 경유만.
+예약 시각이 도래한 당일 미완료 루틴에 FCM 리마인드를 발송한다. batch worker가 **5분 주기**(`@Scheduled` cron `0 */5 * * * *`, KST `Asia/Seoul`)로 실행되어 실행 시각의 분(`targetMinute`)을 대상으로 잡는다. 단일 인스턴스 전제. 쓰기는 공용 진입점 `NotificationService.send(...)` 경유만.
 
-- 발송 대상 조건(모두 충족): `routines.status = ACTIVE` + 미삭제(`deleted_at IS NULL`) + `scheduled_time`이 현재 분과 일치 + 오늘 요일이 반복 규칙(`repeat_days`)에 해당(오늘 현황 판정과 동일 로직 재사용) + 당일(`routine_logs.routine_date = 오늘`) COMPLETED 로그 없음 + 오늘 미발송.
-- 중복 발송 방지: `notification`에 `type = ROUTINE_REMINDER` + `ref_id = routineId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다.
+- 발송 대상 조건(모두 충족): `routines.status = ACTIVE` + 미삭제(`deleted_at IS NULL`) + `scheduled_time`이 `targetMinute`과 일치 + 오늘 요일이 반복 규칙(`repeat_days`)에 해당(오늘 현황 판정과 동일 로직 재사용) + 당일(`routine_logs.routine_date = 오늘`) COMPLETED 로그 없음 + 오늘 미발송.
+- `scheduled_time`은 **5분 단위만 사용**한다(앱 입력이 5분 단위로 제한). 5분 주기 실행 + 해당 분 정확 일치 매칭이므로 5분 단위가 아닌 시각은 리마인드가 발송되지 않는다 — 서버측 검증은 아직 없음(앱 제한에 의존).
+- 중복 발송 방지: 같은 분(`targetMinute`) 재실행은 batch job instance 중복으로 스킵. 그리고 `notification`에 `type = ROUTINE_REMINDER` + `ref_id = routineId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다.
 - 문구: 고정 템플릿(제목 "루틴 리마인드", 본문 "『{루틴명}』 할 시간이에요!"). 프론트 협의로 변경 가능, LLM 문구 생성은 후속.
 - 발송은 루틴별로 `NotificationService.send(userId, ROUTINE_REMINDER, ..., refId=routineId)`를 호출한다. 개별 루틴 발송 실패는 나머지 루틴 발송을 막지 않는다(루틴 단위 예외 격리).
 - 후속(비차단): 다중 인스턴스 배포 시 스케줄러 중복 실행 방지(ShedLock 등), LLM 리마인드 문구 생성.
