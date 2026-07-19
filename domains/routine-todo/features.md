@@ -38,8 +38,16 @@
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
-- **완료 체크**: `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록. **과거 날짜 완료를 허용**하고 미래 날짜는 거부한다(KST 기준). 보상은 **당일(`routine_date` = 오늘) 완료만 COIN 10**(일일 보상 상한 적용 — 아래 섹션), 과거 날짜 완료는 0 지급 — `reward_amount`에는 **실제 지급액**을 기록한다(취소 시 정확 환불 근거). 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date` 갱신도 **당일 완료에만** 반응한다(과거 완료는 스트릭 미반영). 같은 날짜 중복 완료는 거부.
+- **완료 체크**: `routine_logs` 생성 — `routine_date`, `status`(완료), `completed_at` 기록(해당 날짜에 `FAILED` 로그가 있으면 생성 대신 `COMPLETED` 전이 — 아래 하루 마감 실패 기록 참고). **과거 날짜 완료를 허용**하고 미래 날짜는 거부한다(KST 기준). 보상은 **당일(`routine_date` = 오늘) 완료만 COIN 10**(일일 보상 상한 적용 — 아래 섹션), 과거 날짜 완료는 0 지급 — `reward_amount`에는 **실제 지급액**을 기록한다(취소 시 정확 환불 근거). 지갑(`user_wallets`) 반영을 같은 트랜잭션으로 묶는다. 스트릭(`streaks`)의 `current_count`·`longest_count`·`last_success_date` 갱신도 **당일 완료에만** 반응한다(과거 완료는 스트릭 미반영). 같은 날짜 중복 완료는 거부.
 - **완료 취소**: 오늘 이전 날짜(**과거 포함, 미래 제외**, KST 기준)의 완료를 취소할 수 있다. `routine_logs` row를 **hard delete**하고(취소 상태로 남기지 않음) 기록된 `reward_amount`만큼 코인을 회수한다(과거 완료는 0 환불). 스트릭 **롤백은 당일 완료 취소에만** 적용한다.
+
+## 하루 마감 실패 기록 (day-end 배치, `routine_logs`)
+
+- **실패 판정**: 매일 00:00(KST) 배치가 전날 수행 대상이었는데 완료 로그가 없는 루틴에 `FAILED` 로그를 생성한다(`completed_at` null, 보상 없음). 수행 대상 판정은 그날 마감 시점(다음날 00:00 KST)에 유효했던 버전 기준 — 반복 규칙(DAILY/WEEKLY 요일)·starts_on/ends_on·soft delete 여부를 반영하고, 완료 로그 존재는 루틴 계보(`origin_routine_id`) 단위로 본다(완료 후 버전 분기해도 실패 아님).
+- **멱등성**: 날짜당 job instance 1개(`targetDate` 파라미터) + unique(`routine_id`, `routine_date`) 충돌 skip으로 재실행·중복 실행에도 중복 로그가 생기지 않는다.
+- **늦은 완료·취소**: `FAILED` 로그가 있는 날짜의 완료는 새 row 생성 대신 그 로그를 `COMPLETED`로 전이한다(과거 완료 규칙 그대로 보상 0·스트릭 미반영). 전이된 완료의 취소는 기존 취소 규칙대로 hard delete 한다(`FAILED`로 되돌리지 않음).
+- **catch-up**: 서버 중단 등으로 빠진 날짜는 자동으로 따라잡는다 — Spring Batch 실행 메타데이터에서 마지막 성공 `targetDate`를 찾아 그 다음 날부터 어제(KST)까지 오래된 순으로 순차 실행한다(신규 테이블 없음, 소급 한도 없음). 실행 기록이 전혀 없으면(최초 도입) 어제만 처리하고 소급하지 않는다. 트리거는 매일 00:00 KST + 앱 기동 시 1회. 특정 날짜 실행이 실패하면 거기서 중단하고 다음 트리거에서 그 날짜부터 재시도한다.
+- **모니터링**: 외부 알림 채널 없이 구조화 로그만 — 날짜 실행 실패 시 ERROR(targetDate·사유), 2일 이상 밀림을 따라잡을 때 WARN(gap 일수). 다중 인스턴스 중복 실행 방지는 리마인드 스케줄러와 공통 후속 과제.
 
 ## 투두 완료 처리 (`todos`, → `user_wallets`)
 
