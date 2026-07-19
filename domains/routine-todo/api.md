@@ -33,6 +33,7 @@
 | `DELETE /api/v1/routines/{id}/logs` | 완료 취소(과거 허용·미래 불가) | `date`(취소할 완료 날짜, query) | 롤백 결과(반영된 streak 요약). 트랜잭션 처리 |
 
 > 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변, 클라이언트는 `rewardAmount > 0`으로 지급 여부 판별). 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 log row를 **hard delete**하고 기록된 `rewardAmount`만큼 코인을 회수한다(취소 상태로 남기지 않음).
+> 응답 `status` 허용값은 `PENDING`/`COMPLETED`/`FAILED`(하루 마감 배치가 전날 미수행 루틴에 기록). 과거 날짜 완료 시 그 날짜에 `FAILED` 로그가 있으면 새 row를 만들지 않고 그 row를 `COMPLETED`로 **전이(UPDATE)** 한다 — 응답 `id`는 기존 row의 id이고, 보상 0·스트릭 미반영은 과거 완료 규칙 그대로. 전이된 완료의 취소도 동일하게 hard delete되며 배치는 지나간 날짜의 로그를 재생성하지 않는다.
 
 ## 사진 인증 (`photo_verifications`)
 
