@@ -37,7 +37,7 @@
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
   - `privacy_scope`: `categories.visibility`와 같은 값 집합(`PRIVATE`/`FRIENDS`/`HOUSE`/`PUBLIC`). 단, 사진 인증 API는 현재 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중(컬럼은 스키마상 유지). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(저장 시 `APPROVED` 고정, 미노출).
-- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
+- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
 ### 방 (개인)
