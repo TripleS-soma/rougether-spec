@@ -110,10 +110,10 @@
 초안의 `routine-status`(오늘 현황·참여율) 단일 엔드포인트는 방/그날 현황/완료 내역 3개로 재설계해 구현했다. 공통 규칙: **요청자·조회 대상 모두 그 집(houseId)의 ACTIVE 구성원**이어야 하며(본인 조회 가능), 위반 시 403 `HOUSE_NOT_MEMBER`. 참여율(`recentParticipationRate`) 계산값은 제공하지 않고 raw 완료 내역으로 대체(집계는 프론트).
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/room
-구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, surface(벽지/바닥/배경)·positioned 슬롯별 배치, 스트릭.
+구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, `layoutFormat`·`layoutRevision`, surface·기존 positioned 슬롯, 자유배치 `placements`, 스트릭.
 - res: `GET /api/v1/rooms/me`와 동일 계약
 - 예외: 대상이 방 미생성(내 방 화면 미방문) `ROOM_NOT_FOUND`(404)
-- table: `house_members`, `personal_rooms`, `room_surface_slots` (+ 방 도메인 의존)
+- table: `house_members`, `personal_rooms`, `room_surface_slots`, `room_item_placements` (+ 방 도메인 의존)
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/day
 구성원의 그날 현황(루틴 + 투두, 완료 여부 포함). 반복 대상·완료 판정은 `GET /api/v1/today`·캘린더와 동일 규칙.
