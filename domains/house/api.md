@@ -131,6 +131,15 @@
 - 비고: 스케줄 수정으로 루틴 버전이 갈려도 과거 완료는 포함 — 같은 루틴 묶음 판별은 `originRoutineId` 사용
 - table: `house_members` (+ 루틴/투두 도메인 의존)
 
+### POST /api/v1/houses/{houseId}/members/{membershipId}/cheer
+같은 집 구성원에게 원터치 응원을 보낸다(방명록 텍스트 응원과 별개 계약). 응원 저장과 대상에게 `FRIEND_CHEER` 알림 내역 저장은 같은 트랜잭션(원자적)이며, push 는 커밋 후 비동기(공용 진입점 규칙 동일).
+- req: `type` — `great`(잘하고 있어!) / `support`(응원해요!) / `best`(오늘도 최고!)
+- res: 201, `cheerId`, `houseId`, `targetMembershipId`, `targetUserId`, `type`, `cheerDate`(KST)
+- 제한: 같은 보낸이→같은 대상·같은 타입은 하루(KST) 1회. **집과 무관한 사용자쌍 전역 제한**(여러 집에서 겹쳐도 합산 — 스팸 방지 의도). 타입이 다르면 같은 날 허용
+- 예외: 미정의 타입 `HOUSE_CHEER_TYPE_INVALID`(400) · 자기 자신 `HOUSE_CHEER_SELF`(400) · 하루 1회 초과(동시 요청 unique 충돌 포함) `HOUSE_CHEER_DUPLICATED`(409) · 요청자/대상이 그 집 ACTIVE 구성원 아님은 공통 규칙(403 `HOUSE_NOT_MEMBER` / 404 `HOUSE_MEMBER_NOT_FOUND`)
+- 알림: 대상 유저에게 `FRIEND_CHEER`(제목 "응원이 도착했어요", 본문 "{보낸이 닉네임}님: {타입 문구}", 닉네임 없으면 "집 친구", `refId` = cheerId)
+- table: `house_member_cheers`, `house_members`, `notification`
+
 방명록은 **방 주인과 같은 집(houseId)의 ACTIVE 구성원만** 조회·작성할 수 있다(방 주인 본인 포함, 위반 403 `HOUSE_NOT_MEMBER`, 집 없음/삭제 404 `HOUSE_NOT_FOUND`). path 는 `rooms` 하위로 확정(2026-07-05, 서버 구현 완료).
 
 ### GET /api/v1/rooms/{roomOwnerId}/guestbooks
