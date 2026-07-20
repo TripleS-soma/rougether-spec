@@ -38,6 +38,13 @@
 - res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`
 - table: `house`
 
+### GET /api/v1/houses/{houseId}/preview
+탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`
+- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(가입 버튼 비활성용)
+- 예외: 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house`, `house_members`(isMember 판정), `house_goals`
+
 ## 집 관리
 
 ### GET /api/v1/houses/cover-images
@@ -82,9 +89,10 @@
 
 ### GET /api/v1/houses/{houseId}/members
 구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
-- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`
+- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`, `lastAccessedAt`(갱신 이력 없으면 null)
+- `lastAccessedAt` 은 회원의 마지막 접속 시각(UTC, `users.last_accessed_at`) - 로그인·refresh 재발급 성공 시 갱신되므로 해상도는 access token TTL(30분) 단위. "N분/시간 전 접속" 표시용이며 실시간 접속중 뱃지 용도가 아니다. 같은 집 구성원에게만 노출(미리보기에는 없음)
 - 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
-- table: `house_members`
+- table: `house_members`, `users`(`last_accessed_at` 읽기)
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
 강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 알림 발송은 알림 도메인 의존.
@@ -110,10 +118,10 @@
 초안의 `routine-status`(오늘 현황·참여율) 단일 엔드포인트는 방/그날 현황/완료 내역 3개로 재설계해 구현했다. 공통 규칙: **요청자·조회 대상 모두 그 집(houseId)의 ACTIVE 구성원**이어야 하며(본인 조회 가능), 위반 시 403 `HOUSE_NOT_MEMBER`. 참여율(`recentParticipationRate`) 계산값은 제공하지 않고 raw 완료 내역으로 대체(집계는 프론트).
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/room
-구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, surface(벽지/바닥/배경)·positioned 슬롯별 배치, 스트릭.
+구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, `layoutFormat`·`layoutRevision`, surface·기존 positioned 슬롯, 자유배치 `placements`, 스트릭.
 - res: `GET /api/v1/rooms/me`와 동일 계약
 - 예외: 대상이 방 미생성(내 방 화면 미방문) `ROOM_NOT_FOUND`(404)
-- table: `house_members`, `personal_rooms`, `room_surface_slots` (+ 방 도메인 의존)
+- table: `house_members`, `personal_rooms`, `room_surface_slots`, `room_item_placements` (+ 방 도메인 의존)
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/day
 구성원의 그날 현황(루틴 + 투두, 완료 여부 포함). 반복 대상·완료 판정은 `GET /api/v1/today`·캘린더와 동일 규칙.

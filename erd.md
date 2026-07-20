@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **27 table**.
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **30 table**.
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -42,14 +42,17 @@
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
 ### 방 (개인)
-- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | updated_at
+- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
+  - `layout_format`: `SLOT_V1`(기본, 슬롯 배치 정본) / `FREE_V1`(자유배치 정본). `layout_revision`은 0부터 시작하고 배치 저장 성공마다 증가한다.
 - **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP
+- **room_item_placements**: id* | room_user_id→personal_rooms | user_item_id→user_items | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | z_index INT | scale DECIMAL(4,2) | rotation_deg INT | flipped BOOLEAN | updated_at TIMESTAMP | unique (room_user_id, user_item_id)
+  - 자유배치 가구만 저장한다. surface 3종(벽지/바닥/배경)은 `room_surface_slots`를 계속 사용한다.
 - **room_guestbooks**: id* | content VARCHAR(500) | created_at | deleted_at? | room_owner_id→users | house_id→house | author_id→users
 
 ### 상점 / 아이템 / 테마
 - **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | cover_image_key VARCHAR(255)? | is_active BOOLEAN
 - **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) | surface_slot_type VARCHAR(40)? | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
-- **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at?
+- **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
@@ -101,6 +104,8 @@ erDiagram
 
     personal_rooms ||--o{ room_surface_slots : has
     user_items ||--o{ room_surface_slots : placed_as
+    personal_rooms ||--o{ room_item_placements : has
+    user_items ||--o{ room_item_placements : placed_as
     users ||--o{ room_guestbooks : writes
 
     themes ||--o{ items : contains
@@ -132,6 +137,8 @@ erDiagram
 - `house.current_member_count`: 저장(계산 아님).
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
 - 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
+- 방 자유배치는 `room_item_placements`에 보유 아이템과 정규화 좌표·z-index·scale·rotation·flip을 저장한다. 같은 보유 아이템은 한 방에 한 번만 배치할 수 있다.
+- 배치 정본은 `personal_rooms.layout_format`이 결정한다. `SLOT_V1` 방만 자유배치 첫 저장 시 `FREE_V1`으로 지연 전환하며, surface 3종은 형식과 무관하게 `room_surface_slots`에 남는다.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
 - **캐릭터 획득**: 온보딩에서 6개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 1000, 6개 균등, 중복 시 코인 200 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
 
