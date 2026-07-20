@@ -38,6 +38,13 @@
 - res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`
 - table: `house`
 
+### GET /api/v1/houses/{houseId}/preview
+탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`
+- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(가입 버튼 비활성용)
+- 예외: 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house`, `house_members`(isMember 판정), `house_goals`
+
 ## 집 관리
 
 ### GET /api/v1/houses/cover-images
@@ -82,9 +89,10 @@
 
 ### GET /api/v1/houses/{houseId}/members
 구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
-- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`
+- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`, `lastAccessedAt`(갱신 이력 없으면 null)
+- `lastAccessedAt` 은 회원의 마지막 접속 시각(UTC, `users.last_accessed_at`) - 로그인·refresh 재발급 성공 시 갱신되므로 해상도는 access token TTL(30분) 단위. "N분/시간 전 접속" 표시용이며 실시간 접속중 뱃지 용도가 아니다. 같은 집 구성원에게만 노출(미리보기에는 없음)
 - 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
-- table: `house_members`
+- table: `house_members`, `users`(`last_accessed_at` 읽기)
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
 강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 알림 발송은 알림 도메인 의존.
