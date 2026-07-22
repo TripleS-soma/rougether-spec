@@ -58,7 +58,15 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/me` | 내 기본 정보 + 온보딩 완료 여부 | res: `userId`, `nickname`, `lastAccessedAt`, `onboarding: { completed, primaryGoalId, selectedCharacterId }` | `users`, `user_goals`, `user_characters` |
+| `GET /api/v1/me` | 내 기본 정보 + 온보딩 완료 여부 | res: `userId`, `nickname`, `profileImageKey`(nullable), `lastAccessedAt`, `onboarding: { completed, primaryGoalId, selectedCharacterId }` | `users`, `user_goals`, `user_characters` |
+| `PUT /api/v1/me/profile-image` | 내 프로필 사진 등록·교체 (multipart 서버 직접 업로드) | req: multipart `file` / res: `profileImageKey` | `users` |
+| `DELETE /api/v1/me/profile-image` | 내 프로필 사진 삭제 | res: 204 — `profile_image_key`를 null로 되돌림 | `users` |
+
+- 프로필 사진은 **서버 직접 업로드** — 클라이언트가 multipart `file`로 보내면 서버가 S3에 저장하고 asset key를 발급한다. key 규칙은 `profile/{uuid}.{ext}`이며, DB에는 전체 URL이 아닌 key(`users.profile_image_key`)만 저장한다. 클라이언트는 key를 CDN base URL과 조합해 이미지 URL로 사용한다.
+- 허용 포맷 `image/png|jpeg|webp`, 최대 10MB. 위반 시 `MEMBER_PROFILE_IMAGE_INVALID`(400).
+- `profileImageKey`가 null이면 프론트가 기본 이미지를 표시한다(미등록·삭제 후 상태).
+- 프로필 사진은 기존 `PUT /api/v1/me`(JSON)와 분리된 별도 엔드포인트다. 소유권은 인증된 본인(`user_id`) guard, 별도 파라미터 없음.
+- 교체·삭제 시 기존 S3 객체는 지우지 않는다(orphan 객체 정리 정책은 후속 미정).
 
 ## 연동 (다른 도메인)
 
@@ -68,5 +76,5 @@
 
 ## 미정
 
-- 닉네임 설정 엔드포인트(`PUT /api/v1/me`) 포함 여부와 위치.
+- 닉네임 설정 엔드포인트는 `PUT /api/v1/me`(JSON)로 유지 확정(프로필 사진 업로드는 별도 엔드포인트로 분리). 상세 req/res 계약은 이 문서에 미정리.
 - 에러 응답 형태·응답 envelope 사용 여부는 공통 미결정 ([open-questions.md](../../open-questions.md)).
