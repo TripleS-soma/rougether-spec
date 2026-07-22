@@ -56,7 +56,7 @@
 | --- | --- | --- | --- |
 | `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?` (미정) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `dueTime`, `status`, `completedAt` |
 | `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?`, `dueTime?`(마감 시각, 5분 단위) | 생성된 todo |
-| `PUT /api/v1/todos/{id}` | 수정 | 위 필드 | 수정된 todo |
+| `PUT /api/v1/todos/{id}` | 수정 | 위 필드 — 미지정(null)이면 기존 값 유지, 단 `dueTime`은 null이면 해제 | 수정된 todo |
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 결과. 완료 기록 함께 정리 |
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(당일 내) | — | 롤백 결과(코인 롤백) |
