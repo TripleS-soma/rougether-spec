@@ -38,6 +38,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
   - `surfaceSlots[]`(필수): `{ slotType, userItemId | null }`. surface 3종만 허용하며, 요청에 포함된 슬롯만 갱신한다.
   - `placements[]`(필수): `{ userItemId, positionX, positionY, zIndex, scale, rotationDeg, flipped }`. 전체 교체 방식으로 요청에 없는 기존 자유배치는 삭제한다.
 - 값 범위: `positionX`·`positionY`는 0.0~1.0, `scale`은 0.1~5.0, `rotationDeg`는 -360~360. 좌표는 방 렌더 영역 전체 기준이며 캐릭터 영역을 포함한 겹침·충돌은 서버가 검증하지 않는다.
+- 새 가구 추가 시 클라이언트가 카탈로그의 `defaultScale`과 `defaultPositionX`·`defaultPositionY`를 최종 `placements[]` 값으로 복사한다. 기본 위치가 null 쌍이면 공유 contract의 `newPlacementCenter`를 쓰고, 렌더 크기를 반영해 방 안으로 clamp한다. 서버는 카탈로그 기본값을 저장 시 다시 적용하지 않으며 기존 placement도 갱신하지 않는다.
 - 생략 기본값: `scale` 1.0, `rotationDeg` 0, `flipped` false.
 - 검증: 모든 `userItemId`는 호출자 소유여야 하며, 같은 보유 아이템을 한 요청에 중복 배치할 수 없다.
 - 전환 호환: 기존 positioned 슬롯 row는 삭제하지 않고 구버전 표시 fallback으로 남긴다. 이후 정본은 `layoutFormat`이 결정한다.
