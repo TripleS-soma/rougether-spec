@@ -28,7 +28,7 @@
 ## 투두 관리 (`todos`)
 
 - **등록**: 이름(`title`)·설명(`description`)·카테고리(`category_id`, 선택)·마감일(`due_date`)·마감 시각(`due_time`, 선택, 5분 단위)을 입력한다. 소유자는 `user_id`. 상태는 `status`.
-- **수정**: 위 필드 변경.
+- **수정**: 위 필드 변경. 미지정(null) 필드는 기존 값을 유지하되, 마감 시각(`due_time`)은 null이면 해제한다(루틴 `scheduled_time`과 동일 정책).
 - **삭제**: soft delete(`deleted_at`). 투두 삭제 시 **완료 기록도 함께 제거**(투두는 별도 log table 없이 자체 `status`/`completed_at`으로 완료를 표현하므로 레코드 단위로 정리).
 
 ## 오늘 현황 (`routines`, `routine_logs`, `todos`, `streaks`)
