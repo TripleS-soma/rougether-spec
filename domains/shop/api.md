@@ -8,7 +8,7 @@
 관련 table: `items`, `themes`, `user_items`.
 
 - 요청(query): `tab`(방 꾸미기/캐릭터 악세사리 — 값 집합 미정), `themeId?`, 페이지네이션(형태 미정)
-- 응답: `items[]` — `id`, `name`, `assetKey`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`(positioned 가구의 기본 배치 슬롯, admin 에서 조정), `categoryCode`, `purchaseCurrencyType?`, `priceAmount?`, `isLimited`, `theme`(`id`/`code`/`name`/`coverImageKey?`), `owned`(boolean)
+- 응답: `items[]` — `id`, `name`, `assetKey`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`(positioned 가구의 기본 배치 슬롯, admin 에서 조정), `defaultScale`(새 배치의 초기 렌더 배율, 기본 `1.00`, admin 에서 모바일 편집 범위와 같은 `0.50`~`2.00`으로 조정), `categoryCode`, `purchaseCurrencyType?`, `priceAmount?`, `isLimited`, `theme`(`id`/`code`/`name`/`coverImageKey?`), `owned`(boolean)
 - 비고: 활성 테마·활성 아이템만. `owned`는 요청 user의 `user_items`로 판정.
 
 ## GET /api/v1/me/items
@@ -17,8 +17,9 @@
 관련 table: `user_items`, `items`, `themes`.
 
 - 요청(query): `categoryCode?` (문자열 pass-through, enum 검증 없음). 슬롯 타입 필터는 슬롯 enum 확정 전까지 제외.
-- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`, `theme`(`id`, `code`, `name`, `coverImageKey?`), `acquiredAt`
-- 정렬: 최근 획득 먼저(`acquired_at DESC`), 페이지네이션 없음. `placementType`/`defaultSlot` 은 방 배치용(GET /items 와 동일 계약).
+- 응답: `items[]` — `userItemId`, `itemId`, `name`, `assetKey`, `categoryCode`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`, `defaultScale`, `theme`(`id`, `code`, `name`, `coverImageKey?`), `acquiredAt`
+- 정렬: 최근 획득 먼저(`acquired_at DESC`), 페이지네이션 없음. `placementType`/`defaultSlot`/`defaultScale` 은 방 배치용(GET /items 와 동일 계약).
+- `defaultScale`은 새로 배치할 때만 초기값으로 사용하며 이미 저장된 방 배치의 `scale`에는 소급하지 않는다.
 - 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
 
 ## POST /api/v1/items/{id}/purchase
