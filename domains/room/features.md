@@ -15,6 +15,7 @@
 - **surface 배치**: 벽지(`wallpaper`)·바닥(`floor`)·배경(`background`) 3종은 배치 형식과 무관하게 `room_surface_slots`에 저장한다.
 - **슬롯 배치 호환**: 기존 positioned 슬롯 8종(`topLeft`, `topCenter`, `topRight`, `midLeft`, `midRight`, `bottomLeft`, `bottomCenter`, `bottomRight`)을 유지한다. `FREE_V1` 전환 시 기존 positioned row를 삭제하지 않아 구버전 표시 fallback으로 남기되, 정본은 `layout_format`이 결정한다.
 - **최초 변환 fallback**: `items.default_slot`은 구버전 표시와 `SLOT_V1` 방을 새 앱에서 고정 좌표로 변환할 때 사용하므로 유지한다.
+- **새 가구 초기값**: `FREE_V1` 편집기에서 가구를 새로 추가할 때 `items.default_scale`과 nullable 쌍 `default_position_x`·`default_position_y`를 해당 배치에 복사한다. 기본 위치가 null 쌍이면 공유 Room renderer contract의 `newPlacementCenter`(현재 X `0.5`, Y `0.55`)를 사용한다. 좌표 anchor는 가구 중심이며 클라이언트가 현재 배율의 렌더 폭을 반영해 방 안으로 clamp한다. 카탈로그 기본값 변경은 기존 배치에 소급하지 않는다.
 - **가구 자유배치**: 가구별 `position_x`·`position_y`(방 렌더 영역 전체 기준 0.0~1.0), `z_index`, `scale`, `rotation_deg`, `flipped`를 저장한다. 캐릭터 자리와의 겹침을 포함해 서버는 겹침·충돌을 검증하지 않는다. (`room_item_placements`)
 - **보유·중복 규칙**: 호출자가 보유한 `user_item_id`만 배치할 수 있고, 같은 보유 아이템은 한 방에 한 번만 자유배치할 수 있다.
 - **동시 저장 보호**: `layout_revision`은 방 배치 저장이 성공할 때마다 증가한다. 자유배치 저장 요청의 `baseRevision`이 현재 값과 다르면 409로 거부해 다른 기기의 저장을 덮어쓰지 않는다.
