@@ -21,9 +21,9 @@
   - `MONTHLY`/`YEARLY`는 지정한 날짜가 해당 월/해에 없으면(예: `dayOfMonth=31`인 2월, `month=2,day=29`인 평년) 그 기간엔 대상에서 자연히 제외된다(별도 보정 없음).
   - `scheduled_time`(수행 시간)·`starts_on`/`ends_on`(지속 기간)은 별도 컬럼.
 - **수행 시간 / 기간**: `scheduled_time`(TIME), `starts_on`·`ends_on`(DATE)으로 시간순 정렬 및 노출 기간을 정한다. `scheduled_time`은 **5분 단위만 허용**한다(서버 검증 — 위반 시 400) — 리마인드 배치가 5분 주기 + 분 정확 일치 매칭이라 그 외 시각은 리마인드가 발송되지 않는다(notification 도메인 참고). `starts_on`은 **미지정 시 생성일(오늘, KST)로 기본 지정**하며, **오늘 이전 과거로는 설정할 수 없다**(루틴은 생성일부터 존재하는 스냅숏 구조). `starts_on`은 `ends_on`보다 늦을 수 없다.
-- **시간버전(temporal versioning)** (`origin_routine_id`): 루틴은 버전 계보로 관리한다. `origin_routine_id`는 계보 루트 row의 id로, 생성 시 자기 id, 버전 분기 시 부모의 값을 승계한다. 버전 유효기간은 `created_at`~`deleted_at`으로 판정하며, day-end 배치의 수행 대상 판정과 완료 취소의 복원 판정이 이 기준을 쓴다. 과거 캘린더는 버전을 재구성하지 않고 그날 로그가 가리키는 버전 row의 표시값으로 노출한다(자세한 규칙은 [api.md](./api.md) 캘린더 참고).
+- **시간버전(temporal versioning)** (`origin_routine_id`): 루틴은 버전 계보로 관리한다. `origin_routine_id`는 계보 루트 row의 id로, 생성 시 자기 id, 버전 분기 시 부모의 값을 승계한다. 버전 유효기간은 `created_at`~`deleted_at`으로 판정하며, day-end 배치의 수행 대상 판정과 완료 취소의 복원 판정이 이 기준을 쓴다. 과거 캘린더는 어제(D-1, KST)만 그날 유효했던 버전으로 수행 대상을 재계산하고, 그제 이전은 버전을 재구성하지 않고 그날 로그가 가리키는 버전 row의 표시값으로 노출한다(자세한 규칙은 [api.md](./api.md) 캘린더 참고).
 - **수정**: 위 필드 변경. 반복 스케줄 필드(`repeat_type`·`repeat_days`·`starts_on`·`ends_on`)를 바꾸고 **이미 경과한 날이 있는(`created_at`이 오늘 이전) 버전**이면, 옛 버전을 닫고(`deleted_at`) 새 버전 row로 **분기**한다(응답 `id`가 바뀜, `origin_routine_id` 승계). 그 외(제목·카테고리·시각·인증 변경, 또는 오늘 생성분의 스케줄 변경)는 **제자리 수정**이라 과거 표시에도 반영된다. 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다.
-- **삭제**: soft delete(`deleted_at`). 기존 수행 기록(`routine_logs`)은 통계 보존 정책에 따라 **숨김 처리**(보존 범위 미정 — open-questions). 삭제해도 수행 로그(`COMPLETED`/`FAILED`)가 있는 과거 날짜에는 그 로그가 가리키는 버전의 표시값으로 남아 보인다(로그 없는 날짜에는 노출되지 않음).
+- **삭제**: soft delete(`deleted_at`). 기존 수행 기록(`routine_logs`)은 통계 보존 정책에 따라 **숨김 처리**(보존 범위 미정 — open-questions). 삭제해도 수행 로그(`COMPLETED`/`FAILED`)가 있는 과거 날짜에는 그 로그가 가리키는 버전의 표시값으로 남아 보인다(로그 없는 날짜에는 노출되지 않음 — 그제 이전 기준. 어제는 로그 없이도 그날 유효했던 버전이면 재계산으로 노출된다, [api.md](./api.md) 캘린더 소싱 참고).
 
 ## 투두 관리 (`todos`)
 
