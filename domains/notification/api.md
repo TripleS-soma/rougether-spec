@@ -28,6 +28,22 @@
 - 읽음 해제(unread 되돌리기)는 없다.
 - 후속(비차단): 안 읽은 알림 개수(badge) 엔드포인트는 프론트 요청 시 별도 확정.
 
+## 알림 설정
+
+| method · path | 목적 | 핵심 필드 | 관련 table |
+| --- | --- | --- | --- |
+| `GET /api/v1/users/me/notification-settings` | 내 알림 설정 조회 | resp: `all`, `reminder`, `house` (전부 boolean) | `notification_setting` |
+| `PATCH /api/v1/users/me/notification-settings` | 내 알림 설정 부분 변경 | req: `all`?, `reminder`?, `house`? (전부 optional boolean) / resp: 변경 반영된 전체 설정(GET과 동일 형태) | `notification_setting` |
+
+- 설정 단위는 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`)이다: `ALL`(전체 마스터) / `REMINDER`(리마인더) / `HOUSE`(집 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`.
+- **행 없음 = ON**이 기본값이다. 신규 가입자는 설정 행이 0개이고 전부 켜진 것으로 조회된다. off로 바꿀 때만 행이 생긴다.
+- off 범위는 **FCM push만 차단**이다. 알림 내역(`notification`) 저장은 설정과 무관하게 항상 수행되므로 목록·읽음 API 동작은 영향받지 않는다.
+- 마스터 `all`이 off면 그룹 설정과 무관하게 모든 push가 차단된다. 이때도 그룹별 값은 보존되어, `all`을 다시 on으로 되돌리면 이전 그룹 설정이 그대로 적용된다.
+- PATCH는 부분 전송이다 — 바꿀 필드만 담아 보내고 생략한 필드는 기존 값이 유지된다. 세 필드가 모두 없으면 400(`VALIDATION_FAILED`).
+- `me` path이므로 JWT의 userId로만 조회·변경한다(소유권 guard 자동).
+- 새 그룹이 필요해지면 `NotificationSettingType`에 상수 추가 + 응답 필드 추가만 하면 되고 table migration은 필요 없다. `NotificationType`은 소속 그룹을 생성자 인자로 받아 새 알림 타입 추가 시 그룹 지정이 컴파일 타임에 강제된다.
+- 후속(비차단): 발송 게이트는 공용 진입점 `NotificationService.send(...)`의 push 경로에만 적용돼 있다. 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`)는 이 진입점을 거치지 않고 batch worker가 직접 발송하므로, `REMINDER` 그룹(및 마스터 off)이 리마인드 push에 아직 반영되지 않는다 — batch 경로 게이트 적용은 후속.
+
 ## FCM 발송 인프라 (내부, 신규 엔드포인트 없음)
 
 공용 진입점 `NotificationService.send(userId, type, title, body[, refId])` — 알림 내역을 `notification` 테이블에 저장(동기)하고 FCM push를 비동기로 발송한다. push가 실패해도 내역은 남는다(best-effort). `refId`는 발송 원인 리소스 ID(예: 리마인드면 routineId)로 중복 발송 판정에 쓰며, 생략하면 null.
