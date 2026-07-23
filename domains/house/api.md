@@ -170,39 +170,49 @@
 
 ## 단체 미션
 
-전부 해당 집의 ACTIVE 구성원 전용(비구성원 403 `HOUSE_NOT_MEMBER`). 보상은 **집 성장 포인트 +100만** 지급(개인 재화 보상 없음 — 후속 검토), 레벨은 `growth_points / 100` 선형(확정 2026-07-05, 서버 구현 완료 PR #81).
+전부 해당 집의 ACTIVE 구성원 전용(비구성원 403 `HOUSE_NOT_MEMBER`). 보상은 **집 성장 포인트만** 지급(개인 재화 보상 없음 — 후속 검토), 레벨은 `growth_points / 100` 선형(확정 2026-07-05, 서버 구현 완료 PR #81).
+
+미션 유형별 모델이 다르다:
+
+- `WEEKLY_MEMBER_COUNT` — **누적 카운트 미션**. 진행 수치는 전 기간 기여 누적 합, 목표 도달 시 1회 claim(+100)으로 COMPLETED 종료.
+- `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`).
 
 ### GET /api/v1/houses/{houseId}/missions
 집 미션 목록·진행률 조회. 최신 생성순.
-- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(기여 합산), `status`, `startsAt`, `endsAt`, `createdAt`
-- table: `house_missions`, `house_mission_participants`
+- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `status`, `startsAt`, `endsAt`, `todayClaimed`(DAILY 전용 — 오늘 보상 수령 여부, WEEKLY 는 null 생략), `createdAt`
+- table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions
 미션 등록. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). 등록 즉시 `status=ACTIVE`. → 201
-- req: `title`(1~160자), `missionType`, `targetValue`(1~1000), `startsAt?`, `endsAt?`(둘 다 지정 시 endsAt > startsAt, 위반 400 `HOUSE_MISSION_PERIOD_INVALID`)
+- req: `title`(1~160자), `missionType`, `targetValue`, `startsAt?`, `endsAt?`(둘 다 지정 시 endsAt > startsAt, 위반 400 `HOUSE_MISSION_PERIOD_INVALID`)
+- `targetValue`: WEEKLY 는 기여 합산 목표(1~1000), DAILY 는 달성률 %(1~100 — 초과 시 400 `HOUSE_MISSION_TARGET_INVALID`)
 - `missionType`은 MVP에서 `DAILY_MEMBER_RATE`·`WEEKLY_MEMBER_COUNT` 2종만 허용 — `STREAK_DAYS`는 400 `HOUSE_MISSION_TYPE_NOT_SUPPORTED`
 - res: 미션 상세와 동일 형식 (`currentValue=0`, `myContribution=0`)
 - table: `house_missions`
 
 ### GET /api/v1/houses/{houseId}/missions/{missionId}
 미션 상세·내 기여 조회.
-- res: 목록 항목 + `myContribution`(내 누적 기여), `achieved`(currentValue >= targetValue)
+- res: 목록 항목 + `myContribution`(내 누적 기여 — 유형 무관 누적 체크 횟수), `achieved`(WEEKLY: currentValue >= targetValue / DAILY: 오늘 달성률 기준)
 - 참여자별 기여 목록(participants[])은 화면 요구 확정 전까지 미노출
-- table: `house_missions`, `house_mission_participants`
+- table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/contribute
 **정식 기여 API**(모델 확정 2026-07-05) — 공동 미션은 구성원이 **미션 자체를 직접 수행 체크**하는 방식이다. 개인 루틴 완료와는 무관하며, 프론트 미션 화면의 "오늘 수행" 액션이 이 API 를 호출한다. 수행 인증(사진 등) 강화는 후속.
-- 구성원 본인 기여 +1, **KST(Asia/Seoul) 기준 하루 1회**(참여 row `updated_at` 판정)
+- 구성원 본인 기여 +1, **KST(Asia/Seoul) 기준 하루 1회** — 일별 이력(`house_mission_daily_contributions`)의 UNIQUE(mission, membership, date)가 DB 방어선(유형 공통 기록)
 - `status=ACTIVE`이고 미션 기간 내일 때만 가능(위반 409 `HOUSE_MISSION_NOT_ACTIVE`), 같은 날 재기여 409 `HOUSE_MISSION_ALREADY_CONTRIBUTED`
-- res: `missionId`, `myContribution`, `currentValue`, `achieved`
-- table: `house_mission_participants`
+- res: `missionId`, `myContribution`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `achieved`
+- table: `house_mission_participants`, `house_mission_daily_contributions`
 
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/claim
-미션 보상 수령. 구성원 누구나 실행 가능, **미션당 최초 1회**.
-- 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
-- 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
-- res: `missionId`, `status`, `grantedGrowthPoints`(=100), `houseGrowthPoints`, `houseLevel`
-- table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house`(`growth_points`, `level`)
+미션 보상 수령. 구성원 누구나 실행 가능. 유형별로 판정·보상·수령 주기가 다르다.
+- **WEEKLY** — **미션당 최초 1회**.
+  - 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
+  - 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
+- **DAILY** — **하루(KST) 1회, 매일 반복**.
+  - 판정: 오늘 달성률 >= `targetValue`% (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 오늘 이미 수령 409 `HOUSE_MISSION_ALREADY_CLAIMED`(메시지로 "오늘" 기준임을 구분). `status=ACTIVE`·기간 내에서만 가능(409 `HOUSE_MISSION_NOT_ACTIVE`)
+  - 처리(한 트랜잭션): `house.growth_points` +20. COMPLETED 전환·`reward_claimed` 갱신 없음 — 다음날 다시 도전. 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE(mission, reward_date)가 하루 1회의 DB 방어선
+- res: `missionId`, `status`(WEEKLY: COMPLETED / DAILY: ACTIVE 유지), `grantedGrowthPoints`(WEEKLY 100 / DAILY 20), `houseGrowthPoints`, `houseLevel`
+- table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house_mission_daily_rewards`, `house`(`growth_points`, `level`)
 
 ### DELETE /api/v1/houses/{houseId}/missions/{missionId}
 미션 삭제. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). soft delete — 삭제된 미션은 목록·상세에서 제외되고 기여·claim 도 404. → 204
@@ -211,7 +221,7 @@
 - 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
 - table: `house_missions`(`deleted_at`)
 
-에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
+에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`·`HOUSE_MISSION_TARGET_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
 
 ## 집 레벨
 
