@@ -78,8 +78,12 @@
   - 집 멤버 원터치 응원. `cheer_type`(`CheerType` code): `great`/`support`/`best`. `UNIQUE(sender_user_id, target_user_id, cheer_type, cheer_date)` — **house_id는 unique에서 의도적으로 제외**(같은 사용자쌍은 집과 무관하게 하루·타입당 1회, 스팸 방지). `house_id`는 어느 집 맥락에서 보냈는지 기록용. 저장 시 대상에게 `FRIEND_CHEER` 알림 내역을 같은 트랜잭션에서 저장.
 - **house_goals**: id* | house_id→house | goal_id→goals
 - **house_missions**: id* | house_id→house | title VARCHAR(160) | mission_type VARCHAR(50) | target_value INT | status VARCHAR(30) | starts_at? | ends_at? | created_at | deleted_at?(soft delete — 소유자 삭제, 기여 이력은 보존)
-  - `mission_type`: `DAILY_MEMBER_RATE`(오늘 멤버 N% 달성) / `WEEKLY_MEMBER_COUNT`(주 N회) / `STREAK_DAYS`(N일 연속). MVP는 앞 2개. `target_value`=목표 수치. 미션 주제(운동/공부 등)는 `title`·`house_goals`로.
+  - `mission_type`: `DAILY_MEMBER_RATE`(오늘 멤버 달성률 % — 매일 반복, target 1~100) / `WEEKLY_MEMBER_COUNT`(기여 누적 카운트, target 1~1000) / `STREAK_DAYS`(N일 연속). MVP는 앞 2개. 미션 주제(운동/공부 등)는 `title`·`house_goals`로.
 - **house_mission_participants**: id* | mission_id→house_missions | membership_id→house_members | contribution_value INT | reward_claimed BOOLEAN | updated_at
+- **house_mission_daily_contributions**: id* | mission_id→house_missions | membership_id→house_members | contribution_date DATE | created_at
+  - 일별 기여 이력(유형 공통). UNIQUE(mission_id, membership_id, contribution_date)가 KST 하루 1회 기여의 DB 방어선이며, DAILY 미션의 "오늘 기여 멤버 수" 판정 소스.
+- **house_mission_daily_rewards**: id* | mission_id→house_missions | reward_date DATE | claimed_membership_id→house_members | created_at
+  - DAILY 미션의 일별 보상 지급 이력. UNIQUE(mission_id, reward_date)가 하루 1회 claim 의 DB 방어선.
 
 ## 관계 다이어그램
 
@@ -128,11 +132,14 @@ erDiagram
     house ||--o{ room_guestbooks : on
     house_missions ||--o{ house_mission_participants : has
     house_members ||--o{ house_mission_participants : participates
+    house_missions ||--o{ house_mission_daily_contributions : records
+    house_members ||--o{ house_mission_daily_contributions : contributes
+    house_missions ||--o{ house_mission_daily_rewards : rewards
 ```
 
 ## 확정된 모델링 결정
 
-- 집 단체 미션 `mission_type` = `DAILY_MEMBER_RATE`/`WEEKLY_MEMBER_COUNT`/`STREAK_DAYS`(MVP는 앞 2개), `target_value`=목표 수치, 주제는 `title`·`house_goals`. 집 레벨은 미션 보상 → `growth_points` → 레벨 → 테마 해금 흐름(구체 곡선·수치는 운영 밸런스로 추후). 구성원 루틴 현황은 **기본 공개**(개인이 끌 수 있음).
+- 집 단체 미션 `mission_type` = `DAILY_MEMBER_RATE`/`WEEKLY_MEMBER_COUNT`/`STREAK_DAYS`(MVP는 앞 2개), 주제는 `title`·`house_goals`. WEEKLY 는 누적 카운트(target 1~1000, 1회 claim +100 → COMPLETED), DAILY 는 일일 달성률 %(target 1~100, 매일 claim +20 반복 — 일별 이력·보상 테이블로 판정). 집 레벨은 미션 보상 → `growth_points` → 레벨 → 테마 해금 흐름(구체 곡선·수치는 운영 밸런스로 추후). 구성원 루틴 현황은 **기본 공개**(개인이 끌 수 있음).
 - 공개 범위는 **카테고리 단위**(`categories.visibility` 추가, `routines.visibility` 제거) → ERDCloud 정본 반영 필요.
 - 인증은 **소셜 로그인(카카오·구글·애플) + JWT**. 로그인 수단은 `oauth_accounts` 테이블로 분리(users엔 인증정보 안 둠) → ERDCloud 정본에 `oauth_accounts` 추가 필요.
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
