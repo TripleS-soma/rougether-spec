@@ -24,6 +24,7 @@
 | 뽑기 | [domains/gacha/api.md](domains/gacha/api.md) |
 | 공동 집 | [domains/house/api.md](domains/house/api.md) |
 | 알림 | [domains/notification/api.md](domains/notification/api.md) |
+| 운영 지원 (버그 제보) | [domains/support/api.md](domains/support/api.md) |
 
 ## 에러 응답
 

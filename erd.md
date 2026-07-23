@@ -81,6 +81,8 @@
   - 일별 기여 이력(유형 공통). UNIQUE(mission_id, membership_id, contribution_date)가 KST 하루 1회 기여의 DB 방어선이며, DAILY 미션의 "오늘 기여 멤버 수" 판정 소스.
 - **house_mission_daily_rewards**: id* | mission_id→house_missions | reward_date DATE | claimed_membership_id→house_members | created_at
   - DAILY 미션의 일별 보상 지급 이력. UNIQUE(mission_id, reward_date)가 하루 1회 claim 의 DB 방어선.
+- **bug_reports**: id* | user_id→users | title VARCHAR(100) | content VARCHAR(2000) | app_version? | device_info? | status VARCHAR(30)(RECEIVED/IN_PROGRESS/RESOLVED) | created_at | updated_at
+- **bug_report_images**: id* | bug_report_id→bug_reports | storage_key VARCHAR(255) | sort_order INT
 
 ## 관계 다이어그램
 
