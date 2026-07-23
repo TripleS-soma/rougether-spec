@@ -60,7 +60,7 @@
 - storage: 설정 기반 published manifest, DB table 없음
 
 ### POST /api/v1/houses
-집 생성. 생성자가 `owner`.
+집 생성. 생성자가 `owner`. 이름은 금칙어 검사(공통 규칙, 위반 400 `HOUSE_NAME_BANNED` — 설정 수정의 이름 변경도 동일).
 - req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
 - 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
@@ -161,7 +161,7 @@
 - table: `room_guestbooks`
 
 ### POST /api/v1/rooms/{roomOwnerId}/guestbooks
-방명록 작성. → 201
+방명록 작성. content 는 금칙어 검사(공통 규칙, 위반 400 `GUESTBOOK_CONTENT_BANNED`). → 201
 - req: `houseId`, `content`(1~500자)
 - res: `guestbookId`, `roomOwnerId`, `authorId`, `houseId`, `content`, `createdAt`
 - table: `room_guestbooks`
@@ -189,7 +189,7 @@
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions
-미션 등록. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). 등록 즉시 `status=ACTIVE`. → 201
+미션 등록. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). title 은 금칙어 검사(공통 규칙, 위반 400 `HOUSE_MISSION_TITLE_BANNED`). 등록 즉시 `status=ACTIVE`. → 201
 - req: `title`(1~160자), `missionType`, `targetValue`, `startsAt?`, `endsAt?`(둘 다 지정 시 endsAt > startsAt, 위반 400 `HOUSE_MISSION_PERIOD_INVALID`)
 - `targetValue`: WEEKLY 는 기여 합산 목표(1~1000), DAILY 는 달성률 %(1~100 — 초과 시 400 `HOUSE_MISSION_TARGET_INVALID`)
 - `missionType`은 MVP에서 `DAILY_MEMBER_RATE`·`WEEKLY_MEMBER_COUNT` 2종만 허용 — `STREAK_DAYS`는 400 `HOUSE_MISSION_TYPE_NOT_SUPPORTED`
@@ -227,7 +227,7 @@
 - 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
 - table: `house_missions`(`deleted_at`)
 
-에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`·`HOUSE_MISSION_TARGET_INVALID`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
+에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`·`HOUSE_MISSION_TARGET_INVALID`·`HOUSE_MISSION_TITLE_BANNED`·`HOUSE_NAME_BANNED`·`GUESTBOOK_CONTENT_BANNED`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
 
 ## 집 레벨
 
