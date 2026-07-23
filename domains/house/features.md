@@ -36,7 +36,8 @@
 - **미션 조회**: 집의 미션 목록(최신 생성순)·진행률 조회, 구성원 전용. WEEKLY 진행률은 참여자 기여 합(`house_mission_participants.contribution_value`)과 `target_value`로, DAILY 진행률은 오늘(KST) 기여 멤버 수 / 집 활성 멤버 수의 비율 %와 `target_value`(%)로 산출. (`house_missions`, `house_mission_participants`, `house_mission_daily_contributions`)
 - **미션 기여**: 구성원이 **공동 미션 자체를 직접 수행 체크**(`POST .../contribute`, 본인 +1·KST 하루 1회)한다 — 모델 확정 2026-07-05. 하루 1회는 일별 기여 이력(`house_mission_daily_contributions`)의 UNIQUE 로 강제(유형 공통 기록). 개인 루틴 완료와는 무관(루틴 자동 연동은 검토 후 폐기, 이슈 #93·PR #94 미머지 클로즈). 수행 인증(사진 등)은 후속. (`house_mission_participants`, `house_mission_daily_contributions`, `house_members`)
 - **미션 달성 (WEEKLY)**: 기여 합이 목표 이상일 때 구성원 누구나 보상 수령(claim, 미션당 최초 1회). `house_missions.status` COMPLETED 전환 + 집 성장 포인트 +100(`house.growth_points`, 개인 재화 보상 없음 — 후속 검토) + 참여자 `reward_claimed` 일괄 true. 동시 claim 은 행 락으로 이중 지급 방지. (`house_missions`, `house_mission_participants`, `house`)
-- **미션 달성 (DAILY, 매일 반복)**: 오늘(KST) 달성률이 `target_value`% 이상일 때 구성원 누구나 **하루 1회** claim → 집 성장 포인트 +20 (WEEKLY 의 1/5). COMPLETED 전환 없이 다음날 0%부터 반복하고, 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 하루 1회는 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE 와 행 락으로 이중 지급 방지. (`house_missions`, `house_mission_daily_rewards`, `house`)
+- **미션 달성 (DAILY, 매일 반복)**: 오늘(KST) 달성률이 `target_value`% 이상일 때 구성원 누구나 **하루 1회** claim → 집 성장 포인트 +20 (WEEKLY 의 1/5). COMPLETED 전환 없이 다음날 0%부터 반복하고, 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 하루 1회는 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE 와 행 락으로 이중 지급 방지. 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴 멤버 제외). (`house_missions`, `house_mission_daily_rewards`, `house`)
+- **미션 만료(EXPIRED)**: `ends_at`이 지난 ACTIVE 미션은 배치(매시 정각 KST + 기동 시 1회)가 `status=EXPIRED`로 전이. 유형 무관이며 무기한 미션은 대상 아님, COMPLETED 는 만료보다 우선. **만료 후에는 기여·claim 모두 불가(유예 없음)** — 배치 전이 전이라도 기간 검사로 즉시 거부. EXPIRED 미션은 목록·상세에 그대로 노출. (`house_missions`)
 
 ## 집 레벨
 

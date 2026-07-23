@@ -175,7 +175,13 @@
 미션 유형별 모델이 다르다:
 
 - `WEEKLY_MEMBER_COUNT` — **누적 카운트 미션**. 진행 수치는 전 기간 기여 누적 합, 목표 도달 시 1회 claim(+100)으로 COMPLETED 종료.
-- `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`).
+- `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`). 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴한 멤버는 제외).
+
+미션 만료(`EXPIRED`):
+
+- `ends_at`이 지난 ACTIVE 미션은 배치(매시 정각 KST + 서버 기동 시 1회)가 `status=EXPIRED`로 전이한다. 유형 무관, `ends_at` 없는 무기한 미션은 대상 아님, COMPLETED 는 만료보다 우선.
+- **만료 후에는 유형 무관 기여·claim 불가(유예 없음)** — 기간 내 목표를 달성했어도 `ends_at`이 지나면 보상을 받을 수 없다(409 `HOUSE_MISSION_NOT_ACTIVE`). 배치 전이 전이라도 기여·claim 은 기간 검사로 즉시 거부된다.
+- EXPIRED 미션은 목록·상세에 그대로 노출된다(삭제 아님).
 
 ### GET /api/v1/houses/{houseId}/missions
 집 미션 목록·진행률 조회. 최신 생성순.
@@ -204,7 +210,7 @@
 - table: `house_mission_participants`, `house_mission_daily_contributions`
 
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/claim
-미션 보상 수령. 구성원 누구나 실행 가능. 유형별로 판정·보상·수령 주기가 다르다.
+미션 보상 수령. 구성원 누구나 실행 가능. 유형별로 판정·보상·수령 주기가 다르며, **유형 무관 미션 기간 내에만 가능**(만료 후 409 `HOUSE_MISSION_NOT_ACTIVE`, 유예 없음).
 - **WEEKLY** — **미션당 최초 1회**.
   - 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
   - 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
