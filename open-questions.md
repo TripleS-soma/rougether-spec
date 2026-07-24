@@ -4,7 +4,8 @@
 
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
-- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글(id token JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (미결) 애플 연동(구글과 동일 id token 방식 예정), 회원 탈퇴 시 oauth 연결 처리.
+- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (미결) 회원 탈퇴 시 oauth 연결 처리 및 애플 토큰 revoke(authorizationCode + client secret JWT). Sign in with Apple 도입에 따라 App Store 심사 5.1.1(v)가 앱 내 계정 삭제를 요구하는지 확인 필요.
+- **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(750)을 provider 수만큼 받을 수 있다. 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인 — 장진형)
 
 ## 프로덕트 (PRD / 멘토 피드백)
 
