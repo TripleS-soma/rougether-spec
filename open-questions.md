@@ -36,6 +36,7 @@
 
 ### 확정됨
 
+- **초기 재화**: 가입 시 지갑 발급 잔액 **코인 500·다이아 0**. 온보딩(튜토리얼)에서 가구 뽑기 단챠(코인 250) 1회를 소모시키고 250을 남기는 값(멘토링 피드백 "처음 기본 재화 제공" 반영). → [shop/api.md](domains/shop/api.md) · [member/api.md](domains/member/api.md) 반영.
 - **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 1000**, 6개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 200 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 
 ## 집

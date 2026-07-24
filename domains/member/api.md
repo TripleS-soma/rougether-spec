@@ -15,7 +15,7 @@
 | `POST /api/v1/auth/dev-login` | **개발 전용** — userId로 토큰 발급(생략 시 새 회원 생성). 운영에서는 사용하지 않음 | req: `userId?` / res: 로그인과 동일 | `users` |
 
 - 프론트(RN)가 네이티브 카카오 SDK로 얻은 **access token**을 보낸다(authorization code·redirect URI 미사용). 서버는 카카오로 토큰을 검증(앱 `app_id` 대조로 타 앱 토큰 치환 차단)하고 회원번호·이메일을 조회한다.
-- 최초 로그인은 자동 가입: `oauth_accounts`에 (provider, provider_user_id)가 없으면 `users`와 통화별 지갑을 생성해 연동하고 `isNewUser=true`. 닉네임은 가입 시 비우고 온보딩에서 채운다. 이메일은 카카오가 제공/동의한 경우 가입 시에만 저장(미제공 시 null, 재로그인 시 갱신 안 함).
+- 최초 로그인은 자동 가입: `oauth_accounts`에 (provider, provider_user_id)가 없으면 `users`와 통화별 지갑을 생성해 연동하고 `isNewUser=true`. 지갑 초기 잔액은 코인 500·다이아 0(정책은 재화 도메인 소유 → [shop/api.md](../shop/api.md)). 닉네임은 가입 시 비우고 온보딩에서 채운다. 이메일은 카카오가 제공/동의한 경우 가입 시에만 저장(미제공 시 null, 재로그인 시 갱신 안 함).
 - 구글은 카카오와 달리 프론트가 **id token(JWT)** 을 보낸다(provider별 정석 자격증명 차이). 서버는 구글 공개키(JWK, RS256)로 서명·`iss`·`aud`·만료를 검증하고 `sub`(회원번호)·이메일을 추출한다. `aud`는 허용 client_id 목록과 대조해 타 앱 토큰 치환을 차단하며, 목록 미설정 시 전부 거부(fail-closed). 최초 자동 가입·이메일 저장 정책은 카카오와 동일.
 - 인증 토큰은 JWT(stateless) access + 불투명 refresh(회전·재사용 감지) 기반. access 유효기간 30분, refresh 14일. refresh는 원문이 아닌 해시만 `refresh_tokens`에 저장. 소셜 provider는 카카오·구글 지원, 애플은 구글과 동일한 id token(JWK) 검증 방식으로 후속.
 - `users.last_accessed_at`은 **마지막 토큰 발급 시각**이다. 소셜/dev 로그인과 refresh 정상 회전 성공 시 갱신하고, 재사용 감지→전체 폐기 경로에서는 갱신하지 않는다. access 유효기간(30분)만큼의 오차를 허용한다(알림·휴면 판별 용도로 충분).
