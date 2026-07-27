@@ -50,22 +50,36 @@
 
 공용 진입점 `NotificationService.send(userId, type, title, body[, refId])` — 알림 내역을 `notification` 테이블에 저장(동기)하고 FCM push를 비동기로 발송한다. push가 실패해도 내역은 남는다(best-effort). `refId`는 발송 원인 리소스 ID(예: 리마인드면 routineId)로 중복 발송 판정에 쓰며, 생략하면 null.
 
-- `type`(`NotificationType`): `HOUSE_KICK`, `ROUTINE_REMINDER`, `FRIEND_CHEER`, `HOUSE_MISSION_ACHIEVED`. 루틴 리마인드(`ROUTINE_REMINDER`) 발송 트리거는 별도 batch worker로 구현됨(5분 주기, 같은 분 재실행은 중복 발송 방지로 스킵; 상세는 아래 스케줄러 절). 집 멤버 응원(`FRIEND_CHEER`)은 응원 API(house 도메인)가 진입점 `send(...)`를 응원 저장과 같은 트랜잭션에서 직접 호출한다(`refId` = cheerId; 도메인 알림은 이 직접 호출이 표준 — AFTER_COMMIT 리스너 방식은 내역 유실/이중 커넥션 문제로 배제). 단체 미션 달성(`HOUSE_MISSION_ACHIEVED`)은 미션 기여 API(house 도메인, `HouseMissionService.contribute`)가 미션 행 락 트랜잭션 안에서 진입점 `send(...)`를 직접 호출한다 — 합산이 이번 기여로 처음 목표치에 도달한 순간(직전 합산 < target && 이후 ≥ target) 1회, 집 활성 멤버 전원(마지막 기여자 본인 포함)에게 발송한다. `claim`(보상 수령) 시점에는 발송하지 않는다. `refId` = missionId. 문구: 제목 "단체 미션 달성!" / 본문 "'{미션명}' 미션이 목표를 달성했어요. 보상을 받아보세요!". 신규 엔드포인트 없음. 중복 방지는 별도 dedupe 쿼리 없이 미션 행 락 하의 "처음 도달" 조건 판정으로 충분하다. 강퇴(`HOUSE_KICK`) 알림 트리거는 후속(house 도메인 이벤트 발행 필요).
+- `type`(`NotificationType`): `HOUSE_KICK`, `ROUTINE_REMINDER`, `TODO_REMINDER`, `FRIEND_CHEER`, `HOUSE_MISSION_ACHIEVED`. 루틴 리마인드(`ROUTINE_REMINDER`)·투두 리마인드(`TODO_REMINDER`) 발송 트리거는 공용 batch worker(`reminderJob`)로 구현됨(5분 주기, 같은 분 재실행은 중복 발송 방지로 스킵; 상세는 아래 스케줄러 절). 집 멤버 응원(`FRIEND_CHEER`)은 응원 API(house 도메인)가 진입점 `send(...)`를 응원 저장과 같은 트랜잭션에서 직접 호출한다(`refId` = cheerId; 도메인 알림은 이 직접 호출이 표준 — AFTER_COMMIT 리스너 방식은 내역 유실/이중 커넥션 문제로 배제). 단체 미션 달성(`HOUSE_MISSION_ACHIEVED`)은 미션 기여 API(house 도메인, `HouseMissionService.contribute`)가 미션 행 락 트랜잭션 안에서 진입점 `send(...)`를 직접 호출한다 — 합산이 이번 기여로 처음 목표치에 도달한 순간(직전 합산 < target && 이후 ≥ target) 1회, 집 활성 멤버 전원(마지막 기여자 본인 포함)에게 발송한다. `claim`(보상 수령) 시점에는 발송하지 않는다. `refId` = missionId. 문구: 제목 "단체 미션 달성!" / 본문 "'{미션명}' 미션이 목표를 달성했어요. 보상을 받아보세요!". 신규 엔드포인트 없음. 중복 방지는 별도 dedupe 쿼리 없이 미션 행 락 하의 "처음 도달" 조건 판정으로 충분하다. 강퇴(`HOUSE_KICK`) 알림 트리거는 후속(house 도메인 이벤트 발행 필요).
 - 등록된 토큰(`user_device_token`) 전체로 멀티캐스트 발송하고, FCM이 `UNREGISTERED`/`INVALID_ARGUMENT`로 응답한 token은 삭제한다.
 - iOS 발송은 FCM+APNs 릴레이 방식이다(APNs 직접 연동 없음). 발송 메시지에 `ApnsConfig`(aps `sound = "default"`)를 포함해 iOS 알림이 무음으로 도착하지 않게 한다. badge 카운트는 MVP 제외. Android 쪽 메시지 형태는 변경 없음(기존 `Notification` title/body 그대로), 디바이스 토큰 API·스키마도 변경 없음. APNs 인증 키(.p8)는 Firebase Console의 Apple 앱 구성에 등록한다(콘솔 작업, 키 파일 커밋 금지).
 - 발송 결과는 `notification.push_status`(`PENDING`/`SENT`/`BLOCKED`/`FAILED`)로 추적한다: 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 사용자가 알림 설정을 꺼서 발송하지 않으면 `BLOCKED`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`. `BLOCKED`는 발송 실패가 아니라 설정에 따른 정상 종결이므로 `FAILED`와 구분한다(발송 실패율 지표에 사용자 설정이 섞이지 않게 함). `FAILED` 재시도는 없다(MVP). 상태 갱신은 알림 목록 응답에 노출하지 않는다.
 - firebase 서비스 계정 JSON은 환경변수(`FIREBASE_CREDENTIALS_PATH`)/외부 경로로 주입한다(커밋 금지). 발송 활성화는 프로필이 아니라 자격증명 주입 여부 기준 — 미주입 환경은 실제 발송 없이 stub으로 동작하고, 로컬도 자격증명을 주입하면 실발송된다. 테스트는 항상 stub으로 고정된다.
 - 브로커(RabbitMQ/Kafka)는 아직 도입하지 않는다(다중 인스턴스·발송량 증가 시 재검토).
 
-## 루틴 리마인드 스케줄러 (내부, 신규 엔드포인트 없음)
+## 리마인드 스케줄러 (루틴·투두, 내부, 신규 엔드포인트 없음)
 
-예약 시각이 도래한 당일 미완료 루틴에 FCM 리마인드를 발송한다. batch worker가 **5분 주기**(`@Scheduled` cron `0 */5 * * * *`, KST `Asia/Seoul`)로 실행되어 실행 시각의 분(`targetMinute`)을 대상으로 잡는다. 단일 인스턴스 전제. 리마인드는 공용 진입점 `NotificationService.send(...)`를 거치지 않고 batch worker가 알림 내역 저장과 push 발송을 직접 수행하므로, 알림 설정 게이트도 batch의 push 단계에서 별도로 적용된다(위 "알림 설정" 절).
+예약 시각이 도래한 당일 미완료 루틴과 마감 시각이 도래한 미완료 투두에 FCM 리마인드를 발송한다. 공용 batch worker(`reminderJob`)가 **5분 주기**(`@Scheduled` cron `0 */5 * * * *`, KST `Asia/Seoul`)로 실행되어 실행 시각의 분(`targetMinute`)을 대상으로 잡는다. 한 job 안에서 루틴 적재 → 투두 적재 → 발송 순으로 진행한다(별도 job·트리거 없음). 단일 인스턴스 전제. 리마인드는 공용 진입점 `NotificationService.send(...)`를 거치지 않고 batch worker가 알림 내역 저장과 push 발송을 직접 수행하므로, 알림 설정 게이트도 batch의 push 단계에서 별도로 적용된다(위 "알림 설정" 절).
+
+### 루틴 리마인드 (`ROUTINE_REMINDER`)
 
 - 발송 대상 조건(모두 충족): `routines.status = ACTIVE` + 미삭제(`deleted_at IS NULL`) + `scheduled_time`이 `targetMinute`과 일치 + 오늘 요일이 반복 규칙(`repeat_days`)에 해당(오늘 현황 판정과 동일 로직 재사용) + 당일(`routine_logs.routine_date = 오늘`) COMPLETED 로그 없음 + 오늘 미발송.
-- `scheduled_time`은 **5분 단위만 사용**한다(앱 입력이 5분 단위로 제한). 5분 주기 실행 + 해당 분 정확 일치 매칭이므로 5분 단위가 아닌 시각은 리마인드가 발송되지 않는다 — 서버측 검증은 아직 없음(앱 제한에 의존).
+- `scheduled_time`은 **5분 단위만 허용**한다(서버 검증 — 위반 시 400, routine-todo 도메인 참고). 실행이 5분 주기 + 해당 분 정확 일치 매칭이지만 값이 5분 단위로 보장되므로 매칭 누락이 없다.
 - 중복 발송 방지: 같은 분(`targetMinute`) 재실행은 batch job instance 중복으로 스킵. 그리고 `notification`에 `type = ROUTINE_REMINDER` + `ref_id = routineId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다.
 - 문구: 고정 템플릿(제목 "루틴 리마인드", 본문 "『{루틴명}』 할 시간이에요!"). 프론트 협의로 변경 가능, LLM 문구 생성은 후속.
 - 알림 내역 저장과 push 발송은 batch 단계로 분리돼 있고, push 단계에서 사용자 알림 설정으로 차단된 건은 FCM 호출 없이 `push_status = BLOCKED`로 종결한다. 개별 루틴 발송 실패는 나머지 루틴 발송을 막지 않는다(루틴 단위 예외 격리).
+
+### 투두 리마인드 (`TODO_REMINDER`)
+
+- 발송 시점: `dueDate = 오늘(KST)` AND `dueTime = targetMinute` 정각에 발송한다. 루틴과 같은 5분 주기 job을 공유하며, `dueTime`은 서버에서 5분 단위로 검증되므로 정확 일치 매칭에 누락이 없다.
+- 발송 대상 조건(모두 충족): `status = PENDING` + 미삭제(`deleted_at IS NULL`) + `dueDate`·`dueTime` 모두 존재 + 오늘 미발송. `dueDate` 없이 `dueTime`만 있는 투두는 알림 대상에서 제외한다.
+- 중복 발송 방지: `notification`에 `type = TODO_REMINDER` + `ref_id = todoId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다(루틴 리마인드와 동일 판정).
+- 문구: 고정 템플릿(제목 "투두 리마인드", 본문 "『{투두 제목}』 마감 시간이에요!").
+- 알림 내역 저장과 push 발송은 루틴과 같은 batch 단계를 재사용하며, `push_status` 규칙(`PENDING`/`SENT`/`BLOCKED`/`FAILED`, 알림 설정으로 차단된 건은 `BLOCKED`로 종결, 재시도 없음)도 동일하게 적용한다. 개별 투두 발송 실패는 나머지 발송을 막지 않는다(투두 단위 예외 격리).
+- job 결합: 루틴 적재 스텝이 실패(skip limit 초과)하면 투두 적재 스텝도 돌지 않는 결합은 수용한다(MVP).
+
+### 후속
+
 - 후속(비차단): 다중 인스턴스 배포 시 스케줄러 중복 실행 방지(ShedLock 등), LLM 리마인드 문구 생성.
 
 ## 연동 (다른 도메인)
