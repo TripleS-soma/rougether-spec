@@ -11,9 +11,14 @@
 | `GET /api/v1/categories` | 내 카테고리 목록 | filter: `includeDeleted?`(기본 `false`) | `items[]`: `id`, `name`, `colorHex`, `iconKey`, `sortOrder`, `visibility`, `deleted` |
 | `POST /api/v1/categories` | 카테고리 등록 | `name`, `colorHex?`, `iconKey?`, `sortOrder?`, `visibility?`(기본 `PRIVATE`) | 생성된 category |
 | `PUT /api/v1/categories/{id}` | 수정 | `name?`, `colorHex?`, `iconKey?`, `sortOrder?`, `visibility?` | 수정된 category |
-| `DELETE /api/v1/categories/{id}` | 삭제(soft) | — | 결과. 살아있는 루틴이 있으면 `CATEGORY_IN_USE`(409)로 차단. 소속 routines/todos `categoryId`는 유지 |
+| `DELETE /api/v1/categories/{id}` | 삭제(soft) | query: `mode`(필수) — `UNASSIGN`/`PURGE` | 결과. 살아있는 루틴이 있으면 `CATEGORY_IN_USE`(409)로 차단 |
 
-> 삭제 차단은 **루틴만** 검사하며 루틴 상태와 무관하다(루틴은 `ACTIVE`만 존재) — 살아있는 루틴이 하나라도 참조하면 차단하고, 투두는 상태(`PENDING` 포함)와 무관하게 삭제를 막지 않는다. 삭제 후에도 루틴·투두의 `categoryId`는 NULL로 밀지 않고 유지한다. 기본 목록에는 삭제분이 노출되지 않으며, `includeDeleted=true`이면 삭제분까지 반환하고 각 항목의 `deleted` 플래그로 구분한다 — 이름·색상은 여기서 resolve하고 삭제된 카테고리 이름도 이 경로로 조회한다.
+> 삭제 차단은 **루틴만** 검사하며 루틴 상태와 무관하다(루틴은 `ACTIVE`만 존재) — 살아있는 루틴이 하나라도 참조하면 **두 모드 모두** 차단하고, 투두는 상태(`PENDING` 포함)와 무관하게 삭제를 막지 않는다. 카테고리 자체는 어느 모드든 soft delete다. `mode`는 필수이며 미지정·허용값 외에는 400 `VALIDATION_FAILED`.
+>
+> - `UNASSIGN`(미분류 전환): 이 카테고리를 참조하던 옛 버전 루틴과 **살아있는** 투두의 `categoryId`를 NULL로 민다. 이미 삭제된 투두는 과거 기록이라 참조를 유지한다.
+> - `PURGE`(완전 삭제): 이 카테고리 루틴의 수행 기록(`routine_logs`)과 사진 인증(`photo_verifications`)을 hard delete하고, 살아있는 투두를 soft delete한다. 루틴 row 자체(이미 삭제 상태)와 스트릭은 건드리지 않고, 루틴·삭제된 투두의 `categoryId`도 그대로 둔다. 단 두 종류의 기록은 남긴다 — 계보(`origin_routine_id`)에 살아있는 버전이 있는 루틴의 기록은 지금도 쓰는 루틴의 기록이라 지우지 않고, 삭제 당일에 완료돼 보상이 지급된 기록은 일일 보상 상한의 집계 기준이라 남긴다(지우면 지급 슬롯이 부당 복구돼 재지급된다). 남은 기록은 이후에도 삭제되지 않고 캘린더에서 계속 조회된다.
+>
+> 전 과정은 단일 쓰기 트랜잭션이다. 기본 목록에는 삭제분이 노출되지 않으며, `includeDeleted=true`이면 삭제분까지 반환하고 각 항목의 `deleted` 플래그로 구분한다 — 이름·색상은 여기서 resolve하고 삭제된 카테고리 이름도 이 경로로 조회한다.
 
 ## 루틴 (`routines`)
 
