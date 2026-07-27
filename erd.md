@@ -9,8 +9,9 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
+  - `profile_image_key`는 프로필 사진 S3 object key(`profile/{uuid}.{ext}`). 전체 URL이 아닌 key만 저장하며, null이면 기본 이미지를 표시한다.
 - **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
 - **refresh_tokens**: id* | user_id→users | token_hash VARCHAR(255) | expires_at TIMESTAMP | revoked_at TIMESTAMP? | created_at | unique (token_hash)
