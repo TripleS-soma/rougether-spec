@@ -4,7 +4,9 @@
 
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
-- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (미결) 회원 탈퇴 시 oauth 연결 처리 및 애플 토큰 revoke(authorizationCode + client secret JWT). Sign in with Apple 도입에 따라 App Store 심사 5.1.1(v)가 앱 내 계정 삭제를 요구하는지 확인 필요.
+- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.
+- **탈퇴 후 개인정보 파기 정책**: soft delete라 `users`의 email·nickname 등 개인정보가 남는다. 파기(삭제/마스킹) 여부·시점 미정.
+- **애플 로그인 authorizationCode 교환 실패 처리**: 애플 토큰 엔드포인트 교환이 실패했을 때 로그인 자체를 실패시킬지(fail-closed) 로그인은 허용하고 refresh token 저장만 포기할지(fail-open) 미정. (시크릿 미설정 환경은 fail-closed로 결정됨)
 - **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(750)을 provider 수만큼 받을 수 있다. 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인 — 장진형)
 
 ## 프로덕트 (PRD / 멘토 피드백)
@@ -43,3 +45,4 @@
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
+- **탈퇴 회원 처리**(회원 도메인 dependency): 회원탈퇴는 soft delete + 재가입 즉시 허용으로 결정됐고, house/room·캐릭터·아이템·재화 측 처리는 미확정 — 소유 중인 house가 있는 사용자의 탈퇴 허용·소유권 처리, house 미리보기·길드북 등에서 탈퇴 회원 닉네임 노출(마스킹 여부), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.

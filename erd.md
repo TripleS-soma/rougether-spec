@@ -12,8 +12,9 @@
 - **users**: id* | nickname VARCHAR(30)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
   - `profile_image_key`는 프로필 사진 S3 object key(`profile/{uuid}.{ext}`). 전체 URL이 아닌 key만 저장하며, null이면 기본 이미지를 표시한다.
-- **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | created_at | unique (provider, provider_user_id)
+- **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | apple_refresh_token_encrypted VARCHAR(1000)? | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
+  - `apple_refresh_token_encrypted`는 provider=apple일 때만 사용 — 로그인 시 `authorizationCode`를 교환해 받은 애플 refresh token을 암호화 저장(재로그인 시 갱신), 회원탈퇴 시 revoke 호출에 사용. 탈퇴 시 row 자체를 삭제한다(재가입 = 신규 가입).
 - **refresh_tokens**: id* | user_id→users | token_hash VARCHAR(255) | expires_at TIMESTAMP | revoked_at TIMESTAMP? | created_at | unique (token_hash)
   - refresh 토큰 회전(RTR) 저장소. 원문이 아니라 **해시만** 저장. 재발급 시 사용한 토큰은 `revoked_at` 기록 후 새 행으로 교체.
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
