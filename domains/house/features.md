@@ -2,13 +2,14 @@
 
 출처: [features.md](../../features.md) "집 (공동집)" 절을 본 도메인 범위로 발췌·구체화. 데이터는 [erd.md](../../erd.md)를 따른다.
 
-관련 table: `house`, `house_members`, `house_goals`, `house_missions`, `house_mission_participants`, `room_guestbooks`.
+관련 table: `house`, `house_members`, `house_join_requests`, `house_goals`, `house_missions`, `house_mission_participants`, `room_guestbooks`.
 
 ## 집 탐색 / 참여
 
 - **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. (`house`, `house_goals`)
-- **탐색 참여**: 탐색 결과에서 집 선택 → **즉시가입**(초대코드 참여와 동일 정책 — role=member·status=active, 승인 흐름 없음). 참여 시 `house_members` 행 생성(탈퇴 이력은 재활성화), `house.current_member_count` 증가. (`house_members`, `house`)
+- **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. (`house_join_requests`, `house_members`, `house`)
 - **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 참여는 **즉시가입**(role=member·status=active, 승인 흐름 없음). 만료 코드(`house.invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. (`house`, `house_members`)
+  - 같은 집의 대기 중인 입주 신청이 있으면 즉시가입과 함께 신청을 ACCEPTED로 종결한다.
   - 다중 집 가입 허용: 다른 집에 이미 속해 있어도 새 집 참여 가능. 같은 집 중복만 차단.
 
 ## 집 관리
@@ -20,6 +21,7 @@
 
 ## 구성원 관리
 
+- **입주 신청 관리**: 소유자만 대기 중인 신청을 조회하고 수락·거절한다. 수락 시점에 집 정원을 다시 검사하고 구성원 등록·신청 종결·`current_member_count` 증가를 한 트랜잭션으로 처리한다. (`house_join_requests`, `house_members`, `house`)
 - **강퇴**: 소유자만 가능. 대상 `house_members.status`를 강퇴 상태로 전환(또는 `left_at` 기록), `current_member_count` 감소. 강퇴 구성원에게 알림(알림 발송은 의존 도메인). (`house_members`, `house`)
 - **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지되며 집 활동·미션에는 더는 참여하지 못한다. **재가입은 허용**(기존 row 재활성화). `current_member_count` 감소. 마지막 1인 탈퇴 시 집 soft delete. (`house_members`, `house`)
 - **소유자 양도 후 탈퇴**: 소유자는 탈퇴 전 다른 구성원에게 소유권 양도 필요. 대상 구성원 `role=owner`로 변경 + `house.owner_user_id` 갱신 후 기존 소유자 탈퇴. (`house_members`, `house`)
@@ -45,7 +47,7 @@
 
 ## 미결정 사항
 
-- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **즉시가입으로 확정**. `house_members.status` = active/left/kicked 3값 확정(left 재가입 가능, kicked 재가입 불가).
+- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **요청→방장 승인으로 변경**. 신청 상태는 `house_join_requests`의 PENDING/ACCEPTED/REJECTED로 분리하고, `house_members.status`는 active/left/kicked를 유지한다. 초대코드만 즉시가입한다.
 - 강퇴/탈퇴를 `status` 전환으로 표현할지 `left_at`만으로 표현할지(둘 다 컬럼 존재) 미확정.
 - 단체 미션 보상은 집 성장 포인트 +100만으로 확정(2026-07-05) — 개인 재화 보상(기여도 반영 분배 등)은 후속 검토. 미션 기여 트리거는 임시 수동 API로 우선 제공, 루틴 완료 이벤트 연동 규칙은 루틴/투두 도메인 협의 미정.
 - 집 레벨업 곡선·테마 매핑 미정.

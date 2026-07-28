@@ -75,6 +75,8 @@
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
 - **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at?
+- **house_join_requests**: id* | house_id→house | user_id→users | status VARCHAR(30)(PENDING/ACCEPTED/REJECTED) | requested_at | processed_at?
+  - 탐색 입주 신청 이력. `UNIQUE(house_id, user_id)`로 중복 행을 막고, 거절 뒤 재신청은 기존 행을 PENDING으로 되돌린다. 초대코드 즉시가입 또는 방장 수락 시 ACCEPTED, 방장 거절 시 REJECTED로 종결한다.
 - **house_member_cheers**: id* | house_id→house | sender_user_id→users | target_user_id→users | cheer_type VARCHAR(20) | cheer_date DATE | created_at
   - 집 멤버 원터치 응원. `cheer_type`(`CheerType` code): `great`/`support`/`best`. `UNIQUE(sender_user_id, target_user_id, cheer_type, cheer_date)` — **house_id는 unique에서 의도적으로 제외**(같은 사용자쌍은 집과 무관하게 하루·타입당 1회, 스팸 방지). `house_id`는 어느 집 맥락에서 보냈는지 기록용. 저장 시 대상에게 `FRIEND_CHEER` 알림 내역을 같은 트랜잭션에서 저장.
 - **house_goals**: id* | house_id→house | goal_id→goals
@@ -102,6 +104,7 @@ erDiagram
     users ||--o{ streaks : has
     users ||--o{ user_items : owns
     users ||--o{ house_members : joins
+    users ||--o{ house_join_requests : requests
     users ||--o{ house : owns
 
     characters ||--o{ user_characters : selected_in
@@ -127,6 +130,7 @@ erDiagram
     themes ||--o{ gacha : themed_as
 
     house ||--o{ house_members : has
+    house ||--o{ house_join_requests : receives
     house ||--o{ house_member_cheers : context_of
     users ||--o{ house_member_cheers : sends
     users ||--o{ house_member_cheers : receives
@@ -146,6 +150,7 @@ erDiagram
 - 공개 범위는 **카테고리 단위**(`categories.visibility` 추가, `routines.visibility` 제거) → ERDCloud 정본 반영 필요.
 - 인증은 **소셜 로그인(카카오·구글·애플) + JWT**. 로그인 수단은 `oauth_accounts` 테이블로 분리(users엔 인증정보 안 둠) → ERDCloud 정본에 `oauth_accounts` 추가 필요.
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
+- 집 가입은 **초대코드 즉시가입 / 탐색 입주 신청 후 방장 승인**으로 분리한다. 신청 상태는 `house_join_requests`에 두어 실제 구성원(`house_members`)과 구성원 수에 섞이지 않게 한다.
 - `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
 - 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.
 - `house.current_member_count`: 저장(계산 아님).
