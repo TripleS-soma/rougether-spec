@@ -9,7 +9,7 @@
 ### GET /api/v1/houses
 집 탐색. 최신 생성순 기본, 페이지네이션 적용. 탐색·추천 겸용(별도 추천 엔드포인트 없음).
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속)
-- res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`)
+- res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
 - table: `house`, `house_goals`
 
@@ -19,17 +19,19 @@
 - 삭제된 집(`deleted_at`)·탈퇴(left) membership 은 제외
 - table: `house_members`, `house`
 
-### POST /api/v1/houses/{houseId}/join
-탐색 결과에서 선택한 집에 참여. **즉시가입** — 초대코드 참여와 동일 정책(role=member·status=active, 승인 흐름 없음, 탈퇴 이력 재가입은 기존 row 재활성화).
-- res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
-- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
-- table: `house_members`, `house`(`current_member_count` 갱신)
+### POST /api/v1/houses/{houseId}/join-requests
+탐색 결과에서 선택한 집에 **입주 신청**한다. 신청만으로 구성원이 되지 않으며 `house.current_member_count`도 바뀌지 않는다. 같은 집에서 거절된 신청은 동일 행을 `PENDING`으로 되돌려 재신청한다.
+- res(201): `requestId`, `houseId`, `userId`, `nickname`, `status=PENDING`, `requestedAt`
+- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 이미 구성원 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409)
+- table: `house_join_requests`
+- 이전 앱의 `POST /api/v1/houses/{houseId}/join`도 이 API와 동일하게 **신청만 생성**하는 deprecated alias로 유지한다. 즉시가입 우회 경로로 사용하지 않는다.
 
 ### POST /api/v1/houses/join-by-code
 초대코드/링크로 참여. **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다(승인 흐름 없음).
 - req: `inviteCode`
 - res: `membershipId`, `houseId`, `status`
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
+- 같은 집에 `PENDING` 입주 신청이 있으면 즉시가입과 함께 해당 신청을 `ACCEPTED`로 종결한다.
 - 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
 - table: `house`, `house_members`
 
@@ -40,8 +42,8 @@
 
 ### GET /api/v1/houses/{houseId}/preview
 탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`, `memberRooms[]`
-- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(가입 버튼 비활성용)
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`, `myJoinRequestStatus?`, `memberRooms[]`
+- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(신청 버튼 비활성용), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
 - `memberRooms[]`: 구성원 타일에 실제 방을 렌더하기 위한 데이터(서버 #177 확정). 가입순, ACTIVE 구성원만. 항목은 `membershipId`, `nickname`(온보딩 전 null), `room`(방 미생성 구성원은 null - 기본 방 타일로 표시)
   - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순)
   - **공개 범위(확정)**: 방 렌더 데이터(가구 배치·surface·착용 캐릭터·성장 레벨)는 미리보기를 통해 로그인 회원 전체에 공개된다(집 탐색 전체공개 정책과 일치, 방 내용물은 장식 데이터). 단 활동 정보(`streak`·`lastAccessedAt`·그날 현황·완료 내역·방명록)와 편집용 값(`layoutRevision`)·소유 리소스 식별자(`userItemId`)·배치 시각은 내려가지 않는다 — 이들은 기존대로 구성원 전용("구성원 방 방문 / 활동 열람" 계약은 불변)
@@ -89,6 +91,24 @@
 - table: `house`
 
 ## 구성원 관리
+
+### GET /api/v1/houses/{houseId}/join-requests
+대기 중인 입주 신청 목록. **소유자만** 조회하며 신청 시각 오름차순으로 반환한다.
+- res: `{ items }` / items[]: `requestId`, `houseId`, `userId`, `nickname`, `status=PENDING`, `requestedAt`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house_join_requests`, `users`
+
+### POST /api/v1/houses/{houseId}/join-requests/{requestId}/accept
+입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다.
+- res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
+- table: `house_join_requests`, `house_members`, `house`
+
+### POST /api/v1/houses/{houseId}/join-requests/{requestId}/reject
+입주 신청 거절. **소유자만**. 신청을 `REJECTED`로 종결하며 구성원 수는 바뀌지 않는다.
+- res: 204
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409)
+- table: `house_join_requests`
 
 ### GET /api/v1/houses/{houseId}/members
 구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
