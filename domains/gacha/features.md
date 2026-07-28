@@ -17,11 +17,13 @@
 
 코인을 소모해 머신을 돌리고 보상을 인벤토리/지갑에 추가한다.
 
-- **뽑기 실행**: 머신 선택 → 코인 `cost_amount` 차감 → `draw_count`만큼 풀에서 추첨. (`gacha`, `gacha_pool_entries`)
+- **뽑기 실행**: 머신 선택 → 단챠 또는 5+1회 선택 → 코인 차감 → 요청 횟수만큼 풀에서 추첨. (`gacha`, `gacha_pool_entries`)
+  - 단챠는 `count=1`로 `cost_amount`를 차감하고 결과 1개를 지급한다.
+  - 5+1회는 `count=6`으로 단챠 5회분(`cost_amount × 5`)을 차감하고 결과 6개를 지급한다.
   - 추첨은 활성 엔트리(`gacha_pool_entries.is_active`)를 `weight` 기반으로 뽑는다.
   - 회수(`characters.is_active=false`)된 캐릭터는 배출되지 않는다 — 캐릭터 회수 시 해당 풀 엔트리도 함께 비활성 처리한다(엔트리 활성과 보상 캐릭터 활성을 모두 충족해야 배출).
   - `reward_type`으로 아이템 보상(`item_id`→`items`) / 캐릭터 보상(`character_id`→`characters`) / 재화 보상(`currency_type`·`reward_amount`) 구분.
-- **비용 검증·차감**: 보유 코인 < `cost_amount`이면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
+- **비용 검증·차감**: 보유 코인이 선택한 옵션의 비용(단챠 `cost_amount`, 5+1회 `cost_amount × 5`)보다 적으면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
 - **운영 기간·활성 검증**: `is_active`가 false거나 운영 기간 밖이면 실행 거부.
 
 ## 캐릭터 뽑기
