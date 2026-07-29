@@ -35,9 +35,11 @@
 | --- | --- | --- |
 | 내 정보 조회 | 닉네임·프로필 사진 key·마지막 접속 등 기본 정보 + 온보딩 완료 여부(목표·캐릭터 선택 존재) 조회. | `users`, `user_goals`, `user_characters` |
 | 프로필 사진 등록·삭제 | multipart 파일을 서버가 S3에 직접 업로드하고 key(`profile/{uuid}.{ext}`)를 저장. 삭제 시 key를 null로 되돌림(null = 기본 이미지). png/jpeg/webp, 최대 10MB. | `users.profile_image_key` |
+| 회원탈퇴 | soft delete(`deleted_at`) + 개인정보(email·nickname·bio·profile_image_key) 즉시 익명화 + refresh token 전량 폐기 + oauth 연동 삭제 + FCM 토큰 삭제 + 루틴·투두·카테고리 연쇄 soft delete(완료 이력·스트릭 보존)를 단일 트랜잭션으로, provider 연동 해제(카카오 unlink·애플 revoke)와 프로필 S3 원본 삭제는 커밋 후 best-effort. 재가입은 즉시 허용 — 재로그인 = 신규 가입(새 user, 옛 데이터 미복원). | `users.deleted_at`, `refresh_tokens`, `oauth_accounts`, `user_device_token`, `routines`, `todos`, `categories` |
 
-- `users`: `nickname`, `profile_image_key`, `last_accessed_at`, `created_at`, `updated_at`, `deleted_at`(soft delete).
+- `users`: `nickname`, `bio`, `profile_image_key`, `last_accessed_at`, `created_at`, `updated_at`, `deleted_at`(soft delete).
 - 인증/인가 MVP 포함(소셜 로그인 카카오·구글·애플). `me`는 인증된 사용자를 가리킨다. 로그인/회원가입은 회원 도메인 담당.
+- 탈퇴 상세 계약(익명화 범위·S3 삭제·연쇄 soft delete·revoke 방식·잔여 토큰 차단·타 도메인 dependency)은 [api.md](api.md) "회원탈퇴" 참고.
 
 ## 의존성 / 미정
 
