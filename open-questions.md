@@ -5,7 +5,7 @@
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
 - **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.
-- **탈퇴 후 개인정보 파기 정책**: soft delete라 `users`의 email·nickname 등 개인정보가 남는다. 파기(삭제/마스킹) 여부·시점 미정.
+- **탈퇴 후 개인정보 파기 정책**: (결정됨) 유예기간 없이 탈퇴 트랜잭션에서 즉시 익명화 — `users.email`·`nickname`·`bio`·`profile_image_key` null 처리 + 프로필 S3 원본 삭제(커밋 후 best-effort) + 루틴·투두·카테고리 연쇄 soft delete(완료 이력·스트릭·인증 사진은 보존). 잔여 access token 창에서는 내 정보 조회·수정·프로필 업로드를 401 차단 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영. 완료 이력·인증 사진의 완전 파기 여부는 집 통계 의존 확인 후 별도 결정.
 - **애플 로그인 authorizationCode 교환 실패 처리**: 애플 토큰 엔드포인트 교환이 실패했을 때 로그인 자체를 실패시킬지(fail-closed) 로그인은 허용하고 refresh token 저장만 포기할지(fail-open) 미정. (시크릿 미설정 환경은 fail-closed로 결정됨)
 - **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(750)을 provider 수만큼 받을 수 있다. 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인 — 장진형)
 
@@ -18,6 +18,7 @@
 ## 정책 (기능명세 건의사항)
 
 - 루틴 삭제 시 수행 기록 **숨김 처리**의 통계 보존 정책 범위? (과거 캘린더가 로그 단독 소싱으로 바뀌어 삭제 루틴의 `FAILED` 로그 포함 여부도 이 논의에서 함께 결정)
+- **탈퇴 회원 알림 사본**: 타 회원의 알림 내역(`notification.title`/`body`)에 탈퇴자 닉네임이 발송 시점 텍스트 사본으로 남는다 — 탈퇴 시 익명화가 소급되지 않는데, 이대로 수용할지 파기(치환)할지 미정.
 
 ## 루틴 / 투두
 
@@ -45,4 +46,5 @@
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
-- **탈퇴 회원 처리**(회원 도메인 dependency): 회원탈퇴는 soft delete + 재가입 즉시 허용으로 결정됐고, house/room·캐릭터·아이템·재화 측 처리는 미확정 — 소유 중인 house가 있는 사용자의 탈퇴 허용·소유권 처리, house 미리보기·길드북 등에서 탈퇴 회원 닉네임 노출(마스킹 여부), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
+- **탈퇴 회원 처리**(회원 도메인 dependency): 회원탈퇴는 soft delete + 즉시 익명화 + 재가입 즉시 허용으로 결정됐고, house/room·캐릭터·아이템·재화 측 처리는 미확정 — 소유 중인 house가 있는 사용자의 탈퇴 허용·소유권 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
+- **탈퇴 회원의 집 완료 내역 노출**(회원 도메인 dependency): 탈퇴 시 카테고리가 연쇄 soft delete되므로, 카테고리 visibility 기반의 집 멤버 완료 내역 조회에서 탈퇴자 이력이 빈 결과가 된다(`routine_logs` 자체는 보존되지만 노출 경로가 끊김). 이대로 수용할지, 집 통계·표시에서 별도 처리가 필요할지 미정.
