@@ -60,4 +60,4 @@ validation 실패(400)는 `fieldErrors`를 포함한다:
 ## 응답 형태 / 페이지네이션
 
 - **envelope 미사용**: 성공 응답은 리소스를 바로 반환한다(`{ success, data }`로 감싸지 않음). 성공/실패는 HTTP status로 구분하고, 목록만 `items` 배열로 감싼다.
-- **페이지네이션(offset)**: 목록이 큰 도메인(상점 아이템·집 탐색)은 `?page=0&size=20`. 응답은 `{ items, page, size, totalElements }`. 목록이 작은 도메인은 생략. 무한스크롤 본격화 시 cursor 전환 검토.
+- **페이지네이션(offset)**: 목록이 큰 도메인(집 탐색)은 `?page=0&size=20`. 응답은 `{ items, page, size, totalElements }`. 목록이 작은 도메인은 생략 — 상점 아이템 목록도 현재 페이지네이션 없이 평면 `items` 반환. 무한스크롤 본격화 시 cursor 전환 검토.

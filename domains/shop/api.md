@@ -4,10 +4,10 @@
 
 ## GET /api/v1/items
 
-상점 아이템 목록 조회. 방 꾸미기 / 캐릭터 악세사리 탭, 테마 필터.
+상점 아이템 목록 조회. 테마 필터.
 관련 table: `items`, `themes`, `user_items`.
 
-- 요청(query): `tab`(방 꾸미기/캐릭터 악세사리 — 값 집합 미정), `themeId?`, 페이지네이션(형태 미정)
+- 요청(query): **`themeId?` 하나뿐** — `tab` 파라미터·페이지네이션은 없다(평면 `items[]` 전체 반환, 정렬 미보장). 탭 구분(방 꾸미기/캐릭터 악세사리)은 응답의 `placementType`/`characterSlotType`으로 클라이언트가 나눈다. 목록이 커지면 페이지네이션 도입 재검토.
 - 응답: `items[]` — `id`, `name`, `assetKey`, `placementType`, `surfaceSlotType?`, `characterSlotType?`, `defaultSlot?`(positioned 가구의 기본 배치 슬롯, admin 에서 조정), `defaultScale`(새 FREE 배치의 초기 렌더 배율, 기본 `1.00`, admin 에서 모바일 편집 범위와 같은 `0.50`~`2.00`으로 조정), `defaultPositionX?`, `defaultPositionY?`(새 FREE 배치의 중심점 기준 초기 좌표, 각 `0.0`~`1.0`), `categoryCode`, `purchaseCurrencyType?`, `priceAmount?`, `isLimited`, `theme`(`id`/`code`/`name`/`coverImageKey?`), `owned`(boolean)
 - 비고: 활성 테마·활성 아이템만. `owned`는 요청 user의 `user_items`로 판정.
 
@@ -25,12 +25,12 @@
 
 ## POST /api/v1/items/{id}/purchase
 
-다이아로 아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리.
+아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리. 차감 통화는 다이아 고정이 아니라 **아이템의 `purchase_currency_type`을 따른다**(현재 카탈로그는 전부 DIAMOND이지만 계약상 범용).
 관련 table: `items`, `user_items`, `user_wallets`.
 
 - 경로: `{id}` = `items.id`
 - 요청 body: 없음 (멱등키 미사용 - 중복 보유 차단이 이중 구매를 방지)
-- 응답: `userItemId`, `itemId`, `acquiredAt`, `wallet`(차감 후 다이아 `currencyType`/`balance`)
+- 응답: `userItemId`, `itemId`, `acquiredAt`, `wallet`(차감 후 해당 통화 `currencyType`/`balance`)
 - 실패(확정): 다이아 부족 `SHOP_INSUFFICIENT_BALANCE`(409) / 비활성·뽑기 전용 `SHOP_ITEM_NOT_PURCHASABLE`(409) / **중복 보유 재구매 불가** `SHOP_ALREADY_OWNED`(409) / 없는 아이템 `SHOP_ITEM_NOT_FOUND`(404)
 - 정합: 지갑 행 락 + `user_wallets`/`user_items` UNIQUE 제약으로 동시 요청의 이중 차감·이중 지급 방지.
 

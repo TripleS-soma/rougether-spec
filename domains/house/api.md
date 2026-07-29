@@ -100,7 +100,7 @@
 - table: `house_join_requests`, `users`
 
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/accept
-입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다.
+입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장한다(`refId` = 입주자 membershipId, 문구는 notification 도메인 참고).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
 - table: `house_join_requests`, `house_members`, `house`
@@ -119,12 +119,12 @@
 - table: `house_members`, `users`(`last_accessed_at` 읽기)
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
-강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 알림 발송은 알림 도메인 의존.
+강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). `HOUSE_KICK` 알림 발송은 **미구현**(후속 — enum 값만 존재, 알림 도메인 의존).
 - res: 204 / 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 자기 자신 `HOUSE_KICK_SELF`(400) · 대상 무효 `HOUSE_MEMBER_NOT_FOUND`(404) · 없는/삭제 집 404
 - table: `house_members`(status=kicked/`left_at`), `house`(`current_member_count` 감소)
 
 ### DELETE /api/v1/houses/{houseId}/members/me
-탈퇴. status=left + `left_at` 기록, `current_member_count` 감소. 기여 기록은 유지되며 **재가입은 허용**(기존 row 재활성화 - 탈퇴하면 집 활동·미션에 더는 참여하지 못한다는 의미).
+탈퇴. status=left + `left_at` 기록, `current_member_count` 감소. 기여 기록은 유지되며 **재가입은 허용**(기존 row 재활성화 - 탈퇴하면 집 활동·미션에 더는 참여하지 못한다는 의미). 같은 트랜잭션에서 남은 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_LEFT` 알림 내역을 저장한다(`refId` = 떠난 membershipId).
 - 소유자는 다른 active 구성원이 있으면 **양도 선행** 필요 → `HOUSE_OWNER_MUST_TRANSFER`(409)
 - **마지막 1인 탈퇴 시 집 soft delete**(`deleted_at`) - 빈 집이 탐색에 남지 않음
 - res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
@@ -139,7 +139,7 @@
 
 ## 구성원 방 방문 / 활동 열람
 
-초안의 `routine-status`(오늘 현황·참여율) 단일 엔드포인트는 방/그날 현황/완료 내역 3개로 재설계해 구현했다. 공통 규칙: **요청자·조회 대상 모두 그 집(houseId)의 ACTIVE 구성원**이어야 하며(본인 조회 가능), 위반 시 403 `HOUSE_NOT_MEMBER`. 참여율(`recentParticipationRate`) 계산값은 제공하지 않고 raw 완료 내역으로 대체(집계는 프론트).
+초안의 `routine-status`(오늘 현황·참여율) 단일 엔드포인트는 방/그날 현황/완료 내역 3개로 재설계해 구현했다. 공통 규칙: **요청자·조회 대상 모두 그 집(houseId)의 ACTIVE 구성원**이어야 하며(본인 조회 가능), **요청자** 위반은 403 `HOUSE_NOT_MEMBER`, **조회 대상**(membershipId)이 그 집 ACTIVE 구성원이 아니면 404 `HOUSE_MEMBER_NOT_FOUND`. 참여율(`recentParticipationRate`) 계산값은 제공하지 않고 raw 완료 내역으로 대체(집계는 프론트).
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/room
 구성원 방 조회. 응답 형태는 내 방 조회(`GET /api/v1/rooms/me`)와 동일 — 성장 레벨, 착용 캐릭터, `layoutFormat`·`layoutRevision`, surface·기존 positioned 슬롯, 자유배치 `placements`, 스트릭.
@@ -150,7 +150,7 @@
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/day
 구성원의 그날 현황(루틴 + 투두, 완료 여부 포함). 반복 대상·완료 판정은 `GET /api/v1/today`·캘린더와 동일 규칙.
 - query: `date?`(YYYY-MM-DD, 미지정 시 오늘 KST)
-- res: `date`, `routines[]`(`id`, `originRoutineId`, `title`, `scheduledTime?`, `authType`, `categoryId`, `completed`), `todos[]`(`id`, `title`, `status`, `completedAt?`, `categoryId`)
+- res: `date`, `routines[]`(`id`, `originRoutineId`, `title`, `scheduledTime?`, `authType`, `categoryId`, `completed`), `todos[]`(`id`, `title`, `status`, `completedAt?`, `categoryId`), `categories[]`(`id`, `name`, `colorHex`, `iconKey` — 노출 루틴·투두가 참조하는 카테고리 표시 정보, `sortOrder` 오름차순)
 - 정렬: 루틴 수행 예정 시각 오름차순, 투두 id 오름차순
 - 공개 범위: 카테고리 `visibility`가 HOUSE/PUBLIC 인 루틴·투두만 노출. PRIVATE/FRIENDS·미분류는 제외(본인 조회에도 동일 적용 — 내 화면은 `GET /api/v1/today` 사용)
 - table: `house_members` (+ 루틴/투두 도메인 의존)
@@ -158,7 +158,7 @@
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/routine-completions
 구성원 루틴 완료 내역 기간 조회.
 - query: `from?`, `to?`(YYYY-MM-DD) — `to` 미지정 시 오늘(KST), `from` 미지정 시 `to` 기준 최근 14일. 기간 최대 92일, `from` > `to`는 400 `HOUSE_ACTIVITY_PERIOD_INVALID`
-- res: `from`, `to`(실제 적용된 기간), `items[]`(`date`, `completedAt`, `routineId`, `originRoutineId`, `title`, `categoryId`)
+- res: `from`, `to`(실제 적용된 기간), `items[]`(`routineDate`(완료 날짜), `completedAt`, `routineId`, `originRoutineId`, `title`, `categoryId`)
 - 정렬: 완료 날짜 내림차순(같은 날짜는 완료 시각 내림차순). 공개 범위 필터는 `/day`와 동일(HOUSE/PUBLIC만)
 - 비고: 스케줄 수정으로 루틴 버전이 갈려도 과거 완료는 포함 — 같은 루틴 묶음 판별은 `originRoutineId` 사용
 - table: `house_members` (+ 루틴/투두 도메인 의존)
@@ -167,9 +167,9 @@
 같은 집 구성원에게 원터치 응원을 보낸다(방명록 텍스트 응원과 별개 계약). 응원 저장과 대상에게 `FRIEND_CHEER` 알림 내역 저장은 같은 트랜잭션(원자적)이며, push 는 커밋 후 비동기(공용 진입점 규칙 동일).
 - req: `type` — `great`(잘하고 있어!) / `support`(응원해요!) / `best`(오늘도 최고!)
 - res: 201, `cheerId`, `houseId`, `targetMembershipId`, `targetUserId`, `type`, `cheerDate`(KST)
-- 제한: 같은 보낸이→같은 대상·같은 타입은 하루(KST) 1회. **집과 무관한 사용자쌍 전역 제한**(여러 집에서 겹쳐도 합산 — 스팸 방지 의도). 타입이 다르면 같은 날 허용
-- 예외: 미정의 타입 `HOUSE_CHEER_TYPE_INVALID`(400) · 자기 자신 `HOUSE_CHEER_SELF`(400) · 하루 1회 초과(동시 요청 unique 충돌 포함) `HOUSE_CHEER_DUPLICATED`(409) · 요청자/대상이 그 집 ACTIVE 구성원 아님은 공통 규칙(403 `HOUSE_NOT_MEMBER` / 404 `HOUSE_MEMBER_NOT_FOUND`)
-- 알림: 대상 유저에게 `FRIEND_CHEER`(제목 "응원이 도착했어요", 본문 "{보낸이 닉네임}님: {타입 문구}", 닉네임 없으면 "집 친구", `refId` = cheerId)
+- 제한: 같은 보낸이→같은 대상·같은 타입은 하루(KST) **5회**(`house_member_cheers.daily_seq`로 회차 기록). **집과 무관한 사용자쌍 전역 제한**(여러 집에서 겹쳐도 합산 — 스팸 방지 의도). 타입이 다르면 각각 별도 카운트
+- 예외: 미정의 타입 `HOUSE_CHEER_TYPE_INVALID`(400) · 자기 자신 `HOUSE_CHEER_SELF`(400) · 하루 5회 초과(동시 요청 unique 충돌 포함) `HOUSE_CHEER_LIMIT_EXCEEDED`(409) · 요청자/대상이 그 집 ACTIVE 구성원 아님은 공통 규칙(403 `HOUSE_NOT_MEMBER` / 404 `HOUSE_MEMBER_NOT_FOUND`)
+- 알림: 대상 유저에게 `FRIEND_CHEER`(제목 "응원이 도착했어요", 본문 "{보낸이 닉네임}님: {타입 문구}", `refId` = cheerId). **닉네임 null 폴백은 미구현** — 탈퇴 익명화 등으로 닉네임이 null이면 "null님"으로 조립되는 상태라 폴백 문구("집 친구" 등) 도입은 미결 ([open-questions.md](../../open-questions.md))
 - table: `house_member_cheers`, `house_members`, `notification`
 
 방명록은 **방 주인과 같은 집(houseId)의 ACTIVE 구성원만** 조회·작성할 수 있다(방 주인 본인 포함, 위반 403 `HOUSE_NOT_MEMBER`, 집 없음/삭제 404 `HOUSE_NOT_FOUND`). path 는 `rooms` 하위로 확정(2026-07-05, 서버 구현 완료).
@@ -178,6 +178,7 @@
 방명록 조회(최신순 = `guestbookId` 내림차순). **커서 기반 무한스크롤** — offset 페이징은 새 글 유입 시 중복/누락이 생겨 배제.
 - query: `houseId`(필수), `cursor?`(이전 응답의 nextCursor, 첫 요청 생략), `size?`(기본 20, 최대 50)
 - res: `items[]`(`guestbookId`, `authorId`, `authorNickname`, `content`, `createdAt`) + `nextCursor`(더 없으면 null) + `hasNext`
+- `houseId`는 인가용이자 **조회 범위 필터**다 — 그 집 맥락(`house_id`)에서 작성된 글만 반환한다. 여러 집을 공유하는 상대의 방명록은 집별로 분리돼 보인다
 - 삭제된 글(`deleted_at` not null)은 제외
 - table: `room_guestbooks`
 
@@ -237,7 +238,7 @@
   - 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
   - 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
 - **DAILY** — **하루(KST) 1회, 매일 반복**.
-  - 판정: 오늘 달성률 >= `targetValue`% (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 오늘 이미 수령 409 `HOUSE_MISSION_ALREADY_CLAIMED`(메시지로 "오늘" 기준임을 구분). `status=ACTIVE`·기간 내에서만 가능(409 `HOUSE_MISSION_NOT_ACTIVE`)
+  - 판정: 오늘 달성률 >= `targetValue`% (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 오늘 이미 수령 409 `HOUSE_MISSION_ALREADY_CLAIMED`(메시지를 "오늘은 이미 보상을 받았습니다. 내일 다시 도전할 수 있습니다."로 오버라이드해 "오늘" 기준임을 구분). `status=ACTIVE`·기간 내에서만 가능(409 `HOUSE_MISSION_NOT_ACTIVE`)
   - 처리(한 트랜잭션): `house.growth_points` +20. COMPLETED 전환·`reward_claimed` 갱신 없음 — 다음날 다시 도전. 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE(mission, reward_date)가 하루 1회의 DB 방어선
 - res: `missionId`, `status`(WEEKLY: COMPLETED / DAILY: ACTIVE 유지), `grantedGrowthPoints`(WEEKLY 100 / DAILY 20), `houseGrowthPoints`, `houseLevel`
 - table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house_mission_daily_rewards`, `house`(`growth_points`, `level`)

@@ -8,16 +8,16 @@
 
 운영 중인 뽑기 머신 목록 조회. 테마별 아이템 뽑기와 테마 무관 캐릭터 뽑기가 함께 내려간다.
 
-- **목적**: 머신·비용·운영 기간 노출. `is_active`·운영 기간 필터.
-- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`(캐릭터 뽑기는 `null`), `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`, `isActive`. 테마 커버는 `coverImageKey`(`themes.cover_image_key`, 캐릭터 뽑기는 `null`).
-- **관련 table**: `gacha` (+ theme 조인 `themes`).
+- **목적**: 머신·비용 노출. 필터는 **`is_active`만** — 운영 기간(`starts_at`/`ends_at`)은 스키마에만 있고 목록·draw 어디에서도 검사하지 않는다(기간 검증 도입은 미결).
+- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`(캐릭터 뽑기는 `null`), `costCurrencyType`, `costAmount`, `drawCount`, `active`. `startsAt`/`endsAt`/`coverImageKey`는 **응답에 없다**(기간은 미노출, 테마 커버는 테마 조회 쪽 계약).
+- **관련 table**: `gacha`.
 
 ## GET /api/v1/gacha/{id}
 
 단일 머신 상세 조회.
 
-- **목적**: 비용·기간·구성 요약. 풀 확률 공개 여부 **미정**.
-- **응답 핵심 필드**: `gachaId`, `name`, `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`. 엔트리/확률 노출 여부 미정.
+- **목적**: 비용·구성 요약. 풀 확률 공개 여부 **미정**.
+- **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active` — 기간 미노출). 엔트리/확률 노출 여부 미정.
 - **관련 table**: `gacha`, `gacha_pool_entries`.
 
 ## POST /api/v1/gacha/{id}/draw
@@ -30,20 +30,22 @@
 - **응답 핵심 필드**: `results[]` — 각 추첨에 대해 `rewardType`(`ITEM`/`CHARACTER`/`CURRENCY`), `rarity`, `converted`(중복 여부).
   - 아이템 보상이면 `itemId`·`assetKey`.
   - **캐릭터 보상이면 `characterId`·`assetKey`**(`characters.base_asset_key`)·`name`. 중복이면 `converted=true`로 캐릭터 대신 코인 환급(`refundAmount`).
-  - 재화/환급이면 `currencyType`·`refundAmount`(아이템 중복=다이아 3, 캐릭터 중복=코인 100).
-  - 갱신된 지갑 잔액(`wallet`: `currencyType`·`balance`) 포함.
+  - 중복 전환이면 `refundCurrencyType`·`refundAmount`(아이템 중복=다이아 3, 캐릭터 중복=코인 100). `rewardType=CURRENCY`는 중복 전환 결과에만 쓰인다.
+  - 갱신된 지갑 잔액은 **`wallets[]` 배열**로 COIN·DIAMOND 2건이 항상 포함된다(각 `currencyType`·`balance`).
 - **결과 개수**: `count=1`이면 `results` 1개, `count=6`이면 뽑은 순서대로 6개. 같은 5+1회 요청 안에서 먼저 획득한 보상이 다시 나오면 중복 전환으로 처리한다.
-- **검증/예외**: 보유 코인 부족, `is_active=false`, 운영 기간 밖 → 거부. 차감·지급·환급은 단일 쓰기 트랜잭션.
+- **추첨 방식**: `gacha_pool_entries.weight`는 사용하지 않는다(스키마 잔존 컬럼). 아이템 뽑기는 **rarity 티어 롤** — `random(100)`으로 등급을 먼저 정하고(일반 70% / 희귀 25% / 전설 5%) 그 등급 풀 안에서 균등 추첨한다. 해당 등급 풀이 비어 있으면 전체 활성 풀에서 균등 추첨(fallback). `rarity` 값은 한글 문자열 `일반`/`희귀`/`전설` 3종이며, rarity가 null인 엔트리는 `일반` 티어로 묶인다.
+- **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`. 운영 기간은 검사하지 않는다(위 참고). 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 
 ### 캐릭터 뽑기 (테마 무관 전용 머신)
 
 - 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, `costAmount = 500`.
-- 풀은 캐릭터 6개 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 100 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 100`).
+- 풀은 캐릭터 6개 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 100 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 100`). 균등은 별도 분기가 아니라 **캐릭터 엔트리의 rarity가 전부 null이라는 데이터 전제**에서 성립한다(전부 `일반` 티어로 묶여 티어 내 균등 추첨) — 캐릭터 엔트리에 rarity를 채우면 균등이 깨지므로 운영 데이터 규칙으로 유지한다. 캐릭터 수 6개도 코드가 강제하지 않는다.
 - 신규 캐릭터는 `user_characters`로 지급되고 응답에 `characterId`·`assetKey`가 포함된다.
 
 ## 미정 / 의존
 
-- 결과 응답에서 중복 전환을 별도 필드(`converted`)로 줄지, 보상 타입으로 합칠지.
-- 전환 비율, `weight`/확률 계산, `rarity` 값 집합 → [open-questions.md](../../open-questions.md).
+- 운영 기간(`starts_at`/`ends_at`) 검증·노출 도입 여부(현재 스키마만 존재, 미검사).
+- 회수 캐릭터(`characters.is_active=false`) 배출 차단 — 현재 풀 필터는 엔트리 활성만 보고 보상 캐릭터 활성은 검사하지 않는다(회수 시 풀 엔트리를 함께 내리는 운영 절차 필요).
+- `reward_type = CURRENCY` 풀 엔트리는 서버가 풀에서 제외한다(미지원 — `currency_type`/`reward_amount` 컬럼은 잔존). 재화 보상 엔트리 도입 여부는 미정.
 - 지갑 차감·적립 API 형태는 재화 도메인 계약을 따른다(여기서 확정 안 함).

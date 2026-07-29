@@ -34,7 +34,9 @@
 | 하위 기능 | 설명 | 관련 table |
 | --- | --- | --- |
 | 내 정보 조회 | 닉네임·프로필 사진 key·마지막 접속 등 기본 정보 + 온보딩 완료 여부(목표·캐릭터 선택 존재) 조회. | `users`, `user_goals`, `user_characters` |
+| 닉네임·소개글 수정 | `PUT /api/v1/me`(JSON) — `nickname`(필수, 30자)·`bio`(선택, 100자) 수정. 금칙어 검사(`MEMBER_NICKNAME_BANNED`/`MEMBER_BIO_BANNED`). | `users.nickname`, `users.bio` |
 | 프로필 사진 등록·삭제 | multipart 파일을 서버가 S3에 직접 업로드하고 key(`profile/{uuid}.{ext}`)를 저장. 삭제 시 key를 null로 되돌림(null = 기본 이미지). png/jpeg/webp, 최대 10MB. | `users.profile_image_key` |
+| 친구 초대 보상 | 내 초대코드 발급·조회, 피초대자 redeem 시 초대자·피초대자 각 50코인(초대자 한도 10건, 피초대자 평생 1회). | `user_invite_codes`, `invite_rewards` |
 | 회원탈퇴 | soft delete(`deleted_at`) + 개인정보(email·nickname·bio·profile_image_key) 즉시 익명화 + refresh token 전량 폐기 + oauth 연동 삭제 + FCM 토큰 삭제 + 루틴·투두·카테고리 연쇄 soft delete(완료 이력·스트릭 보존)를 단일 트랜잭션으로, provider 연동 해제(카카오 unlink·애플 revoke)와 프로필 S3 원본 삭제는 커밋 후 best-effort. 재가입은 즉시 허용 — 재로그인 = 신규 가입(새 user, 옛 데이터 미복원). | `users.deleted_at`, `refresh_tokens`, `oauth_accounts`, `user_device_token`, `routines`, `todos`, `categories` |
 
 - `users`: `nickname`, `bio`, `profile_image_key`, `last_accessed_at`, `created_at`, `updated_at`, `deleted_at`(soft delete).

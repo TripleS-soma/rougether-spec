@@ -7,7 +7,9 @@
 - **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.
 - **탈퇴 후 개인정보 파기 정책**: (결정됨) 유예기간 없이 탈퇴 트랜잭션에서 즉시 익명화 — `users.email`·`nickname`·`bio`·`profile_image_key` null 처리 + 프로필 S3 원본 삭제(커밋 후 best-effort) + 루틴·투두·카테고리 연쇄 soft delete(완료 이력·스트릭·인증 사진은 보존). 잔여 access token 창에서는 내 정보 조회·수정·프로필 업로드를 401 차단 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영. 완료 이력·인증 사진의 완전 파기 여부는 집 통계 의존 확인 후 별도 결정.
 - **애플 로그인 authorizationCode 교환 실패 처리**: 애플 토큰 엔드포인트 교환이 실패했을 때 로그인 자체를 실패시킬지(fail-closed) 로그인은 허용하고 refresh token 저장만 포기할지(fail-open) 미정. (시크릿 미설정 환경은 fail-closed로 결정됨)
-- **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(750)을 provider 수만큼 받을 수 있다. 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인 — 장진형)
+- **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(100)을 provider 수만큼 받을 수 있다(친구 초대 redeem과 조합하면 더 커짐). 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인 — 장진형)
+- **dev-login 운영 차단**: `POST /api/v1/auth/dev-login`이 프로파일 가드 없이 모든 환경에서 열려 있다(임의 userId로 토큰 발급 가능). 운영 배포 전 프로파일 가드·설정 스위치 도입 필요. (서버)
+- **시각 직렬화 타임존**: 공통 규약은 "ISO-8601 + offset, Asia/Seoul 기준"인데 서버는 `Instant`를 UTC `Z`로 직렬화한다(`lastAccessedAt` 등). 규약을 UTC로 바꿀지 서버에 jackson 타임존을 넣을지 미정.
 
 ## 프로덕트 (PRD / 멘토 피드백)
 
@@ -19,6 +21,7 @@
 
 - 루틴 삭제 시 수행 기록 **숨김 처리**의 통계 보존 정책 범위? (과거 캘린더가 로그 단독 소싱으로 바뀌어 삭제 루틴의 `FAILED` 로그 포함 여부도 이 논의에서 함께 결정)
 - **탈퇴 회원 알림 사본**: 타 회원의 알림 내역(`notification.title`/`body`)에 탈퇴자 닉네임이 발송 시점 텍스트 사본으로 남는다 — 탈퇴 시 익명화가 소급되지 않는데, 이대로 수용할지 파기(치환)할지 미정.
+- **알림 문구의 닉네임 null 폴백**: 응원(`FRIEND_CHEER`)·입주/퇴거 알림 본문이 닉네임을 그대로 연결해, 닉네임이 null(온보딩 전·탈퇴 익명화)이면 "null님"으로 표시된다. 폴백 문구("집 친구" 등) 도입 여부 미정. (서버)
 
 ## 루틴 / 투두
 
@@ -35,8 +38,10 @@
 ## 뽑기 / 재화
 
 - ~~중복 **아이템** → 다이아 전환 비율?~~ → **확정: 다이아 3** (캐릭터 중복은 코인 100 환급). 환급값은 뽑기 단가에 연동한다 — 단가만 낮추면 중복 전환이 소모 비용을 넘어서 뽑기가 재화 환전 수단이 된다.
-- `gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합? (캐릭터 뽑기는 균등이라 해당 없음, 아이템 뽑기만 미정)
+- ~~`gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합?~~ → **확정(서버 구현)**: `weight` 미사용(잔존 컬럼). 아이템 뽑기는 rarity 티어 롤 — `일반` 70% / `희귀` 25% / `전설` 5%, 티어 내 균등. `rarity`는 한글 3종. → [gacha/api.md](domains/gacha/api.md) 반영.
 - 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 500으로 확정)
+- **뽑기 운영 기간 검증 도입**: `gacha.starts_at`/`ends_at`이 스키마만 있고 목록·draw 어디에서도 검사·노출되지 않는다. 기간제 머신 운영 시 필요 — 도입 여부·시점 미정. (서버)
+- **회수 캐릭터 배출 차단**: 풀 필터가 엔트리 활성만 검사해 `characters.is_active=false` 캐릭터도 엔트리가 살아 있으면 배출된다. 코드 차단을 넣을지, 회수 시 엔트리 동시 비활성화 운영 절차로 갈지 미정. (서버)
 
 ### 확정됨
 
