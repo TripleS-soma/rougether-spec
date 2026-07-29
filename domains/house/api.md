@@ -8,7 +8,7 @@
 
 ### GET /api/v1/houses
 집 탐색. 최신 생성순 기본, 페이지네이션 적용. 탐색·추천 겸용(별도 추천 엔드포인트 없음).
-- query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속)
+- query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
 - table: `house`, `house_goals`
@@ -224,7 +224,8 @@
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/contribute
-**정식 기여 API**(모델 확정 2026-07-05) — 공동 미션은 구성원이 **미션 자체를 직접 수행 체크**하는 방식이다. 개인 루틴 완료와는 무관하며, 프론트 미션 화면의 "오늘 수행" 액션이 이 API 를 호출한다. 수행 인증(사진 등) 강화는 후속.
+**정식 기여 API**(모델 확정 2026-07-05) — 공동 미션은 구성원이 **미션 자체를 직접 수행 체크**하는 방식이다. 프론트 미션 화면의 "오늘 수행" 액션이 이 API 를 호출한다. 수행 인증(사진 등) 강화는 후속.
+- **연동 루틴 자동 기여**(확정 2026-07-29, server PR #234 — 2026-07-05 의 "개인 루틴 완료와 무관" 결정을 이 범위에서 변경, 직접 수행 체크 API 는 유지): 이 미션에 연동된 루틴(`routines.house_mission_id`)을 **오늘(KST) 날짜로 완료 체크**(`POST /api/v1/routines/{id}/logs`)하면 완료와 같은 트랜잭션에서 본인 기여 +1 이 자동 반영된다. 하루 1회 규칙·판정은 직접 수행 체크와 동일 이력을 공유하며, 기여 결과는 완료 응답의 `houseMissionContribution`(이 API res 와 동일 형식)으로 내려간다. 기여 불가 사유(오늘 이미 기여·미션 비활성/기간 밖/삭제·집 비구성원·과거 날짜 완료)는 예외 없이 건너뛰고(응답 null) 루틴 완료는 정상 처리된다. **루틴 완료 취소는 기여를 회수하지 않는다.**
 - 구성원 본인 기여 +1, **KST(Asia/Seoul) 기준 하루 1회** — 일별 이력(`house_mission_daily_contributions`)의 UNIQUE(mission, membership, date)가 DB 방어선(유형 공통 기록)
 - `status=ACTIVE`이고 미션 기간 내일 때만 가능(위반 409 `HOUSE_MISSION_NOT_ACTIVE`), 같은 날 재기여 409 `HOUSE_MISSION_ALREADY_CONTRIBUTED`
 - res: `missionId`, `myContribution`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `achieved`
@@ -243,6 +244,7 @@
 
 ### DELETE /api/v1/houses/{houseId}/missions/{missionId}
 미션 삭제. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). soft delete — 삭제된 미션은 목록·상세에서 제외되고 기여·claim 도 404. → 204
+- 삭제와 같은 트랜잭션에서 **전 구성원의 연동 루틴(`routines.house_mission_id`) 연동을 일괄 해제**한다(루틴 자체는 유지, 2026-07-29). 집 탈퇴·강퇴 시에도 그 회원의 해당 집 연동 루틴·카테고리 연동을 같은 방식으로 해제한다.
 - 진행 중(ACTIVE) 미션은 기여가 있어도 삭제 가능(잘못 만든 미션 정리 용도). 기여 이력(participants)은 보존하고 조회에서만 숨긴다.
 - 보상 수령(COMPLETED) 미션은 삭제 불가(409 `HOUSE_MISSION_ALREADY_CLAIMED`) — 집 성장 포인트 지급 이력 보존.
 - 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
