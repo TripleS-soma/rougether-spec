@@ -43,7 +43,7 @@
 | `POST /api/v1/routines/{id}/logs` | 완료 체크(과거 허용·미래 불가) | `routineDate`(기본 오늘) | 생성된 log: `id`, `routineDate`, `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` + streak 요약 + `houseMissionContribution?`(연동 단체미션 자동 기여 결과 — 미연동·기여 건너뜀이면 null. 규칙은 [house api.md](../house/api.md) contribute 참고) |
 | `DELETE /api/v1/routines/{id}/logs` | 완료 취소(과거 허용·미래 불가) | `date`(취소할 완료 날짜, query) | 롤백 결과(반영된 streak 요약). 트랜잭션 처리 |
 
-> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변, 클라이언트는 `rewardAmount > 0`으로 지급 여부 판별). 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 기록된 `rewardAmount`만큼 코인을 회수하고, log row 처리는 날짜·수행 대상 여부에 따라 갈린다 — **과거 날짜(`date < 오늘 KST`)이고 그날 수행 대상이었던 완료는 `FAILED`로 복원**한다(status 전이 + `completedAt` null + 보상 필드 초기화, row 유지). 당일 취소와 그날 수행 대상이 아니었던 과거 완료(유효기간 밖 완료)는 기존대로 **hard delete** 한다(복원할 `FAILED` 상태가 성립하지 않음). 수행 대상 판정은 day-end 배치와 같은 기준이다(그날 유효했던 버전 + 반복 규칙, 계보 단위).
+> 완료/취소는 코인 지급·차감과 스트릭 갱신을 한 트랜잭션으로 묶는다. 날짜 판정은 모두 **KST(`Asia/Seoul`)** 기준이며 과거 날짜의 완료·취소를 허용하고 미래 날짜는 거부한다. 완료 보상은 **당일(`routineDate` = 오늘) 완료만 COIN 10** — 과거 날짜 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`). 잔여가 0이면 완료는 정상 성공하되 `rewardAmount=0`(지갑 불변). 클라이언트는 `rewardAmount > 0`으로 지급 여부를, 값 자체로 실제 지급액을 판별한다. 스트릭 갱신·롤백도 당일 완료/취소에만 반응한다(과거 완료·취소는 기존 스트릭 요약을 그대로 반환). 완료 취소는 기록된 `rewardAmount`만큼 코인을 회수하고, log row 처리는 날짜·수행 대상 여부에 따라 갈린다 — **과거 날짜(`date < 오늘 KST`)이고 그날 수행 대상이었던 완료는 `FAILED`로 복원**한다(status 전이 + `completedAt` null + 보상 필드 초기화, row 유지). 당일 취소와 그날 수행 대상이 아니었던 과거 완료(유효기간 밖 완료)는 기존대로 **hard delete** 한다(복원할 `FAILED` 상태가 성립하지 않음). 수행 대상 판정은 day-end 배치와 같은 기준이다(그날 유효했던 버전 + 반복 규칙, 계보 단위).
 > 응답 `status` 허용값은 `PENDING`/`COMPLETED`/`FAILED`(하루 마감 배치가 전날 미수행 루틴에 기록). 과거 날짜 완료 시 그 날짜에 `FAILED` 로그가 있으면 새 row를 만들지 않고 그 row를 `COMPLETED`로 **전이(UPDATE)** 한다 — 응답 `id`는 기존 row의 id이고, 보상 0·스트릭 미반영은 과거 완료 규칙 그대로. 전이된 완료의 취소는 위 취소 규칙에 따라 다시 `FAILED`로 복원된다. 배치는 지나간 날짜의 로그를 재생성하지 않는다.
 > 과거 날짜의 완료·취소는 과거 캘린더가 내려주는 **닫힌(soft-deleted) 버전 id로도 호출할 수 있다**(소유권 검증은 동일 — 내 계보의 닫힌 버전만). 당일 완료·취소는 살아있는 현재 버전 id만 허용한다(삭제된 루틴의 당일 완료로 보상을 받는 경로 차단).
 
@@ -68,7 +68,7 @@
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(완료 시점 제한 없음) | — | 롤백 결과(코인 롤백) |
 
-> 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 5**(루틴 10과 별도) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 4건 초과 시 `rewardAmount=0`(완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
+> 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
 
 ## 오늘 현황 · 캘린더 (`routines`, `routine_logs`, `todos`, `streaks`)
 
@@ -98,7 +98,7 @@
 - `authType`: `CHECK`/`PHOTO`
 - `todo.status`: `PENDING`/`COMPLETED`
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개)
-- 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 5 고정
+- 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 10 정가. 일일 지급 상한은 루틴+투두 합산 50코인이며, 잔여가 정가보다 적으면 잔여만큼만 지급(`rewardAmount`에 실지급액 기록, 취소 환불도 그 금액)
 - 완료 허용 범위: 과거 허용·미래 거부(루틴 `routineDate`, 투두 `dueDate` 기준). 코인·스트릭은 당일 완료에만 반영(과거 완료는 `rewardAmount=0`)
 
 ## 미정
