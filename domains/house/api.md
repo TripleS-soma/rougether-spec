@@ -32,7 +32,8 @@
 - res: `membershipId`, `houseId`, `status`
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
 - 같은 집에 `PENDING` 입주 신청이 있으면 즉시가입과 함께 해당 신청을 `ACCEPTED`로 종결한다.
-- 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
+- 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409) · 탈퇴 계정의 잔여 access token `AUTH_INVALID_TOKEN`(401)
+- 탈퇴 계정 가드: 회원탈퇴 후 잔여 access token(만료 전 최대 30분)의 참여 확정은 401 `AUTH_INVALID_TOKEN`으로 차단한다(가입 확정 공통 경로 — 탈퇴 트랜잭션의 멤버십 정리가 되돌아가지 않게 함, [member/api.md](../member/api.md) "회원탈퇴"). 해체(soft delete)된 집의 초대코드는 없는 코드와 동일하게 참여 불가.
 - table: `house`, `house_members`
 
 ### GET /api/v1/houses/by-code/{inviteCode}
@@ -102,7 +103,8 @@
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/accept
 입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장한다(`refId` = 입주자 membershipId, 문구는 notification 도메인 참고).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
-- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
+- **신청자 탈퇴 가드**: 신청자가 이미 회원탈퇴한 신청을 수락하려 하면 신청을 `REJECTED`로 전환하고 409 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`을 응답한다(거절 전환은 에러 응답과 함께 확정됨 — 탈퇴 트랜잭션의 신청 철회와 엇갈리는 동시성 방어).
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 신청자 탈퇴 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
 - table: `house_join_requests`, `house_members`, `house`
 
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/reject
@@ -129,6 +131,7 @@
 - **마지막 1인 탈퇴 시 집 soft delete**(`deleted_at`) - 빈 집이 탐색에 남지 않음
 - res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
 - table: `house_members`(`left_at`), `house`
+- **회원탈퇴(`DELETE /api/v1/me`) 경로**: 탈퇴 트랜잭션에서 모든 ACTIVE 멤버십이 같은 규칙(LEFT·`left_at`·정원 감소·미션 루틴/카테고리 연동 해제)으로 정리된다. 단 이 API 와 달리 소유자도 양도 선행 없이 진행 — 소유 집은 **가입일 최선임 ACTIVE 멤버에게 자동 승계**(동률 시 membership id 오름차순), 남은 멤버가 없으면 집 soft delete(마지막 1인 탈퇴와 동일). 탈퇴자의 `PENDING` 입주 신청도 함께 `REJECTED` 철회. 상세는 [member/api.md](../member/api.md) "회원탈퇴".
 
 ### POST /api/v1/houses/{houseId}/transfer-ownership
 소유권 양도. **소유자만**. 대상 구성원을 `owner`로 승격 + 기존 소유자는 `member`로 + `house.owner_user_id` 갱신 - 단일 트랜잭션.
@@ -245,7 +248,7 @@
 
 ### DELETE /api/v1/houses/{houseId}/missions/{missionId}
 미션 삭제. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). soft delete — 삭제된 미션은 목록·상세에서 제외되고 기여·claim 도 404. → 204
-- 삭제와 같은 트랜잭션에서 **전 구성원의 연동 루틴(`routines.house_mission_id`) 연동을 일괄 해제**한다(루틴 자체는 유지, 2026-07-29). 집 탈퇴·강퇴 시에도 그 회원의 해당 집 연동 루틴·카테고리 연동을 같은 방식으로 해제한다.
+- 삭제와 같은 트랜잭션에서 **전 구성원의 연동 루틴(`routines.house_mission_id`) 연동을 일괄 해제**한다(루틴 자체는 유지, 2026-07-29). 집 탈퇴·강퇴·회원탈퇴 시에도 그 회원의 해당 집 연동 루틴·카테고리 연동을 같은 방식으로 해제한다.
 - 진행 중(ACTIVE) 미션은 기여가 있어도 삭제 가능(잘못 만든 미션 정리 용도). 기여 이력(participants)은 보존하고 조회에서만 숨긴다.
 - 보상 수령(COMPLETED) 미션은 삭제 불가(409 `HOUSE_MISSION_ALREADY_CLAIMED`) — 집 성장 포인트 지급 이력 보존.
 - 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
