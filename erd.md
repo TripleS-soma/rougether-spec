@@ -28,11 +28,13 @@
 - **user_goals**: id* | user_id→users | goal_id→goals | is_primary BOOLEAN | created_at
 
 ### 카테고리
-- **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | sort_order INT | visibility VARCHAR(30) | created_at | updated_at | deleted_at?
+- **categories**: id* | user_id→users | name VARCHAR(100) | color_hex VARCHAR(20)? | icon_key VARCHAR(100)? | house_id BIGINT? | sort_order INT | visibility VARCHAR(30) | created_at | updated_at | deleted_at?
   - 공개 범위는 **카테고리 단위**(`categories.visibility`: `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개), 기본 `PRIVATE`). `routines`에는 `visibility` 없음(공개는 카테고리를 따름) → ERDCloud 정본 반영 필요.
+  - `house_id`: 연동된 집(단체미션용 카테고리 표시, 추가 2026-07-29 server V35). **FK 미부여** — `house` 논리 참조. 집 탈퇴·강퇴 시 서버가 null 로 일괄 해제.
 
 ### 루틴 / 투두
-- **routines**: id* | user_id→users | category_id→categories? | origin_routine_id→routines? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
+- **routines**: id* | user_id→users | category_id→categories? | origin_routine_id→routines? | house_mission_id BIGINT? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
+  - `house_mission_id`: 연동된 단체미션(오늘 완료 시 자동 기여, 추가 2026-07-29 server V35). **FK 미부여** — `house_missions` 논리 참조. 미션 삭제·집 탈퇴/강퇴 시 서버가 null 로 일괄 해제, 버전 분기 시 새 버전으로 승계.
   - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`, `repeat_days`(JSON): `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":[...]}`, `MONTHLY`일 때 `{"dayOfMonth":N}`, `YEARLY`일 때 `{"month":M,"day":D}`. `BIWEEKLY`는 `starts_on`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격 판정하므로 `starts_on` 필수. `visibility` 없음(공개는 카테고리를 따름).
   - `origin_routine_id`: 루틴 시간버전 계보 루트(최초 생성 시 자기 자신). 스케줄 수정으로 버전이 갈려도 불변 — 완료·취소의 계보 판정(중복 완료 가드·`FAILED` 전이/복원·day-end 배치)과 같은 루틴 묶음 판별에 사용.
 - **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
