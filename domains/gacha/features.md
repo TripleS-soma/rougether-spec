@@ -11,7 +11,8 @@
 - **머신 목록**: `is_active`이고 운영 기간(`starts_at`~`ends_at`) 내인 머신을 표시. (`gacha`)
   - 표시 필드: `name`, 테마(theme FK→`themes`, 캐릭터 뽑기는 NULL), 비용(`cost_currency_type`·`cost_amount`), 1회 뽑기 수(`draw_count`), 운영 기간(`starts_at`/`ends_at`).
   - 테마 커버 이미지는 `themes.cover_image_key`로 참조(전체 URL 아님). 캐릭터 뽑기는 `theme_id`가 NULL이라 커버가 없다.
-- **머신 상세(선택)**: 단일 머신의 비용·기간·구성 요약. 풀 내부 확률 공개 여부는 미정. (`gacha`, `gacha_pool_entries`)
+- **머신 상세**: 단일 머신의 비용·기간을 조회한다. (`gacha`)
+- **보상 미리보기**: 단일 머신의 활성 풀에 등록된 가구·캐릭터를 이미지·이름·등급·사용자 보유 여부와 함께 조회한다. 풀 엔트리의 `weight`와 계산 확률은 공개하지 않는다. (`gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`)
 
 ## 테마별 뽑기
 
