@@ -24,9 +24,11 @@
 
 단일 머신에서 현재 배출되는 보상 목록을 조회한다.
 
-- **목적**: 뽑기 전에 해당 머신에서 획득 가능한 가구·캐릭터를 이미지와 함께 미리 보여준다.
-- **응답 핵심 필드**: `items[]` — `rewardType`(`ITEM`/`CHARACTER`), `itemId?`, `characterId?`, `name`, `assetKey`, `rarity?`, `owned`.
+- **목적**: 뽑기 전에 해당 머신에서 획득 가능한 방 꾸미기 아이템·캐릭터 악세사리·캐릭터를 이미지와 함께 미리 보여준다.
+- **응답 핵심 필드**: `items[]` — `rewardType`(`ITEM`/`CHARACTER`), `itemId?`, `characterId?`, `name`, `assetKey`, `rarity?`, `owned`, `categoryCode?`, `placementType?`, `surfaceSlotType?`, `characterSlotType?`.
   - `ITEM`이면 `itemId`만, `CHARACTER`이면 `characterId`만 채운다.
+  - `ITEM`의 렌더링·분류 정보는 `items` 원본 값을 그대로 내려준다. 캐릭터 악세사리는 `placementType=character`이며 `characterSlotType`으로 착용 위치를 구분한다.
+  - `CHARACTER`이면 아이템 분류·배치 필드(`categoryCode`, `placementType`, `surfaceSlotType`, `characterSlotType`)는 `null`이다.
   - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
   - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려준다.
   - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 계산 확률은 응답하지 않는다.
