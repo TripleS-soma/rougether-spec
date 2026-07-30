@@ -23,6 +23,35 @@
 - `defaultScale`과 기본 위치는 새 가구를 FREE 방에 추가하는 순간 배치 값으로 복사한다. 이미 저장된 방 배치의 `scale`·`positionX`·`positionY`에는 소급하지 않는다.
 - 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
 
+## PUT /api/v1/me/characters/{userCharacterId}/accessories
+
+보유 캐릭터의 슬롯에 보유 악세사리를 적용한다. 같은 슬롯의 기존 악세사리는 교체된다.
+관련 table: `user_character_accessories`, `user_characters`, `user_items`, `items`.
+
+- 경로: `{userCharacterId}` = `GET /api/v1/me/characters`의 `userCharacterId`
+- 요청 body: `{ "userItemId": 77 }`
+- 응답: `userCharacterId`, `items[]` — `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }`. 해당 캐릭터의 적용 후 전체 착용 목록이며 `characterSlotType`, `userItemId` 오름차순.
+- 멱등: 이미 같은 악세사리가 같은 슬롯에 적용돼 있으면 변경 없이 현재 목록을 반환한다.
+- 검증: 대상 캐릭터와 악세사리를 모두 호출자가 보유해야 한다. 악세사리는 활성 `placementType=character`이고 `characterSlotType`이 있어야 한다.
+- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409), 미보유 아이템 `CHARACTER_ACCESSORY_NOT_OWNED`(403), 비활성·일반 가구·슬롯 없는 아이템 `CHARACTER_ACCESSORY_INVALID`(409).
+
+## DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}
+
+보유 캐릭터의 지정 슬롯 악세사리를 해제한다.
+관련 table: `user_character_accessories`, `user_characters`.
+
+- 경로: `{userCharacterId}` = 보유 캐릭터 ID, `{characterSlotType}` = 아이템 카탈로그가 내려준 문자열. 서버가 값 집합을 enum으로 제한하지 않는다.
+- 요청 body: 없음
+- 응답: 적용 API와 같은 `userCharacterId`, `items[]` 전체 착용 목록.
+- 멱등: 이미 비어 있는 슬롯도 성공하며 빈 슬롯 상태를 반환한다.
+- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409).
+
+## 캐릭터 응답의 공통 착용 정보
+
+- `GET /api/v1/me/characters`의 각 `items[]`에 `accessories[]`를 포함한다.
+- `accessories[]` 원소는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }`이며 위 적용·해제 응답과 같은 계약이다.
+- 대표 캐릭터 여부와 무관하게 각 보유 캐릭터에 저장된 착용 목록을 반환한다. 캐릭터 선택을 바꿨다가 돌아와도 이전 착용 상태가 유지된다.
+
 ## POST /api/v1/items/{id}/purchase
 
 다이아로 아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리.

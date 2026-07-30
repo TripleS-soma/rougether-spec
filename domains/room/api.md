@@ -9,9 +9,11 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 ### `GET /api/v1/rooms/me`
 - 목적: 내 방의 성장 레벨 + 착용 캐릭터 + 배치 형식·revision + 슬롯·자유배치 + 스트릭을 한 번에 조회.
 - 응답 핵심: `roomUserId`, `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `layoutRevision`, `character?`, `slots[]`, `placements[]`, `streak`(`currentCount`, `longestCount`), `updatedAt`.
+- `character`: `{ characterId, code, name, assetKey, animations, accessories[] }`. `accessories[]`는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }`이며 슬롯·보유 아이템 순으로 정렬한다. 대표 캐릭터가 없으면 `character=null`, 악세사리가 없으면 빈 배열이다.
 - `placements[]`: `{ userItemId, assetKey, positionX, positionY, zIndex, scale, rotationDeg, flipped, updatedAt }`, `zIndex` 오름차순. `FREE_V1` 전환 전에는 빈 배열이다.
 - 렌더링: `SLOT_V1`이면 `slots`를 사용하고 새 앱은 positioned 슬롯을 고정 좌표로 변환한다. `FREE_V1`이면 surface 3종은 `slots`, 가구는 `placements`를 정본으로 사용한다.
-- table: `personal_rooms`(읽기), `room_surface_slots`·`room_item_placements`(읽기), `user_items`/`items`(assetKey 조인), `streaks`(읽기 전용).
+- 캐릭터가 포함되는 친구 방도 같은 `character.accessories[]` 계약을 사용한다. 비구성원에게 공개되는 집 멤버 방/미리보기의 `accessories[]`는 렌더링에 필요한 `{ itemId, name, assetKey, characterSlotType }`만 내려주고 소유 식별자 `userItemId`와 적용 시각 `equippedAt`은 제외한다.
+- table: `personal_rooms`(읽기), `room_surface_slots`·`room_item_placements`(읽기), `user_items`/`items`(assetKey 조인), `user_character_accessories`(대표 캐릭터 착용 조회), `streaks`(읽기 전용).
 
 ## 아이템 배치
 
