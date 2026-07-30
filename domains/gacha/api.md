@@ -16,9 +16,22 @@
 
 단일 머신 상세 조회.
 
-- **목적**: 비용·기간·구성 요약. 풀 확률 공개 여부 **미정**.
-- **응답 핵심 필드**: `gachaId`, `name`, `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`. 엔트리/확률 노출 여부 미정.
-- **관련 table**: `gacha`, `gacha_pool_entries`.
+- **목적**: 비용·기간 등 머신 정보 조회.
+- **응답 핵심 필드**: `gachaId`, `name`, `costCurrencyType`, `costAmount`, `drawCount`, `startsAt`, `endsAt`.
+- **관련 table**: `gacha`.
+
+## GET /api/v1/gacha/{id}/rewards
+
+단일 머신에서 현재 배출되는 보상 목록을 조회한다.
+
+- **목적**: 뽑기 전에 해당 머신에서 획득 가능한 가구·캐릭터를 이미지와 함께 미리 보여준다.
+- **응답 핵심 필드**: `items[]` — `rewardType`(`ITEM`/`CHARACTER`), `itemId?`, `characterId?`, `name`, `assetKey`, `rarity?`, `owned`.
+  - `ITEM`이면 `itemId`만, `CHARACTER`이면 `characterId`만 채운다.
+  - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
+  - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려준다.
+  - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 계산 확률은 응답하지 않는다.
+- **검증/예외**: 없는 머신이면 `GACHA_NOT_FOUND`(404).
+- **관련 table**: `gacha`, `gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`.
 
 ## POST /api/v1/gacha/{id}/draw
 
@@ -45,5 +58,5 @@
 ## 미정 / 의존
 
 - 결과 응답에서 중복 전환을 별도 필드(`converted`)로 줄지, 보상 타입으로 합칠지.
-- 전환 비율, `weight`/확률 계산, `rarity` 값 집합 → [open-questions.md](../../open-questions.md).
+- 전환 비율, `weight`/추첨 확률 계산, `rarity` 값 집합 → [open-questions.md](../../open-questions.md). 계산 결과는 보상 목록 API에 노출하지 않는다.
 - 지갑 차감·적립 API 형태는 재화 도메인 계약을 따른다(여기서 확정 안 함).
