@@ -8,8 +8,7 @@
 
 - **탭 구분**: 방 꾸미기 탭과 캐릭터 악세사리 탭으로 나눠 노출한다.
   - 방 꾸미기: 바닥·벽·천장 등 표면 배치 아이템. `items.placement_type` / `items.surface_slot_type`로 구분.
-  - 캐릭터 악세사리: 캐릭터 착용 아이템. `items.character_slot_type`로 구분. **상점에서 직접 구매 불가(뽑기 전용)** — 노출·보유 표시만.
-  - 두 탭의 정확한 필터 기준 값(어떤 `placement_type`/`category_code`를 어느 탭에 넣을지)은 **미정**.
+  - 캐릭터 악세사리: `items.placement_type = character`인 캐릭터 착용 아이템. `items.character_slot_type`으로 착용 위치를 구분한다. **상점에서 직접 구매 불가(뽑기 전용)** — 노출·보유 표시만.
 - **카드 표시 정보**: 이미지(`items.asset_key`), 이름(`items.name`), 가격(`items.price_amount` + `items.purchase_currency_type`), 테마(`themes.name`/`themes.code`), 보유 여부.
   - 보유 여부는 해당 user의 `user_items`(`deleted_at` IS NULL) 존재로 판정.
 - **테마 필터**: `themes` 단위로 묶어 보여주거나 필터링. 활성 테마(`themes.is_active`)·활성 아이템(`items.is_active`)만 노출.

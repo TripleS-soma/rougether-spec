@@ -27,7 +27,7 @@
 - **목적**: 뽑기 전에 해당 머신에서 획득 가능한 방 꾸미기 아이템·캐릭터 악세사리·캐릭터를 이미지와 함께 미리 보여준다.
 - **응답 핵심 필드**: `items[]` — `rewardType`(`ITEM`/`CHARACTER`), `itemId?`, `characterId?`, `name`, `assetKey`, `rarity?`, `owned`, `categoryCode?`, `placementType?`, `surfaceSlotType?`, `characterSlotType?`.
   - `ITEM`이면 `itemId`만, `CHARACTER`이면 `characterId`만 채운다.
-  - `ITEM`의 렌더링·분류 정보는 `items` 원본 값을 그대로 내려준다. 캐릭터 악세사리는 `placementType=character`이며 `characterSlotType`으로 착용 위치를 구분한다.
+  - `ITEM`의 렌더링·분류 정보는 `items` 원본 값을 그대로 내려준다. 캐릭터 악세사리는 `placementType=character`이며 `characterSlotType`으로 착용 위치를 구분하고, 별도 등급이 없으므로 `rarity=null`이다.
   - `CHARACTER`이면 아이템 분류·배치 필드(`categoryCode`, `placementType`, `surfaceSlotType`, `characterSlotType`)는 `null`이다.
   - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
   - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려준다.
@@ -51,6 +51,12 @@
 - **검증/예외**: 보유 코인 부족, `is_active=false`, 운영 기간 밖 → 거부. 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 
+### 캐릭터 악세사리 뽑기 (테마별 아이템 머신)
+
+- `items.placement_type = character`인 캐릭터 악세사리는 `rewardType = ITEM`으로 배출된다.
+- 풀 엔트리는 모두 `rarity = null`, `weight = 1`이며 활성 엔트리 전체를 균등 추첨한다. 응답에는 `weight`나 계산 확률을 포함하지 않는다.
+- 이미 보유한 악세사리는 다른 아이템 중복과 동일하게 **다이아 3 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 3`)으로 처리한다.
+
 ### 캐릭터 뽑기 (테마 무관 전용 머신)
 
 - 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, `costAmount = 500`.
@@ -60,5 +66,5 @@
 ## 미정 / 의존
 
 - 결과 응답에서 중복 전환을 별도 필드(`converted`)로 줄지, 보상 타입으로 합칠지.
-- 전환 비율, `weight`/추첨 확률 계산, `rarity` 값 집합 → [open-questions.md](../../open-questions.md). 계산 결과는 보상 목록 API에 노출하지 않는다.
+- 방 꾸미기 가구의 `weight`/추첨 확률 계산과 `rarity` 값 집합 → [open-questions.md](../../open-questions.md). 캐릭터 악세사리와 캐릭터는 균등 추첨하며 계산 결과는 보상 목록 API에 노출하지 않는다.
 - 지갑 차감·적립 API 형태는 재화 도메인 계약을 따른다(여기서 확정 안 함).
