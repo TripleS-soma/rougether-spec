@@ -59,6 +59,8 @@
 - **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
 - **user_character_accessories**: id* | user_character_id→user_characters | user_item_id→user_items | character_slot_type VARCHAR(40) | equipped_at TIMESTAMP | unique (user_character_id, character_slot_type) | unique (user_character_id, user_item_id)
   - 캐릭터별 슬롯 착용 상태. 같은 슬롯 적용은 기존 row를 교체하고, 캐릭터 선택을 바꿔도 row를 유지한다. `character_slot_type`은 적용 시 `items.character_slot_type`을 복사하며 클라이언트 입력값을 신뢰하지 않는다.
+- **character_accessory_render_profiles**: id* | item_id→items | character_id→characters | render_state VARCHAR(40) | asset_key VARCHAR(255) | canvas_width INT | canvas_height INT | asset_width INT | asset_height INT | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | width_ratio DECIMAL(5,4) | rotation_deg INT | z_index INT | created_at | updated_at | unique (item_id, character_id, render_state)
+  - 캐릭터 원본 캔버스 위에 단품 악세사리를 합성하기 위한 카탈로그 메타데이터. 캔버스·단품 이미지 크기는 양수이고, 좌표는 중심점 기준 정규화 값이다. `default` 상태가 있으면 해당 아이템을 해당 캐릭터에 착용할 수 있으며, 포즈별 상태는 동일한 `(item, character)`의 `default` 값을 선택적으로 대체한다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?

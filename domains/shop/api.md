@@ -30,10 +30,10 @@
 
 - 경로: `{userCharacterId}` = `GET /api/v1/me/characters`의 `userCharacterId`
 - 요청 body: `{ "userItemId": 77 }`
-- 응답: `userCharacterId`, `items[]` — `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }`. 해당 캐릭터의 적용 후 전체 착용 목록이며 `characterSlotType`, `userItemId` 오름차순.
+- 응답: `userCharacterId`, `items[]` — `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt, renderProfiles[] }`. 해당 캐릭터의 적용 후 전체 착용 목록이며 `characterSlotType`, `userItemId` 오름차순.
 - 멱등: 이미 같은 악세사리가 같은 슬롯에 적용돼 있으면 변경 없이 현재 목록을 반환한다.
-- 검증: 대상 캐릭터와 악세사리를 모두 호출자가 보유해야 한다. 악세사리는 활성 `placementType=character`이고 `characterSlotType`이 있어야 한다.
-- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409), 미보유 아이템 `CHARACTER_ACCESSORY_NOT_OWNED`(403), 비활성·일반 가구·슬롯 없는 아이템 `CHARACTER_ACCESSORY_INVALID`(409).
+- 검증: 대상 캐릭터와 악세사리를 모두 호출자가 보유해야 한다. 악세사리는 활성 `placementType=character`이고 `characterSlotType`이 있어야 하며, 대상 마스터 캐릭터와의 `default` 렌더 프로필이 등록되어 있어야 한다.
+- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409), 미보유 아이템 `CHARACTER_ACCESSORY_NOT_OWNED`(403), 비활성·일반 가구·슬롯 없는 아이템 `CHARACTER_ACCESSORY_INVALID`(409), 대상 캐릭터용 `default` 렌더 프로필 없음 `CHARACTER_ACCESSORY_UNSUPPORTED_CHARACTER`(409).
 
 ## DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}
 
@@ -49,8 +49,18 @@
 ## 캐릭터 응답의 공통 착용 정보
 
 - `GET /api/v1/me/characters`의 각 `items[]`에 `accessories[]`를 포함한다.
-- `accessories[]` 원소는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }`이며 위 적용·해제 응답과 같은 계약이다.
+- `accessories[]` 원소는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt, renderProfiles[] }`이며 위 적용·해제 응답과 같은 계약이다.
 - 대표 캐릭터 여부와 무관하게 각 보유 캐릭터에 저장된 착용 목록을 반환한다. 캐릭터 선택을 바꿨다가 돌아와도 이전 착용 상태가 유지된다.
+- `renderProfiles[]` 원소는 `{ renderState, assetKey, canvasWidth, canvasHeight, assetWidth, assetHeight, positionX, positionY, widthRatio, rotationDeg, zIndex }`이다.
+  - `canvasWidth`·`canvasHeight`: 이 프로필의 좌표가 기준으로 삼는 캐릭터 원본 캔버스 크기. 둘 다 양수다.
+  - `assetWidth`·`assetHeight`: `assetKey` 단품 이미지의 원본 크기. 둘 다 양수이며, 프론트가 표시 높이를 원본 비율로 계산할 때 사용한다.
+  - `positionX`·`positionY`: 캐릭터 원본 캔버스 기준 악세사리 **중심점** 정규화 좌표(각 `0.0`~`1.0`).
+  - `widthRatio`: 악세사리 표시 너비 / 캐릭터 원본 캔버스 너비 비율(`0 < widthRatio <= 2.0`). 높이는 이미지 원본 비율로 계산한다.
+  - `rotationDeg`: 시계 방향 회전 각도(-360~360), `zIndex`: 캐릭터 합성 레이어 순서(클수록 위).
+  - `assetKey`: 해당 상태에서 합성할 단품 이미지 key. 기본 아이템의 `assetKey`와 같을 수 있지만 상태별 이미지를 지원하기 위해 프로필에도 포함한다.
+  - `default` 상태는 착용 가능 여부를 결정하는 필수 fallback이다. 프론트는 현재 캐릭터 포즈/상태와 같은 `renderState`가 있으면 이를 사용하고, 없으면 `default`를 사용한다.
+  - 단품 이미지는 캐릭터 애니메이션 프레임과 독립된 고정 오버레이다. 머리 위치가 크게 달라지는 애니메이션은 같은 이름의 상태별 프로필/에셋이 등록된 경우에만 정밀 합성을 보장하며, `default`만 있으면 MVP 화면은 idle 상태 사용을 우선한다.
+  - 프론트는 `contentFit=contain`으로 만들어진 실제 캐릭터 영역을 먼저 계산한 뒤 좌표를 적용한다. 컨테이너 크기를 `(containerWidth, containerHeight)`라 하면 `scale = min(containerWidth / canvasWidth, containerHeight / canvasHeight)`, 실제 영역은 `(canvasWidth * scale, canvasHeight * scale)`이며 컨테이너 중앙에 둔다. 악세사리 표시 너비는 `actualCanvasWidth * widthRatio`, 높이는 `displayWidth * assetHeight / assetWidth`다.
 
 ## POST /api/v1/items/{id}/purchase
 
