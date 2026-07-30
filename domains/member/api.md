@@ -48,10 +48,14 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/me/characters` | 내 보유 캐릭터 목록 | res: `items[]` = `{ userCharacterId, characterId, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, selected, acquiredAt }` (마스터 `sortOrder` ASC) | `user_characters`, `characters` |
+| `GET /api/v1/me/characters` | 내 보유 캐릭터 목록 | res: `items[]` = `{ userCharacterId, characterId, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, selected, accessories[], acquiredAt }` (마스터 `sortOrder` ASC). `accessories[]` = `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }` | `user_characters`, `characters`, `user_character_accessories`, `user_items`, `items` |
 | `PUT /api/v1/me/characters/select` | 착용(대표) 캐릭터 교체 | req: `characterId` → res: `selectedCharacterId` | `user_characters` |
+| `PUT /api/v1/me/characters/{userCharacterId}/accessories` | 보유 캐릭터에 악세사리 적용·같은 슬롯 교체 | req: `userItemId` → res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters`, `user_items`, `items` |
+| `DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}` | 보유 캐릭터의 지정 악세사리 슬롯 해제 | res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters` |
 
 - 착용 교체는 **보유 캐릭터만** 가능(미보유 `CHARACTER_NOT_OWNED`). 보유 중이어도 회수(`isActive=false`)된 캐릭터는 착용 불가(`CHARACTER_NOT_FOUND`). 이전 대표 해제 + 신규 착용은 단일 트랜잭션이며, 온보딩 선택·뽑기 지급과 동일한 유저 행 비관적 락으로 직렬화해 `is_selected` 유일성과 중복 보유 방지를 보장한다. 이미 착용 중 재선택은 무해(idempotent).
+- 악세사리 착용 상태는 `userCharacterId`별로 유지한다. 같은 보유 악세사리를 여러 보유 캐릭터의 저장된 착장에 재사용할 수 있으며, 한 캐릭터 안에서는 같은 슬롯 1개와 같은 아이템 1개만 허용한다. 대표 캐릭터를 바꿔도 다른 캐릭터의 저장된 착장은 지우지 않는다.
+- 악세사리 적용·해제의 소유권·종류 검증, 오류와 응답 정렬의 상세 계약은 [상점/아이템 API](../shop/api.md)를 따른다.
 - 회수(`isActive=false`)된 캐릭터는 보유 중이어도 **목록에서 제외**한다. 보유 레코드 자체는 유지되며 뽑기 중복 환급 판정에는 계속 사용된다.
 - `animations`는 asset key 묶음 — `characters/{code}/animations/{idle|pose-cycle|wave}.webp` (무손실 애니메이션 WebP, 프레임 지연 보존). key는 `code`에서 파생되므로 **새 캐릭터를 마스터에 등록하기 전에 애니메이션 3종 적재가 전제 조건**이다. 클라이언트는 key를 유추하지 않고 응답 필드를 그대로 사용한다.
 - `name`은 한국어 표기(예: 고양이, 호랑이). `code`는 영문 식별자로 불변.

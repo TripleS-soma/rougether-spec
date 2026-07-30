@@ -2,7 +2,7 @@
 
 출처: 전체 [features.md](../../features.md) "회원" 섹션. 데이터는 [erd.md](../../erd.md)를 따른다.
 
-관련 table: `users`, `goals`, `user_goals`, `characters`, `user_characters`.
+관련 table: `users`, `goals`, `user_goals`, `characters`, `user_characters`, `user_character_accessories`.
 
 ## 온보딩 · 목표 선택
 
@@ -24,10 +24,12 @@
 | 기본 캐릭터 무료 선택 | 6개 중 하나를 기본 캐릭터로 **무료** 선택해 대표로 저장. 온보딩에서는 1개만 무료. | `user_characters` (`user_id`, `character_id`) |
 | 대표 캐릭터 표시 | 현재 대표 캐릭터를 `is_selected`로 표시. 선택 시 `acquired_at` 기록. | `user_characters.is_selected`, `user_characters.acquired_at` |
 | 선택 캐릭터 조회 | 사용자의 대표 캐릭터 조회(개인 방 배치 입력으로 사용). | `user_characters`, `characters` |
+| 캐릭터별 악세사리 착장 | 보유 캐릭터마다 슬롯별 마지막 착용을 저장하고 목록·방 응답에 포함. 대표 캐릭터를 바꿔도 각 착장을 유지. | `user_character_accessories`, `user_items`, `items` |
 
 - 선택한 대표 캐릭터는 개인 방에 배치된다. **배치 렌더링은 방 도메인** 담당, 이 도메인은 "어떤 캐릭터를 골랐는지"까지 책임진다.
 - 온보딩에서는 6개 중 **기본 1개만 무료**로 획득한다. **나머지 캐릭터는 캐릭터 뽑기로 획득**하며, 뽑기로 얻은 캐릭터도 `user_characters`로 기록된다. (뽑기 머신·환급 로직은 [뽑기 도메인](../gacha/features.md) 담당)
 - 캐릭터 에셋은 전체 URL이 아니라 `characters.base_asset_key`(key)로 참조한다.
+- 같은 보유 악세사리는 여러 보유 캐릭터의 저장된 착장에 재사용할 수 있다. 한 캐릭터 안에서는 같은 슬롯 1개와 같은 아이템 1개만 허용하며, 적용·해제 상세는 [상점/아이템 기능](../shop/features.md)이 담당한다.
 
 ## 회원 기본 정보
 
