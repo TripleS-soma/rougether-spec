@@ -57,6 +57,8 @@
 - **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) | surface_slot_type VARCHAR(40)? | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
   - `default_position_x`·`default_position_y`는 positioned 가구를 새 `FREE_V1` 배치에 추가할 때 쓰는 중심점 기준 기본 좌표(각 0.0~1.0)다. 두 값은 함께 null이거나 함께 값이 있어야 하며, null 쌍이면 클라이언트 공통 기본 위치를 사용한다. 기존 `room_item_placements`에는 소급하지 않는다.
 - **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
+- **user_character_accessories**: id* | user_character_id→user_characters | user_item_id→user_items | character_slot_type VARCHAR(40) | equipped_at TIMESTAMP | unique (user_character_id, character_slot_type) | unique (user_character_id, user_item_id)
+  - 캐릭터별 슬롯 착용 상태. 같은 슬롯 적용은 기존 row를 교체하고, 캐릭터 선택을 바꿔도 row를 유지한다. `character_slot_type`은 적용 시 `items.character_slot_type`을 복사하며 클라이언트 입력값을 신뢰하지 않는다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
