@@ -30,7 +30,7 @@
 초대코드/링크로 참여. 코드 종류에 따라 두 흐름으로 갈린다.
 - 집 공용 코드(`house.invite_code`, 소유자 공유): **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다. 같은 집에 `PENDING` 입주 신청이 있으면 함께 `ACCEPTED`로 종결한다.
 - 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다.
-- 코드 조회는 집 공용 코드 → 구성원 개인 코드 순. 두 네임스페이스는 발급 시점에 겹치지 않게 보장한다. 초대자가 참여 시점에 owner 면(소유권 양도 등) 개인 코드도 즉시가입으로 처리한다.
+- 코드 조회는 집 공용 코드 → 구성원 개인 코드 순. 두 네임스페이스는 발급 시점에 두 테이블을 함께 존재 검사해 겹치지 않게 한다(사전 검사 기반). 초대자가 참여 시점에 owner 면(소유권 양도 등) 개인 코드도 즉시가입으로 처리한다.
 - req: `inviteCode`
 - res: `membershipId`, `houseId`, `status`, `pendingApproval`, `joinRequestId` — 즉시가입이면 `pendingApproval=false`·`joinRequestId=null`, 승인 대기면 `pendingApproval=true`·`joinRequestId` 반환에 `membershipId`·`status`는 null
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
