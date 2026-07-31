@@ -27,18 +27,21 @@
 - 이전 앱의 `POST /api/v1/houses/{houseId}/join`도 이 API와 동일하게 **신청만 생성**하는 deprecated alias로 유지한다. 즉시가입 우회 경로로 사용하지 않는다.
 
 ### POST /api/v1/houses/join-by-code
-초대코드/링크로 참여. **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다(승인 흐름 없음).
+초대코드/링크로 참여. 코드 종류에 따라 두 흐름으로 갈린다.
+- 집 공용 코드(`house.invite_code`, 소유자 공유): **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다. 같은 집에 `PENDING` 입주 신청이 있으면 함께 `ACCEPTED`로 종결한다.
+- 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다.
+- 코드 조회는 집 공용 코드 → 구성원 개인 코드 순. 두 네임스페이스는 발급 시점에 겹치지 않게 보장한다. 초대자가 참여 시점에 owner 면(소유권 양도 등) 개인 코드도 즉시가입으로 처리한다.
 - req: `inviteCode`
-- res: `membershipId`, `houseId`, `status`
+- res: `membershipId`, `houseId`, `status`, `pendingApproval`, `joinRequestId` — 즉시가입이면 `pendingApproval=false`·`joinRequestId=null`, 승인 대기면 `pendingApproval=true`·`joinRequestId` 반환에 `membershipId`·`status`는 null
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
-- 같은 집에 `PENDING` 입주 신청이 있으면 즉시가입과 함께 해당 신청을 `ACCEPTED`로 종결한다.
-- 예외: 없는 코드 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409)
-- table: `house`, `house_members`
+- 예외: 없는 코드·초대자 탈퇴/강퇴 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409)
+- table: `house`, `house_members`, `house_join_requests`
 
 ### GET /api/v1/houses/by-code/{inviteCode}
-참여 전 코드로 집 미리보기(이름·구성원 수·정원). 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용).
-- res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`
-- table: `house`
+참여 전 코드로 집 미리보기(이름·구성원 수·정원). 집 공용 코드와 구성원 개인 코드 모두 인식한다. 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용). 만료 판정은 코드 종류별 만료 시각 기준.
+- res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`, `requiresApproval`
+- `requiresApproval` 는 참여 시 방장 승인 대기로 들어가는지 여부 — 집 공용 코드 false, 구성원 개인 코드 true(초대자가 owner 면 false)
+- table: `house`, `house_members`
 
 ### GET /api/v1/houses/{houseId}/preview
 탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
@@ -86,10 +89,10 @@
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
-초대코드 재발급. **소유자만**. 기존 코드 즉시 만료(새 코드로 교체), 만료 7일 갱신. 코드 규칙은 생성과 동일(영대문자+숫자 8자).
+내가 공유할 초대코드 재발급. **ACTIVE 구성원만**. 소유자는 집 공용 코드(즉시가입)를, 일반 구성원은 본인 개인 코드(방장 승인 대기)를 재발급한다. 같은 종류의 기존 코드는 즉시 만료(새 코드로 교체), 만료 7일 갱신. 코드 규칙은 생성과 동일(영대문자+숫자 8자).
 - res: `inviteCode`, `inviteExpiresAt`
-- 예외: 소유자 아님(비구성원 포함) `HOUSE_NOT_OWNER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
-- table: `house`
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
+- table: `house`, `house_members`
 
 ## 구성원 관리
 

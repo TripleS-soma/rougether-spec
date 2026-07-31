@@ -8,8 +8,8 @@
 
 - **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. (`house`, `house_goals`)
 - **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. (`house_join_requests`, `house_members`, `house`)
-- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 참여는 **즉시가입**(role=member·status=active, 승인 흐름 없음). 만료 코드(`house.invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. (`house`, `house_members`)
-  - 같은 집의 대기 중인 입주 신청이 있으면 즉시가입과 함께 신청을 ACCEPTED로 종결한다.
+- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
+  - 즉시가입 시 같은 집의 대기 중인 입주 신청이 있으면 함께 ACCEPTED로 종결한다.
   - 다중 집 가입 허용: 다른 집에 이미 속해 있어도 새 집 참여 가능. 같은 집 중복만 차단.
 
 ## 집 관리
@@ -17,7 +17,7 @@
 - **대표 이미지 후보 조회**: 집 생성·설정 화면은 서버의 게시 승인 manifest에서 프론트 식별용 `code`, 화면 표시용 `name`, 이미지 로딩용 `coverImageKey` 목록을 조회하고, 선택한 key만 `cover_image_key`로 저장한다. S3 `house/`의 초안·중복 파일은 후보에 자동 노출하지 않으며, 전체 URL은 저장하지 않고 클라이언트가 CDN base URL과 조합한다.
 - **집 생성**: 이름(2~30자)·대표 이미지(`cover_image_key`)·집 목표(`goal_ids` 필수 1~3개, 활성 goal 만)·참여 제한(`max_members` 1~10, 기본 4) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`·`status=active`로 즉시 등록(`current_member_count=1`). 집은 레벨 0·성장 포인트 0에서 시작. 생성 시 초대코드(영대문자+숫자 8자, 혼동문자 I,O,L,0,1 제외, 만료 7일) 발급. (`house`, `house_members`, `house_goals`)
 - **설정 수정**: 이름·소개글(`description`)·대표 이미지(`cover_image_key`)·최대 인원(`max_members`) 수정. 소유자만. (`house`)
-- **초대코드 재발급**: 새 `invite_code` 발급 + `invite_expires_at` 갱신. 재발급 시 기존 코드 즉시 만료. (`house`)
+- **초대코드 재발급**: ACTIVE 구성원 누구나. 소유자는 집 공용 코드(`house.invite_code`, 즉시가입), 일반 구성원은 본인 개인 코드(`house_members.invite_code`, 방장 승인 대기)를 재발급하고 `invite_expires_at` 을 갱신한다. 재발급 시 같은 종류의 기존 코드는 즉시 만료. (`house`, `house_members`)
 
 ## 구성원 관리
 
@@ -47,7 +47,7 @@
 
 ## 미결정 사항
 
-- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **요청→방장 승인으로 변경**. 신청 상태는 `house_join_requests`의 PENDING/ACCEPTED/REJECTED로 분리하고, `house_members.status`는 active/left/kicked를 유지한다. 초대코드만 즉시가입한다.
+- ~~탐색 참여가 즉시 가입인지 요청→승인 흐름인지~~ → **요청→방장 승인으로 변경**. 신청 상태는 `house_join_requests`의 PENDING/ACCEPTED/REJECTED로 분리하고, `house_members.status`는 active/left/kicked를 유지한다. 초대코드는 집 공용 코드(소유자 공유)만 즉시가입하고, 구성원 개인 코드(일반 구성원 공유)는 같은 신청→방장 승인 흐름을 탄다.
 - 강퇴/탈퇴를 `status` 전환으로 표현할지 `left_at`만으로 표현할지(둘 다 컬럼 존재) 미확정.
 - 단체 미션 보상은 집 성장 포인트 +100만으로 확정(2026-07-05) — 개인 재화 보상(기여도 반영 분배 등)은 후속 검토. 미션 기여 트리거는 임시 수동 API로 우선 제공, 루틴 완료 이벤트 연동 규칙은 루틴/투두 도메인 협의 미정.
 - 집 레벨업 곡선·테마 매핑 미정.

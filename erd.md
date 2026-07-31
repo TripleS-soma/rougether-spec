@@ -80,7 +80,7 @@
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
-- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at?
+- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP?
 - **house_join_requests**: id* | house_id→house | user_id→users | status VARCHAR(30)(PENDING/ACCEPTED/REJECTED) | requested_at | processed_at?
   - 탐색 입주 신청 이력. `UNIQUE(house_id, user_id)`로 중복 행을 막고, 거절 뒤 재신청은 기존 행을 PENDING으로 되돌린다. 초대코드 즉시가입 또는 방장 수락 시 ACCEPTED, 방장 거절 시 REJECTED로 종결한다.
 - **house_member_cheers**: id* | house_id→house | sender_user_id→users | target_user_id→users | cheer_type VARCHAR(20) | cheer_date DATE | created_at
@@ -158,7 +158,7 @@ erDiagram
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
 - 집 가입은 **초대코드 즉시가입 / 탐색 입주 신청 후 방장 승인**으로 분리한다. 신청 상태는 `house_join_requests`에 두어 실제 구성원(`house_members`)과 구성원 수에 섞이지 않게 한다.
 - `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
-- 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.
+- 초대코드: 별도 table이 아니라 컬럼. 집 공용 코드는 `house.invite_code`/`house.invite_expires_at`(즉시가입), 구성원 개인 코드는 `house_members.invite_code`/`house_members.invite_expires_at`(참여 시 방장 승인 대기). 두 `invite_code` 는 각각 UNIQUE 이고 발급 시 교차 중복도 막는다.
 - `house.current_member_count`: 저장(계산 아님).
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
 - 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
