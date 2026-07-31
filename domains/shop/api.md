@@ -111,6 +111,19 @@
 - 초기 잔액: 가입 시 통화별 지갑이 발급되며 **코인 100·다이아 0**으로 시작. 온보딩(튜토리얼)에서 가구 뽑기 단챠(코인 25) 1회를 체험시키고 75(단챠 3회분)가 남게 하는 값. 지급은 가입 트랜잭션의 지갑 신규 발급에만 묶여 1회로 보장(`(user_id, currency_type)` UNIQUE).
 - 비고: 코인 적립/다이아 충전은 본 도메인 밖(루틴·투두 / 뽑기). 본 엔드포인트는 조회 전용. 위치는 **me 경로로 확정**(서버 구현은 재화 담당인 상점·뽑기 쪽이 소유).
 
+## GET /api/v1/me/wallets/histories
+
+내 재화 획득·사용 이력 조회. 재화 상세/이력 화면에서 사용.
+관련 table: `wallet_histories`.
+
+- 요청(query): `currencyType?`(`COIN`/`DIAMOND`), `direction?`(`EARN` 적립=amount 양수 / `SPEND` 사용=amount 음수), `page`(0부터, 기본 0), `size`(1~50, 기본 20). 필터 둘 다 선택이며 미지정 시 전체
+- 응답: 공통 offset 페이지네이션 `{ items, page, size, totalElements }`. `totalElements`는 필터 적용 결과 기준. `items[]` — `id`, `currencyType`, `amount`(적립 양수/사용 음수), `reason`, `balanceAfter`(증감 직후 잔액 스냅샷), `createdAt`
+- `reason` 허용값 7종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감)
+- 정렬: 최신순 고정(정렬 파라미터 없음)
+- 기록 규칙([erd.md](../../erd.md) `wallet_histories` 참고): 지급액 0 이벤트는 기록하지 않는다. 루틴/투두 완료를 취소하면 회수 row 대신 **원 획득 row가 삭제**되어 목록에서 사라진다. `balanceAfter`는 지갑 갱신과 같은 트랜잭션에서 기록하며, 삭제 정책과 조합 시 사후 재계산과 다를 수 있다(허용 사양). 멀티 뽑기의 중복 전환은 재화별 합산 1 row
+- 실패: 잘못된 enum 값(`currencyType`/`direction`)·범위 밖 `page`/`size`는 400 `VALIDATION_FAILED`
+- 비고: 인증 필수(me 경로) — 본인 이력만 조회
+
 ## 의존성
 
 - 방 배치: [방 도메인](../room/) (`room_surface_slots`, `user_items`)

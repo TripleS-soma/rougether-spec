@@ -18,6 +18,12 @@
   - refresh 토큰 회전(RTR) 저장소. 원문이 아니라 **해시만** 저장. 재발급 시 사용한 토큰은 `revoked_at` 기록 후 새 행으로 교체.
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
+- **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
+  - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
+  - `reason` 허용값 7종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
+  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM` + 해당 id). 가입 보너스·초대 보상은 원본 참조 없음(null).
+  - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
+  - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
 
 ### 캐릭터 (온보딩 · 방)
 - **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
@@ -102,6 +108,7 @@
 erDiagram
     users ||--|| personal_rooms : has
     users ||--o{ user_wallets : owns
+    users ||--o{ wallet_histories : logs
     users ||--o{ user_characters : owns
     users ||--o{ user_goals : sets
     users ||--o{ categories : defines
