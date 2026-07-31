@@ -62,6 +62,35 @@
   - 단품 이미지는 캐릭터 애니메이션 프레임과 독립된 고정 오버레이다. 머리 위치가 크게 달라지는 애니메이션은 같은 이름의 상태별 프로필/에셋이 등록된 경우에만 정밀 합성을 보장하며, `default`만 있으면 MVP 화면은 idle 상태 사용을 우선한다.
   - 프론트는 `contentFit=contain`으로 만들어진 실제 캐릭터 영역을 먼저 계산한 뒤 좌표를 적용한다. 컨테이너 크기를 `(containerWidth, containerHeight)`라 하면 `scale = min(containerWidth / canvasWidth, containerHeight / canvasHeight)`, 실제 영역은 `(canvasWidth * scale, canvasHeight * scale)`이며 컨테이너 중앙에 둔다. 악세사리 표시 너비는 `actualCanvasWidth * widthRatio`, 높이는 `displayWidth * assetHeight / assetWidth`다.
 
+## 어드민: 캐릭터 악세사리 렌더 프로필 관리
+
+`admin-api`의 세션 인증을 사용한다. 렌더 프로필은 아이템 전역 좌표가 아니라 `(item, character, renderState)` 조합별로 관리한다.
+
+### GET /admin/character-accessory-render-profiles
+
+- 응답: `items[]` — `{ id, itemId, itemName, itemAssetKey, characterSlotType, characterId, characterCode, characterName, characterAssetKey, renderState, assetKey, canvasWidth, canvasHeight, assetWidth, assetHeight, positionX, positionY, widthRatio, rotationDeg, zIndex }`.
+- 정렬: `itemId`, 캐릭터 `sortOrder`, `renderState` 오름차순.
+- 용도: 관리자 편집 화면의 아이템·캐릭터·상태 선택 목록과 미리보기 초기값을 제공한다. `characterAssetKey`와 프로필 `assetKey`를 같은 캔버스에 합성해 실제 저장 결과를 미리 본다.
+
+### POST /admin/character-accessory-render-profiles/import
+
+- 요청: 위 프로필 값을 가진 배열. 아이템은 `itemAssetKey`, 캐릭터는 `characterCode`로 식별한다.
+- 동작: `(item, character, renderState)`가 없으면 생성하고, 있으면 에셋·캔버스·transform 전체를 갱신한다.
+- 응답: `created`, `updated`.
+- 용도: 최초 등록과 일괄 보정에 사용한다. 수동 미세 조정에는 아래 단건 API를 사용한다.
+
+### PUT /admin/character-accessory-render-profiles/{profileId}
+
+기존 프로필의 합성 위치와 크기만 미세 조정한다. 아이템·캐릭터·상태·에셋·원본 크기 정보는 변경하지 않는다.
+
+- 요청 body: `{ positionX, positionY, widthRatio, rotationDeg, zIndex }`. 다섯 필드는 모두 필수다.
+- 값 범위: `positionX`·`positionY`는 `0.0`~`1.0`, `widthRatio`는 `0 < widthRatio <= 2.0`, `rotationDeg`는 -360~360. `zIndex`는 정수다.
+- 정규화: 저장 시 좌표는 소수점 5자리, `widthRatio`는 소수점 4자리로 반올림한다.
+- 응답: 수정된 전체 렌더 프로필 1건(GET 목록의 원소와 동일한 형태).
+- 멱등: 같은 body를 반복해 저장하면 같은 프로필 상태를 반환한다.
+- 반영: 저장 이후 사용자 API가 반환하는 `renderProfiles[]`에 즉시 같은 값이 사용된다. 이미 착용 중인 악세사리도 별도 재착용 없이 다음 조회부터 변경된 합성 값을 사용한다.
+- 주요 오류: 없는 프로필 `CHARACTER_ACCESSORY_RENDER_PROFILE_NOT_FOUND`(404), 범위 위반·필수값 누락 `CHARACTER_ACCESSORY_RENDER_PROFILE_INVALID`(400).
+
 ## POST /api/v1/items/{id}/purchase
 
 다이아로 아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리.
