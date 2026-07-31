@@ -158,7 +158,7 @@ erDiagram
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
 - 집 가입은 **초대코드 즉시가입 / 탐색 입주 신청 후 방장 승인**으로 분리한다. 신청 상태는 `house_join_requests`에 두어 실제 구성원(`house_members`)과 구성원 수에 섞이지 않게 한다.
 - `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
-- 초대코드: 별도 table이 아니라 컬럼. 집 공용 코드는 `house.invite_code`/`house.invite_expires_at`(즉시가입), 구성원 개인 코드는 `house_members.invite_code`/`house_members.invite_expires_at`(참여 시 방장 승인 대기). 두 `invite_code` 는 각각 UNIQUE 이고 발급 시 교차 중복도 막는다.
+- 초대코드: 별도 table이 아니라 컬럼. 집 공용 코드는 `house.invite_code`/`house.invite_expires_at`(즉시가입), 구성원 개인 코드는 `house_members.invite_code`/`house_members.invite_expires_at`(참여 시 방장 승인 대기). 두 `invite_code` 는 각각 UNIQUE 이고, 발급 시 두 테이블을 함께 존재 검사해 교차 중복을 회피한다(사전 검사 기반, 테이블 간 원자적 제약은 아님).
 - `house.current_member_count`: 저장(계산 아님).
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
 - 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
