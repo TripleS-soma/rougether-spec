@@ -76,20 +76,26 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `DELETE /api/v1/me` | 회원탈퇴 — soft delete + 개인정보 즉시 익명화 + 소셜 로그인 연동 해제(revoke) | res: 204. 이미 탈퇴한 사용자는 404 `USER_NOT_FOUND` | `users`, `oauth_accounts`, `refresh_tokens`, `user_device_token`, `routines`, `todos`, `categories` |
+| `DELETE /api/v1/me` | 회원탈퇴 — soft delete + 개인정보 즉시 익명화 + 소셜 로그인 연동 해제(revoke) + 집 멤버십 정리·소유권 승계 | res: 204. 이미 탈퇴한 사용자는 404 `USER_NOT_FOUND` | `users`, `oauth_accounts`, `refresh_tokens`, `user_device_token`, `routines`, `todos`, `categories`, `house_members`, `house`, `house_join_requests` |
 
-- 탈퇴는 단일 트랜잭션으로 처리한다: `users.deleted_at` 세팅(soft delete — hard delete 아님) + **개인정보 즉시 익명화**(`users.email`·`nickname`·`bio`·`profile_image_key`를 null 처리 — 유예기간 없음, 배치 없음) + 보유 중인 active `refresh_tokens` 전량 폐기(`revoked_at`) + `oauth_accounts` row 삭제 + FCM 토큰(`user_device_token`) 전량 삭제(탈퇴자에게 push가 가지 않도록) + 해당 회원의 루틴·투두·카테고리 연쇄 soft delete(아래 참고). 소유권은 인증된 본인(`user_id`) guard, 별도 파라미터 없음.
+- 탈퇴는 단일 트랜잭션으로 처리한다: `users.deleted_at` 세팅(soft delete — hard delete 아님) + **개인정보 즉시 익명화**(`users.email`·`nickname`·`bio`·`profile_image_key`를 null 처리 — 유예기간 없음, 배치 없음) + 보유 중인 active `refresh_tokens` 전량 폐기(`revoked_at`) + `oauth_accounts` row 삭제 + FCM 토큰(`user_device_token`) 전량 삭제(탈퇴자에게 push가 가지 않도록) + 해당 회원의 루틴·투두·카테고리 연쇄 soft delete(아래 참고) + 집 멤버십·입주 신청 정리와 소유권 승계(아래 참고). 소유권은 인증된 본인(`user_id`) guard, 별도 파라미터 없음.
 - **프로필 이미지는 S3 원본까지 삭제**한다 — `profile_image_key`를 익명화 전에 스냅샷해 두고, 트랜잭션 커밋 이후 best-effort로 삭제한다(provider revoke와 동일 경로). 삭제 실패는 로그만 남기고 탈퇴·익명화는 유지되며, key가 없는 회원은 호출하지 않는다.
 - **루틴·투두·카테고리는 연쇄 soft delete한다** — 탈퇴 트랜잭션에서 해당 회원의 `routines`·`todos`·`categories`에 `deleted_at`을 일괄 세팅한다(이미 삭제된 row의 원래 삭제 시각은 보존). 완료 이력(`routine_logs`)·스트릭(`streaks`)·인증 사진은 보존한다 — 집 통계·방 성장 의존 가능성이 있어 완전 파기는 집 도메인 확인 후 별도 결정. 리마인더 배치는 루틴 soft delete로 탈퇴자가 자연 제외된다(별도 탈퇴 조건 없음).
+- **집 도메인도 같은 트랜잭션에서 정리한다** (외부 API 호출이 없어 전부 트랜잭션 안):
+  - **대기 중 입주 신청 철회** — 탈퇴자의 `PENDING` 입주 신청(`house_join_requests`)을 전부 `REJECTED`로 전환한다(철회 전용 상태 없이 기존 상태값 재사용).
+  - **모든 ACTIVE 멤버십 LEFT 처리** — 참여 중인 모든 집에서 status=LEFT + `left_at` 기록, 각 집의 `current_member_count` 감소. 집 나가기·강퇴와 동일한 부수 정리로 그 집의 단체미션 루틴 연동(`routines.house_mission_id`)·카테고리 집 연동(`categories.house_id`)도 해제한다.
+  - **소유 집은 자동 승계** — 남은 ACTIVE 멤버 중 **가입일(`house_members` 가입 시각)이 가장 오래된 멤버**에게 소유권을 이전한다(동률 시 membership id 오름차순 — 결정적 규칙). 집 나가기 API와 달리 양도 선행(`HOUSE_OWNER_MUST_TRANSFER`) 없이 진행된다.
+  - **남은 멤버가 없으면 집 해체** — 집 soft delete(`deleted_at`). 해체된 집은 탐색에서 빠지고 그 집 초대코드(`house.invite_code`)로의 신규 가입도 불가.
+  - 승인 경로의 동시성 방어(탈퇴자 신청 승인 시도 가드)는 [house/api.md](../house/api.md) "입주 신청 수락" 참고.
 - **보존하는 것**: `last_accessed_at`(접속기록), revoked `refresh_tokens` row(해시만 저장, 비개인정보), 알림 내역(`notification`)·설정, `routine_logs`·`streaks`·인증 사진, `created_at`/`deleted_at`.
 - **provider 연동 해제(revoke)는 트랜잭션 커밋 이후 best-effort**로 호출한다 — 외부 API 실패가 탈퇴를 롤백하지 않고, 실패는 로그만 남기며 재시도 없음. App Store 심사 가이드라인 5.1.1(v)의 소셜 자격증명 revoke 요구를 충족한다.
   - 카카오: Admin key 서버-투-서버 unlink — `POST https://kapi.kakao.com/v1/user/unlink`(`target_id_type=user_id`).
   - 애플: 로그인 시 저장해 둔 refresh token(암호화)으로 `https://appleid.apple.com/auth/revoke` 호출. 저장된 토큰이 없는 구(舊) 연동(authorizationCode 교환 도입 전 가입)은 revoke를 생략하고 warn 로그만 남긴다.
   - 구글: revoke 없음 — id token만 사용하고 서버가 access/refresh token을 보유하지 않아 revoke 대상이 없다. `oauth_accounts` row 삭제로 충족.
 - **재가입은 즉시 허용**(유예기간 없음). `oauth_accounts` 삭제로 (provider, provider_user_id) unique 제약이 풀리므로, 재로그인하면 기존 신규 가입 플로우가 그대로 동작해 **새 user가 생성**된다. 옛 계정의 루틴·투두·재화·캐릭터는 soft delete된 옛 user에 남고 복원되지 않는다. 재로그인 차단이나 탈퇴 전용 에러코드는 없다.
-- 탈퇴 계정의 잔여 토큰 차단: refresh 회전과 dev-login에서 `users.deleted_at`을 확인해 거부한다(응답 `code`는 각각 **`AUTH_REFRESH_TOKEN_INVALID`**, **`AUTH_USER_NOT_FOUND`** — auth 도메인 코드는 `AUTH_` prefix가 붙는다. 탈퇴 API 자체의 404는 prefix 없는 `USER_NOT_FOUND`로 별개 코드). 이미 발급된 access token의 잔여 창(만료 전 최대 30분)에서는 **내 정보 조회·수정·프로필 업로드·삭제를 미탈퇴 조건 조회로 401 차단**해, 잔여 토큰 재기입으로 익명화가 되돌려지지 않게 한다. 그 외 쓰기 API(루틴 생성 등)의 30분 창은 stateless JWT의 수용한 한계다(logout과 동일 — 필터 레벨 차단은 블랙리스트 도입 논의와 함께 별도 결정).
+- 탈퇴 계정의 잔여 토큰 차단: refresh 회전과 dev-login에서 `users.deleted_at`을 확인해 거부한다(응답 `code`는 각각 **`AUTH_REFRESH_TOKEN_INVALID`**, **`AUTH_USER_NOT_FOUND`** — auth 도메인 코드는 `AUTH_` prefix가 붙는다. 탈퇴 API 자체의 404는 prefix 없는 `USER_NOT_FOUND`로 별개 코드). 이미 발급된 access token의 잔여 창(만료 전 최대 30분)에서는 **내 정보 조회·수정·프로필 업로드·삭제를 미탈퇴 조건 조회로 401 차단**해, 잔여 토큰 재기입으로 익명화가 되돌려지지 않게 한다. **집 참여(초대코드 참여 등 가입 확정 경로)와 친구 초대코드 redeem도 같은 이유로 401 `AUTH_INVALID_TOKEN` 차단** — 잔여 토큰의 집 참여로 탈퇴 트랜잭션의 멤버십 정리(LEFT·정원 감소)가 되돌아가거나, 탈퇴 계정 지갑에 보상이 지급되는 것을 막는다. 그 외 쓰기 API(루틴 생성 등)의 30분 창은 stateless JWT의 수용한 한계다(logout과 동일 — 필터 레벨 차단은 블랙리스트 도입 논의와 함께 별도 결정).
 - 익명화 후 길드북·방명록·집 미리보기 등 타 도메인에는 탈퇴 회원의 `nickname`이 null로 내려간다. 표시 문구("탈퇴한 회원" 등)는 프론트·집 도메인에서 확정한다(dependency → [open-questions.md](../../open-questions.md)).
-- house/room·캐릭터·아이템·재화 도메인의 탈퇴 회원 처리(소유 중인 house의 탈퇴 허용·소유권, 길드북 등 탈퇴 회원 표시, `user_characters`/`user_items`/`user_wallets` 잔여 데이터)는 이 도메인에서 확정하지 않는다(해당 도메인 dependency → [open-questions.md](../../open-questions.md)).
+- 탈퇴 회원 처리 중 이 도메인에서 확정하지 않는 잔여 dependency: 단체미션 `house_mission_participants` 정산·분모 처리, 길드북·방명록 등 탈퇴 회원 표시 문구(프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 파기 (해당 도메인 dependency → [open-questions.md](../../open-questions.md)).
 
 ## 친구 초대 보상 (`user_invite_codes`, `invite_rewards`, → `user_wallets`)
 
@@ -100,6 +106,7 @@
 
 - 보상은 **초대자 50 / 피초대자 50 코인**(50 = 가구 뽑기 단챠 2회분이자 루틴·투두 일일 보상 상한 하루치). 초대자 보상은 **10건 한도** — 초과하면 redeem 자체는 성공하되 초대자 몫만 0.
 - redeem은 계정당 **평생 1회**(`invite_rewards` unique — 피초대자 기준). 에러코드: 없는 코드 404 `INVITE_CODE_NOT_FOUND`, 자기 코드 입력 400 `INVITE_SELF_NOT_ALLOWED`, 이미 사용 409 `INVITE_ALREADY_REDEEMED`.
+- **탈퇴 계정 차단(양방향)**: 초대자가 탈퇴한 코드는 무효 코드와 동일하게 404 `INVITE_CODE_NOT_FOUND`, 본인이 탈퇴한 뒤 잔여 access token으로 redeem하면 401 `AUTH_INVALID_TOKEN` — 탈퇴 계정 지갑에 보상이 지급되는 경로를 양쪽 다 막는다. 탈퇴 시 코드 row 자체를 비활성화하지는 않는다(redeem 시점 가드로 충분).
 - 집 초대코드(`house.invite_code`)와는 별개 체계다(그쪽은 집 도메인).
 
 ## 연동 (다른 도메인)
