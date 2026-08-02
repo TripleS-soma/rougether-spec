@@ -27,7 +27,7 @@
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
 | `GET /api/v1/goals` | 선택 가능한 목표 목록 | res: `items[]` = `{ id, code, name, sortOrder }` (`isActive=true`만) | `goals` |
-| `GET /api/v1/characters` | 선택 가능한 캐릭터 목록 | res: `items[]` = `{ id, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, sortOrder }` (`isActive=true`만) | `characters` |
+| `GET /api/v1/characters` | 선택 가능한 캐릭터 목록 | res: `items[]` = `{ id, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, poses[], sortOrder }` (`isActive=true`만) | `characters`, `character_poses` |
 
 ## 온보딩 (목표 · 캐릭터 선택)
 
@@ -48,7 +48,7 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/me/characters` | 내 보유 캐릭터 목록 | res: `items[]` = `{ userCharacterId, characterId, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, selected, accessories[], acquiredAt }` (마스터 `sortOrder` ASC). `accessories[]` = `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }` | `user_characters`, `characters`, `user_character_accessories`, `user_items`, `items` |
+| `GET /api/v1/me/characters` | 내 보유 캐릭터 목록 | res: `items[]` = `{ userCharacterId, characterId, code, name, baseAssetKey, animations{ idle, poseCycle, wave }, poses[], selected, accessories[], acquiredAt }` (마스터 `sortOrder` ASC). `accessories[]` = `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt }` | `user_characters`, `characters`, `character_poses`, `user_character_accessories`, `user_items`, `items` |
 | `PUT /api/v1/me/characters/select` | 착용(대표) 캐릭터 교체 | req: `characterId` → res: `selectedCharacterId` | `user_characters` |
 | `PUT /api/v1/me/characters/{userCharacterId}/accessories` | 보유 캐릭터에 악세사리 적용·같은 슬롯 교체 | req: `userItemId` → res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters`, `user_items`, `items` |
 | `DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}` | 보유 캐릭터의 지정 악세사리 슬롯 해제 | res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters` |
@@ -57,8 +57,18 @@
 - 악세사리 착용 상태는 `userCharacterId`별로 유지한다. 같은 보유 악세사리를 여러 보유 캐릭터의 저장된 착장에 재사용할 수 있으며, 한 캐릭터 안에서는 같은 슬롯 1개와 같은 아이템 1개만 허용한다. 대표 캐릭터를 바꿔도 다른 캐릭터의 저장된 착장은 지우지 않는다.
 - 악세사리 적용·해제의 소유권·종류 검증, 오류와 응답 정렬의 상세 계약은 [상점/아이템 API](../shop/api.md)를 따른다.
 - 회수(`isActive=false`)된 캐릭터는 보유 중이어도 **목록에서 제외**한다. 보유 레코드 자체는 유지되며 뽑기 중복 환급 판정에는 계속 사용된다.
+- `poses[]`는 관리자가 등록한 **활성 포즈만** `{ id, code, assetKey, sortOrder }` 형태로 `sortOrder` 오름차순(동순위 id 오름차순) 정렬해 내려간다. 마스터 목록(`GET /api/v1/characters`)과 보유 목록이 같은 계약을 쓴다. 등록된 포즈가 없으면 빈 배열.
 - `animations`는 asset key 묶음 — `characters/{code}/animations/{idle|pose-cycle|wave}.webp` (무손실 애니메이션 WebP, 프레임 지연 보존). key는 `code`에서 파생되므로 **새 캐릭터를 마스터에 등록하기 전에 애니메이션 3종 적재가 전제 조건**이다. 클라이언트는 key를 유추하지 않고 응답 필드를 그대로 사용한다.
 - `name`은 한국어 표기(예: 고양이, 호랑이). `code`는 영문 식별자로 불변.
+
+## 어드민: 캐릭터 포즈 관리
+
+`admin-api`의 세션 인증을 사용한다. 추가 포즈 카탈로그(`character_poses`)를 관리한다.
+
+- `GET /admin/character-poses` — 전체 포즈 목록(캐릭터 `sortOrder` → 포즈 `sortOrder` → id 오름차순).
+- `POST /admin/character-poses` — `(characterCode, code)` 기준 upsert(없으면 생성, 있으면 에셋·정렬·활성 갱신). asset key는 `characters/` 하위 이미지 패턴을 검증하고 S3 실존 확인 후 저장한다.
+- `DELETE /admin/character-poses/{poseId}` — 포즈 row 삭제(S3 에셋 파일은 유지).
+- `DELETE /admin/assets?key=` — `characters/` 하위 S3 에셋 삭제. DB에서 참조 중인 key(`characters.base_asset_key`·`character_poses.asset_key`)는 409로 거부하고, 삭제 전 `archive/admin-deleted/{timestamp}/`에 복구용 사본을 남긴다.
 
 ## 회원 기본 정보
 
