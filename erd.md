@@ -35,6 +35,8 @@
 
 ### 캐릭터 (온보딩 · 방)
 - **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
+- **character_poses**: id* | character_id→characters | code VARCHAR(40) | asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN | created_at | updated_at | unique (character_id, code) | index (character_id, is_active, sort_order)
+  - 캐릭터별 추가 포즈 에셋 카탈로그. 표준 애니메이션(idle/pose-cycle/wave)은 기존 code 파생 key 규칙을 유지하고, 추가 포즈만 이 테이블로 동적 관리한다(admin 등록·수정·삭제).
 - **user_characters**: id* | user_id→users | character_id→characters | is_selected BOOLEAN | acquired_at | created_at | updated_at | deleted_at?
 
 ### 목표 (온보딩)
@@ -136,6 +138,7 @@ erDiagram
     users ||--o{ house : owns
 
     characters ||--o{ user_characters : selected_in
+    characters ||--o{ character_poses : poses
     goals ||--o{ user_goals : chosen_as
     goals ||--o{ house_goals : targeted_by
 
