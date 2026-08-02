@@ -11,7 +11,8 @@
 - **머신 목록**: `is_active`인 머신을 표시(운영 기간 `starts_at`~`ends_at`은 스키마만 존재하고 검사·노출하지 않음 — 도입 미정). (`gacha`)
   - 표시 필드: `name`, 테마(theme FK→`themes`, 캐릭터 뽑기는 NULL), 비용(`cost_currency_type`·`cost_amount`), 1회 뽑기 수(`draw_count`), `active`.
   - 테마 커버 이미지는 `themes.cover_image_key`로 참조(전체 URL 아님). 캐릭터 뽑기는 `theme_id`가 NULL이라 커버가 없다.
-- **머신 상세(선택)**: 단일 머신의 비용·기간·구성 요약. 풀 내부 확률 공개 여부는 미정. (`gacha`, `gacha_pool_entries`)
+- **머신 상세**: 단일 머신의 비용·기간을 조회한다. (`gacha`)
+- **보상 미리보기**: 단일 머신의 활성 풀에 등록된 방 꾸미기 아이템·캐릭터 악세사리·캐릭터를 이미지·이름·등급(있는 보상만)·사용자 보유 여부와 함께 조회한다. 아이템은 `placement_type`과 슬롯 타입을 함께 내려 클라이언트가 방 아이템과 캐릭터 착용 아이템을 구분한다. 풀 엔트리의 `weight`와 계산 확률은 공개하지 않는다. (`gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`)
 
 ## 테마별 뽑기
 
@@ -25,6 +26,15 @@
   - `reward_type`으로 아이템 보상(`item_id`→`items`) / 캐릭터 보상(`character_id`→`characters`) / 재화 보상(`currency_type`·`reward_amount`) 구분.
 - **비용 검증·차감**: 보유 코인이 선택한 옵션의 비용(단챠 `cost_amount`, 5+1회 `cost_amount × 5`)보다 적으면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
 - **활성 검증**: `is_active`가 false면 실행 거부(409 `GACHA_INACTIVE`). 운영 기간은 검사하지 않는다(도입 미정).
+
+## 캐릭터 악세사리 뽑기
+
+캐릭터에 착용하는 악세사리는 상점에서 직접 구매하지 않고 아이템 뽑기로 획득한다.
+
+- **분류·등록**: `items.placement_type = character`인 아이템을 캐릭터 악세사리로 판정한다. 활성 악세사리는 카탈로그 적재 시 같은 테마의 **악세사리 전용 머신**에 `reward_type = ITEM`으로 자동 등록한다. 전용 머신이 없으면 가구 뽑기와 같은 기본값(`COIN` 25, `draw_count = 1`)으로 만든다. 등급 가구와 악세사리를 한 풀에 섞지 않는다.
+- **구매 불가**: `purchase_currency_type`과 `price_amount`는 모두 `NULL`로 저장한다.
+- **균등 추첨**: 악세사리에는 등급을 두지 않는다. 해당 전용 풀의 모든 활성 엔트리는 `rarity = NULL`, `weight = 1`이며 풀 전체에서 동일 확률로 추첨한다.
+- **중복 처리**: 다른 `ITEM` 보상과 동일하게 `user_items` 보유 여부로 중복을 판정하고, 이미 보유했다면 아이템 대신 **다이아 3**을 지급한다.
 
 ## 캐릭터 뽑기
 
@@ -41,10 +51,10 @@
 
 획득 결과를 표시하고 중복 아이템을 전환한다.
 
-- **결과 표시**: 이번 실행으로 획득한 아이템/다이아 목록. 아이템은 `items.asset_key`, 이름·rarity 표시. (`gacha_pool_entries`, `items`)
+- **결과 표시**: 이번 실행으로 획득한 아이템/다이아 목록. 방 꾸미기 아이템과 캐릭터 악세사리는 모두 `reward_type=ITEM`으로 지급하며, 아이템은 `items.asset_key`, 이름·`rarity`(악세사리는 `NULL`)를 표시한다. (`gacha_pool_entries`, `items`)
 - **아이템 지급**: 미보유 아이템은 `user_items`로 인벤토리에 추가. (`user_items` — 의존)
 - **중복 → 다이아 전환**: 사용자가 **이미 보유한 아이템**(`user_items` 보유)이 나오면 아이템 대신 다이아로 전환해 지갑에 적립. (`gacha_pool_entries`, `user_items`, `user_wallets` — 의존)
-  - 전환 비율: **미정** → [open-questions.md](../../open-questions.md).
+  - 전환값: 방 꾸미기 아이템과 캐릭터 악세사리 모두 **다이아 3**.
 
 ## 관련 table 요약
 

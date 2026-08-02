@@ -23,6 +23,74 @@
 - `defaultScale`과 기본 위치는 새 가구를 FREE 방에 추가하는 순간 배치 값으로 복사한다. 이미 저장된 방 배치의 `scale`·`positionX`·`positionY`에는 소급하지 않는다.
 - 비고: `deleted_at` IS NULL인 본인 보유분만(JWT `userId` 스코프). `is_active=false` 아이템도 보유분이면 노출. 방 배치는 [방 도메인](../room/) 엔드포인트로 이어짐.
 
+## PUT /api/v1/me/characters/{userCharacterId}/accessories
+
+보유 캐릭터의 슬롯에 보유 악세사리를 적용한다. 같은 슬롯의 기존 악세사리는 교체된다.
+관련 table: `user_character_accessories`, `user_characters`, `user_items`, `items`.
+
+- 경로: `{userCharacterId}` = `GET /api/v1/me/characters`의 `userCharacterId`
+- 요청 body: `{ "userItemId": 77 }`
+- 응답: `userCharacterId`, `items[]` — `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt, renderProfiles[] }`. 해당 캐릭터의 적용 후 전체 착용 목록이며 `characterSlotType`, `userItemId` 오름차순.
+- 멱등: 이미 같은 악세사리가 같은 슬롯에 적용돼 있으면 변경 없이 현재 목록을 반환한다.
+- 검증: 대상 캐릭터와 악세사리를 모두 호출자가 보유해야 한다. 악세사리는 활성 `placementType=character`이고 `characterSlotType`이 있어야 하며, 대상 마스터 캐릭터와의 `default` 렌더 프로필이 등록되어 있어야 한다.
+- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409), 미보유 아이템 `CHARACTER_ACCESSORY_NOT_OWNED`(403), 비활성·일반 가구·슬롯 없는 아이템 `CHARACTER_ACCESSORY_INVALID`(409), 대상 캐릭터용 `default` 렌더 프로필 없음 `CHARACTER_ACCESSORY_UNSUPPORTED_CHARACTER`(409).
+
+## DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}
+
+보유 캐릭터의 지정 슬롯 악세사리를 해제한다.
+관련 table: `user_character_accessories`, `user_characters`.
+
+- 경로: `{userCharacterId}` = 보유 캐릭터 ID, `{characterSlotType}` = 아이템 카탈로그가 내려준 문자열. 서버가 값 집합을 enum으로 제한하지 않는다.
+- 요청 body: 없음
+- 응답: 적용 API와 같은 `userCharacterId`, `items[]` 전체 착용 목록.
+- 멱등: 이미 비어 있는 슬롯도 성공하며 빈 슬롯 상태를 반환한다.
+- 주요 오류: 미보유 캐릭터 `CHARACTER_NOT_OWNED`(409).
+
+## 캐릭터 응답의 공통 착용 정보
+
+- `GET /api/v1/me/characters`의 각 `items[]`에 `accessories[]`를 포함한다.
+- `accessories[]` 원소는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt, renderProfiles[] }`이며 위 적용·해제 응답과 같은 계약이다.
+- 대표 캐릭터 여부와 무관하게 각 보유 캐릭터에 저장된 착용 목록을 반환한다. 캐릭터 선택을 바꿨다가 돌아와도 이전 착용 상태가 유지된다.
+- `renderProfiles[]` 원소는 `{ renderState, assetKey, canvasWidth, canvasHeight, assetWidth, assetHeight, positionX, positionY, widthRatio, rotationDeg, zIndex }`이다.
+  - `canvasWidth`·`canvasHeight`: 이 프로필의 좌표가 기준으로 삼는 캐릭터 원본 캔버스 크기. 둘 다 양수다.
+  - `assetWidth`·`assetHeight`: `assetKey` 단품 이미지의 원본 크기. 둘 다 양수이며, 프론트가 표시 높이를 원본 비율로 계산할 때 사용한다.
+  - `positionX`·`positionY`: 캐릭터 원본 캔버스 기준 악세사리 **중심점** 정규화 좌표(각 `0.0`~`1.0`).
+  - `widthRatio`: 악세사리 표시 너비 / 캐릭터 원본 캔버스 너비 비율(`0 < widthRatio <= 2.0`). 높이는 이미지 원본 비율로 계산한다.
+  - `rotationDeg`: 시계 방향 회전 각도(-360~360), `zIndex`: 캐릭터 합성 레이어 순서(클수록 위).
+  - `assetKey`: 해당 상태에서 합성할 단품 이미지 key. 기본 아이템의 `assetKey`와 같을 수 있지만 상태별 이미지를 지원하기 위해 프로필에도 포함한다.
+  - `default` 상태는 착용 가능 여부를 결정하는 필수 fallback이다. 프론트는 현재 캐릭터 포즈/상태와 같은 `renderState`가 있으면 이를 사용하고, 없으면 `default`를 사용한다.
+  - 단품 이미지는 캐릭터 애니메이션 프레임과 독립된 고정 오버레이다. 머리 위치가 크게 달라지는 애니메이션은 같은 이름의 상태별 프로필/에셋이 등록된 경우에만 정밀 합성을 보장하며, `default`만 있으면 MVP 화면은 idle 상태 사용을 우선한다.
+  - 프론트는 `contentFit=contain`으로 만들어진 실제 캐릭터 영역을 먼저 계산한 뒤 좌표를 적용한다. 컨테이너 크기를 `(containerWidth, containerHeight)`라 하면 `scale = min(containerWidth / canvasWidth, containerHeight / canvasHeight)`, 실제 영역은 `(canvasWidth * scale, canvasHeight * scale)`이며 컨테이너 중앙에 둔다. 악세사리 표시 너비는 `actualCanvasWidth * widthRatio`, 높이는 `displayWidth * assetHeight / assetWidth`다.
+
+## 어드민: 캐릭터 악세사리 렌더 프로필 관리
+
+`admin-api`의 세션 인증을 사용한다. 렌더 프로필은 아이템 전역 좌표가 아니라 `(item, character, renderState)` 조합별로 관리한다.
+
+### GET /admin/character-accessory-render-profiles
+
+- 응답: `items[]` — `{ id, itemId, itemName, itemAssetKey, characterSlotType, characterId, characterCode, characterName, characterAssetKey, renderState, assetKey, canvasWidth, canvasHeight, assetWidth, assetHeight, positionX, positionY, widthRatio, rotationDeg, zIndex }`.
+- 정렬: `itemId`, 캐릭터 `sortOrder`, `renderState` 오름차순.
+- 용도: 관리자 편집 화면의 아이템·캐릭터·상태 선택 목록과 미리보기 초기값을 제공한다. `characterAssetKey`와 프로필 `assetKey`를 같은 캔버스에 합성해 실제 저장 결과를 미리 본다.
+
+### POST /admin/character-accessory-render-profiles/import
+
+- 요청: 위 프로필 값을 가진 배열. 아이템은 `itemAssetKey`, 캐릭터는 `characterCode`로 식별한다.
+- 동작: `(item, character, renderState)`가 없으면 생성하고, 있으면 에셋·캔버스·transform 전체를 갱신한다.
+- 응답: `created`, `updated`.
+- 용도: 최초 등록과 일괄 보정에 사용한다. 수동 미세 조정에는 아래 단건 API를 사용한다.
+
+### PUT /admin/character-accessory-render-profiles/{profileId}
+
+기존 프로필의 합성 위치와 크기만 미세 조정한다. 아이템·캐릭터·상태·에셋·원본 크기 정보는 변경하지 않는다.
+
+- 요청 body: `{ positionX, positionY, widthRatio, rotationDeg, zIndex }`. 다섯 필드는 모두 필수다.
+- 값 범위: `positionX`·`positionY`는 `0.0`~`1.0`, `widthRatio`는 `0 < widthRatio <= 2.0`, `rotationDeg`는 -360~360. `zIndex`는 정수다.
+- 정규화: 저장 시 좌표는 소수점 5자리, `widthRatio`는 소수점 4자리로 반올림한다.
+- 응답: 수정된 전체 렌더 프로필 1건(GET 목록의 원소와 동일한 형태).
+- 멱등: 같은 body를 반복해 저장하면 같은 프로필 상태를 반환한다.
+- 반영: 저장 이후 사용자 API가 반환하는 `renderProfiles[]`에 즉시 같은 값이 사용된다. 이미 착용 중인 악세사리도 별도 재착용 없이 다음 조회부터 변경된 합성 값을 사용한다.
+- 주요 오류: 없는 프로필 `CHARACTER_ACCESSORY_RENDER_PROFILE_NOT_FOUND`(404), 범위 위반·필수값 누락 `CHARACTER_ACCESSORY_RENDER_PROFILE_INVALID`(400).
+
 ## POST /api/v1/items/{id}/purchase
 
 아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리. 차감 통화는 다이아 고정이 아니라 **아이템의 `purchase_currency_type`을 따른다**(현재 카탈로그는 전부 DIAMOND이지만 계약상 범용).

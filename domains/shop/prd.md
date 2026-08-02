@@ -26,7 +26,7 @@
 ## 범위 경계 (확정)
 
 - **캐릭터 아이템은 상점에서 직접 살 수 없다.** 캐릭터 악세사리/아이템 제공처는 **뽑기만**이다(`product.md`·`features.md` 확정). 상점은 캐릭터 아이템을 **노출·보유 표시**까지만 하고, 구매 대상은 방 꾸미기 아이템 중 다이아 구매가 가능한 것에 한정한다.
-  - 어떤 `placement_type`/`category_code`를 "상점 직접 구매 가능"으로 볼지의 정확한 기준은 **미정** — `items.purchase_currency_type`·`price_amount`가 채워진 아이템만 구매 가능으로 보는 안이 유력하나 확정 아님.
+  - `items.placement_type = character`이면 캐릭터 악세사리로 분류하며 `purchase_currency_type`·`price_amount`를 모두 `NULL`로 둔다. 그 외 아이템도 두 구매 필드가 모두 채워진 경우에만 직접 구매할 수 있다.
 - 아이템 슬롯 배치·방 성장은 **방 도메인**, 뽑기로 인한 아이템/다이아 획득은 **뽑기 도메인**, 코인 적립은 **루틴/투두 도메인** 소관이다. 본 도메인은 이들과 `user_items`·`user_wallets`를 통해 연동만 한다.
 
 ## 다루는 데이터
@@ -35,7 +35,6 @@
 
 ## 의존성 / 열린 질문
 
-- 다이아 구매 가능 아이템의 판별 기준(위 참조) — **미정**.
 - 방 배치 진입: [방 도메인](../room/) (`room_surface_slots`, `user_items`).
 - 다이아·아이템 획득 경로: [뽑기 도메인](../gacha/) (`gacha`, `gacha_pool_entries`).
 - 코인 적립: [루틴/투두 도메인](../routine-todo/) (`routine_logs`, `todos`).

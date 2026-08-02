@@ -66,6 +66,10 @@
 - **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) (`positioned`/`surface_slot`) | surface_slot_type VARCHAR(40)? (`wallpaper`/`floor`/`background`) | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
   - `default_position_x`·`default_position_y`는 positioned 가구를 새 `FREE_V1` 배치에 추가할 때 쓰는 중심점 기준 기본 좌표(각 0.0~1.0)다. 두 값은 함께 null이거나 함께 값이 있어야 하며, null 쌍이면 클라이언트 공통 기본 위치를 사용한다. 기존 `room_item_placements`에는 소급하지 않는다.
 - **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
+- **user_character_accessories**: id* | user_character_id→user_characters | user_item_id→user_items | character_slot_type VARCHAR(40) | equipped_at TIMESTAMP | unique (user_character_id, character_slot_type) | unique (user_character_id, user_item_id)
+  - 캐릭터별 슬롯 착용 상태. 같은 슬롯 적용은 기존 row를 교체하고, 캐릭터 선택을 바꿔도 row를 유지한다. `character_slot_type`은 적용 시 `items.character_slot_type`을 복사하며 클라이언트 입력값을 신뢰하지 않는다.
+- **character_accessory_render_profiles**: id* | item_id→items | character_id→characters | render_state VARCHAR(40) | asset_key VARCHAR(255) | canvas_width INT | canvas_height INT | asset_width INT | asset_height INT | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | width_ratio DECIMAL(5,4) | rotation_deg INT | z_index INT | created_at | updated_at | unique (item_id, character_id, render_state)
+  - 캐릭터 원본 캔버스 위에 단품 악세사리를 합성하기 위한 카탈로그 메타데이터. 캔버스·단품 이미지 크기는 양수이고, 좌표는 중심점 기준 정규화 값이다. `default` 상태가 있으면 해당 아이템을 해당 캐릭터에 착용할 수 있으며, 포즈별 상태는 동일한 `(item, character)`의 `default` 값을 선택적으로 대체한다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
@@ -86,7 +90,7 @@
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
-- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at?
+- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP?
 - **house_join_requests**: id* | house_id→house | user_id→users | status VARCHAR(30)(PENDING/ACCEPTED/REJECTED) | requested_at | processed_at?
   - 탐색 입주 신청 이력. `UNIQUE(house_id, user_id)`로 중복 행을 막고, 거절 뒤 재신청은 기존 행을 PENDING으로 되돌린다. 초대코드 즉시가입 또는 방장 수락 시 ACCEPTED, 방장 거절 시 REJECTED로 종결한다.
 - **house_member_cheers**: id* | house_id→house | sender_user_id→users | target_user_id→users | cheer_type VARCHAR(20) | cheer_date DATE | daily_seq INT | created_at | unique (sender_user_id, target_user_id, cheer_type, cheer_date, daily_seq)
@@ -169,7 +173,7 @@ erDiagram
 - 사용자는 **여러 집에 동시 가입 가능**(기획서: "하나 이상의 집에 참여"). `house_members`의 unique는 `(house_id, user_id)` 조합에만 걸어 같은 집 중복 가입만 막는다 — `user_id` 단독 unique는 걸지 않는다.
 - 집 가입은 **초대코드 즉시가입 / 탐색 입주 신청 후 방장 승인**으로 분리한다. 신청 상태는 `house_join_requests`에 두어 실제 구성원(`house_members`)과 구성원 수에 섞이지 않게 한다.
 - `house_goals`는 마스터 `goals`를 참조한다(집이 공통 목표 마스터 중 선택; 집이 자유 텍스트 목표를 직접 작성하는 모델이 아님).
-- 초대코드: 별도 table이 아니라 `house.invite_code` / `house.invite_expires_at` 컬럼.
+- 초대코드: 별도 table이 아니라 컬럼. 집 공용 코드는 `house.invite_code`/`house.invite_expires_at`(즉시가입), 구성원 개인 코드는 `house_members.invite_code`/`house_members.invite_expires_at`(참여 시 방장 승인 대기). 두 `invite_code` 는 각각 UNIQUE 이고, 발급 시 두 테이블을 함께 존재 검사해 교차 중복을 회피한다(사전 검사 기반, 테이블 간 원자적 제약은 아님).
 - `house.current_member_count`: 저장(계산 아님).
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
 - 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
@@ -177,5 +181,6 @@ erDiagram
 - 배치 정본은 `personal_rooms.layout_format`이 결정한다. `SLOT_V1` 방만 자유배치 첫 저장 시 `FREE_V1`으로 지연 전환하며, surface 3종은 형식과 무관하게 `room_surface_slots`에 남는다.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
 - **캐릭터 획득**: 온보딩에서 6개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 6개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
+- **캐릭터 악세사리 획득**: `items.placement_type = character`인 아이템은 직접 구매하지 않고 테마별 뽑기에서 `reward_type = ITEM`으로 획득한다. 풀 엔트리는 `rarity = NULL`, `weight = 1`로 균등 추첨하며 중복 시 다른 아이템과 동일하게 다이아 3을 환급한다.
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.

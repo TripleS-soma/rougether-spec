@@ -4,7 +4,8 @@
 
 ## 공통 규칙
 
-- prefix: `/api/v1`
+- 사용자 API(`user-api`) prefix: `/api/v1`
+- 관리자 API(`admin-api`) prefix: `/admin`. 사용자 JWT와 분리된 운영자 세션 인증을 사용하며, 브라우저의 상태 변경 요청은 CSRF 보호를 적용한다.
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
 - 타임존: 모든 날짜·당일/자정 판정은 **`Asia/Seoul`(KST, UTC+9)** 기준. 시각 저장도 KST로 통일한다 (`+9` 하드코딩 말고 `Asia/Seoul` 설정값으로).
 - 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.

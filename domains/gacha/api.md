@@ -20,6 +20,21 @@
 - **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active` — 기간 미노출). 엔트리/확률 노출 여부 미정.
 - **관련 table**: `gacha`, `gacha_pool_entries`.
 
+## GET /api/v1/gacha/{id}/rewards
+
+단일 머신에서 현재 배출되는 보상 목록을 조회한다.
+
+- **목적**: 뽑기 전에 해당 머신에서 획득 가능한 방 꾸미기 아이템·캐릭터 악세사리·캐릭터를 이미지와 함께 미리 보여준다.
+- **응답 핵심 필드**: `items[]` — `rewardType`(`ITEM`/`CHARACTER`), `itemId?`, `characterId?`, `name`, `assetKey`, `rarity?`, `owned`, `categoryCode?`, `placementType?`, `surfaceSlotType?`, `characterSlotType?`.
+  - `ITEM`이면 `itemId`만, `CHARACTER`이면 `characterId`만 채운다.
+  - `ITEM`의 렌더링·분류 정보는 `items` 원본 값을 그대로 내려준다. 캐릭터 악세사리는 `placementType=character`이며 `characterSlotType`으로 착용 위치를 구분하고, 별도 등급이 없으므로 `rarity=null`이다.
+  - `CHARACTER`이면 아이템 분류·배치 필드(`categoryCode`, `placementType`, `surfaceSlotType`, `characterSlotType`)는 `null`이다.
+  - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
+  - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려준다.
+  - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 계산 확률은 응답하지 않는다.
+- **검증/예외**: 없는 머신이면 `GACHA_NOT_FOUND`(404), `is_active=false`이거나 운영 기간 밖이면 `GACHA_INACTIVE`(409).
+- **관련 table**: `gacha`, `gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`.
+
 ## POST /api/v1/gacha/{id}/draw
 
 뽑기 실행 (코인 소모 → 보상 지급). 아이템 뽑기와 캐릭터 뽑기가 같은 엔드포인트를 쓰며, `reward_type`으로 보상이 갈린다.
@@ -34,8 +49,14 @@
   - 갱신된 지갑 잔액은 **`wallets[]` 배열**로 COIN·DIAMOND 2건이 항상 포함된다(각 `currencyType`·`balance`).
 - **결과 개수**: `count=1`이면 `results` 1개, `count=6`이면 뽑은 순서대로 6개. 같은 5+1회 요청 안에서 먼저 획득한 보상이 다시 나오면 중복 전환으로 처리한다.
 - **추첨 방식**: `gacha_pool_entries.weight`는 사용하지 않는다(스키마 잔존 컬럼). 아이템 뽑기는 **rarity 티어 롤** — `random(100)`으로 등급을 먼저 정하고(일반 70% / 희귀 25% / 전설 5%) 그 등급 풀 안에서 균등 추첨한다. 해당 등급 풀이 비어 있으면 전체 활성 풀에서 균등 추첨(fallback). `rarity` 값은 한글 문자열 `일반`/`희귀`/`전설` 3종이며, rarity가 null인 엔트리는 `일반` 티어로 묶인다.
-- **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`. 운영 기간은 검사하지 않는다(위 참고). 차감·지급·환급은 단일 쓰기 트랜잭션.
+- **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 또는 운영 기간 밖 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`. 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
+
+### 캐릭터 악세사리 뽑기 (테마별 아이템 머신)
+
+- `items.placement_type = character`인 캐릭터 악세사리는 `rewardType = ITEM`으로 배출된다.
+- 풀 엔트리는 모두 `rarity = null`, `weight = 1`이며 활성 엔트리 전체를 균등 추첨한다. 응답에는 `weight`나 계산 확률을 포함하지 않는다.
+- 이미 보유한 악세사리는 다른 아이템 중복과 동일하게 **다이아 3 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 3`)으로 처리한다.
 
 ### 캐릭터 뽑기 (테마 무관 전용 머신)
 
@@ -45,7 +66,7 @@
 
 ## 미정 / 의존
 
-- 운영 기간(`starts_at`/`ends_at`) 검증·노출 도입 여부(현재 스키마만 존재, 미검사).
+- 운영 기간(`starts_at`/`ends_at`)은 목록 필터·보상 목록·draw에서 검사한다. 상세(GET /{id})는 기간 미검사·미노출 — 노출 도입 여부 미정.
 - 회수 캐릭터(`characters.is_active=false`) 배출 차단 — 현재 풀 필터는 엔트리 활성만 보고 보상 캐릭터 활성은 검사하지 않는다(회수 시 풀 엔트리를 함께 내리는 운영 절차 필요).
 - `reward_type = CURRENCY` 풀 엔트리는 서버가 풀에서 제외한다(미지원 — `currency_type`/`reward_amount` 컬럼은 잔존). 재화 보상 엔트리 도입 여부는 미정.
 - 지갑 차감·적립 API 형태는 재화 도메인 계약을 따른다(여기서 확정 안 함).
