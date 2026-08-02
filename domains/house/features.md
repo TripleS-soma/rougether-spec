@@ -2,7 +2,7 @@
 
 출처: [features.md](../../features.md) "집 (공동집)" 절을 본 도메인 범위로 발췌·구체화. 데이터는 [erd.md](../../erd.md)를 따른다.
 
-관련 table: `house`, `house_members`, `house_join_requests`, `house_goals`, `house_missions`, `house_mission_participants`, `room_guestbooks`.
+관련 table: `house`, `house_members`, `house_join_requests`, `house_goals`, `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`, `house_member_cheers`, `room_guestbooks`.
 
 ## 집 탐색 / 참여
 
