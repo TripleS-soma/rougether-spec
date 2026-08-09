@@ -30,7 +30,7 @@
   - `ITEM`의 렌더링·분류 정보는 `items` 원본 값을 그대로 내려준다. 캐릭터 악세사리는 `placementType=character`이며 `characterSlotType`으로 착용 위치를 구분하고, 별도 등급이 없으므로 `rarity=null`이다.
   - `CHARACTER`이면 아이템 분류·배치 필드(`categoryCode`, `placementType`, `surfaceSlotType`, `characterSlotType`)는 `null`이다.
   - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
-  - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려준다.
+  - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려주며, **보상 참조가 비활성이면 함께 제외한다** — `ITEM`은 `items.is_active`와 소속 테마 `themes.is_active`까지, `CHARACTER`는 `characters.is_active`를 검사한다. admin 카탈로그 사용/미사용 토글([shop/api.md](../shop/api.md) 어드민 섹션)이 별도 풀 조작 없이 다음 조회부터 반영된다.
   - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 계산 확률은 응답하지 않는다.
 - **검증/예외**: 없는 머신이면 `GACHA_NOT_FOUND`(404), `is_active=false`이거나 운영 기간 밖이면 `GACHA_INACTIVE`(409).
 - **관련 table**: `gacha`, `gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`.
@@ -48,7 +48,7 @@
   - 중복 전환이면 `refundCurrencyType`·`refundAmount`(아이템 중복=다이아 3, 캐릭터 중복=코인 100). `rewardType=CURRENCY`는 중복 전환 결과에만 쓰인다.
   - 갱신된 지갑 잔액은 **`wallets[]` 배열**로 COIN·DIAMOND 2건이 항상 포함된다(각 `currencyType`·`balance`).
 - **결과 개수**: `count=1`이면 `results` 1개, `count=6`이면 뽑은 순서대로 6개. 같은 5+1회 요청 안에서 먼저 획득한 보상이 다시 나오면 중복 전환으로 처리한다.
-- **추첨 방식**: `gacha_pool_entries.weight`는 사용하지 않는다(스키마 잔존 컬럼). 아이템 뽑기는 **rarity 티어 롤** — `random(100)`으로 등급을 먼저 정하고(일반 70% / 희귀 25% / 전설 5%) 그 등급 풀 안에서 균등 추첨한다. 해당 등급 풀이 비어 있으면 전체 활성 풀에서 균등 추첨(fallback). `rarity` 값은 한글 문자열 `일반`/`희귀`/`전설` 3종이며, rarity가 null인 엔트리는 `일반` 티어로 묶인다.
+- **추첨 방식**: `gacha_pool_entries.weight`는 사용하지 않는다(스키마 잔존 컬럼). 추첨 대상 풀은 보상 미리보기와 같은 필터를 쓴다 — 활성 엔트리 중 보상 참조가 활성인 것만(`ITEM`은 `items.is_active`+`themes.is_active`, `CHARACTER`는 `characters.is_active`). 아이템 뽑기는 **rarity 티어 롤** — `random(100)`으로 등급을 먼저 정하고(일반 70% / 희귀 25% / 전설 5%) 그 등급 풀 안에서 균등 추첨한다. 해당 등급 풀이 비어 있으면 전체 활성 풀에서 균등 추첨(fallback — 아이템 비활성화로 등급이 비어도 동일하게 적용되므로, 특정 등급을 전부 내리면 잔여 등급의 실효 배출률이 공시 확률과 달라질 수 있다. 재정규화 도입 여부는 미정 → open-questions). `rarity` 값은 한글 문자열 `일반`/`희귀`/`전설` 3종이며, rarity가 null인 엔트리는 `일반` 티어로 묶인다.
 - **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 또는 운영 기간 밖 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`. 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 
@@ -67,6 +67,7 @@
 ## 미정 / 의존
 
 - 운영 기간(`starts_at`/`ends_at`)은 목록 필터·보상 목록·draw에서 검사한다. 상세(GET /{id})는 기간 미검사·미노출 — 노출 도입 여부 미정.
-- 회수 캐릭터(`characters.is_active=false`) 배출 차단 — 현재 풀 필터는 엔트리 활성만 보고 보상 캐릭터 활성은 검사하지 않는다(회수 시 풀 엔트리를 함께 내리는 운영 절차 필요).
+- (해소) 회수 보상 배출 차단 — 풀 필터가 엔트리 활성에 더해 보상 참조 활성(`characters.is_active`, `items.is_active`+`themes.is_active`)을 코드에서 검사한다. 회수 시 풀 엔트리를 손대는 운영 절차는 불필요.
+- 아이템 비활성화로 특정 rarity 등급이 통째로 비었을 때의 확률 처리(현재 전체 풀 균등 fallback) — 재정규화·재롤 도입 여부 미정.
 - `reward_type = CURRENCY` 풀 엔트리는 서버가 풀에서 제외한다(미지원 — `currency_type`/`reward_amount` 컬럼은 잔존). 재화 보상 엔트리 도입 여부는 미정.
 - 지갑 차감·적립 API 형태는 재화 도메인 계약을 따른다(여기서 확정 안 함).
