@@ -154,6 +154,13 @@
 - 예외: 대상이 방 미생성(내 방 화면 미방문) `ROOM_NOT_FOUND`(404)
 - table: `house_members`, `personal_rooms`, `room_surface_slots`, `room_item_placements` (+ 방 도메인 의존)
 
+### POST /api/v1/houses/{houseId}/members/{membershipId}/room/cobweb/clean
+같은 집 구성원 방의 활성 거미줄을 청소한다. 요청자와 대상 모두 해당 집 ACTIVE 구성원이어야 하며 본인 방도 허용한다.
+- res: `roomUserId`, `cleanedAt`, `rewardCurrencyType`(`COIN`), `rewardAmount`(MVP 3), `balance`.
+- 처리: 최초 청소자에게만 코인 3개 지급. 타인 방 청소면 방 주인에게 `ROOM_COBWEB_CLEANED` 집 알림(제목 "방을 청소해줬어요", `refId`=방 주인 user id)을 저장하고 push한다. 청소자 닉네임이 없으면 "집 친구"로 표시한다.
+- 예외: 비구성원 `HOUSE_NOT_MEMBER`(403), 대상 무효 `HOUSE_MEMBER_NOT_FOUND`(404), 활성 거미줄 없음 `ROOM_COBWEB_NOT_ACTIVE`(409), 코인 지갑 없음 `ROOM_COBWEB_REWARD_WALLET_NOT_FOUND`(404).
+- table: `house_members`, `room_cobwebs`, `user_wallets`, `wallet_histories`, `notification`.
+
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/day
 구성원의 그날 현황(루틴 + 투두, 완료 여부 포함). 반복 대상·완료 판정은 `GET /api/v1/today`·캘린더와 동일 규칙.
 - query: `date?`(YYYY-MM-DD, 미지정 시 오늘 KST)
