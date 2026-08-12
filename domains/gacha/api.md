@@ -9,7 +9,8 @@
 운영 중인 뽑기 머신 목록 조회. 테마별 아이템 뽑기와 테마 무관 캐릭터 뽑기가 함께 내려간다.
 
 - **목적**: 머신·비용 노출. 필터는 **`is_active`만** — 운영 기간(`starts_at`/`ends_at`)은 스키마에만 있고 목록·draw 어디에서도 검사하지 않는다(기간 검증 도입은 미결).
-- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`(캐릭터 뽑기는 `null`), `costCurrencyType`, `costAmount`, `drawCount`, `active`. `startsAt`/`endsAt`/`coverImageKey`는 **응답에 없다**(기간은 미노출, 테마 커버는 테마 조회 쪽 계약).
+- **응답 핵심 필드**: `items[]` — `gachaId`, `code`, `name`, `themeId`(캐릭터 뽑기는 `null`), `costCurrencyType`, `costAmount`, `drawCount`, `active`, `giftBoxAssetKey`. `startsAt`/`endsAt`/`coverImageKey`는 **응답에 없다**(기간은 미노출, 테마 커버는 테마 조회 쪽 계약).
+- `giftBoxAssetKey`는 뽑기 연출용 선물상자의 전체 URL이 아닌 object key다. 프론트는 CDN base URL과 조합해 로드하며, 캐릭터 뽑기와 매핑되지 않은 테마에는 기본 선물상자 key가 내려간다.
 - **관련 table**: `gacha`.
 
 ## GET /api/v1/gacha/{id}
@@ -17,7 +18,7 @@
 단일 머신 상세 조회.
 
 - **목적**: 비용·구성 요약. 풀 확률 공개 여부 **미정**.
-- **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active` — 기간 미노출). 엔트리/확률 노출 여부 미정.
+- **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active`, `giftBoxAssetKey` — 기간 미노출). `giftBoxAssetKey` 사용 규칙은 목록 조회와 같다. 엔트리/확률 노출 여부 미정.
 - **관련 table**: `gacha`, `gacha_pool_entries`.
 
 ## GET /api/v1/gacha/{id}/rewards
