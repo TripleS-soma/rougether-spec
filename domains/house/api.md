@@ -51,10 +51,10 @@
 - 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(신청 버튼 비활성용), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
 - `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다. WEEKLY 진행 수치는 기여 누적 합, DAILY 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
 - `memberRooms[]`: 구성원 타일에 실제 방을 렌더하기 위한 데이터(서버 #177 확정). 가입순, ACTIVE 구성원만. 항목은 `membershipId`, `nickname`(온보딩 전 null), `room`(방 미생성 구성원은 null - 기본 방 타일로 표시)
-  - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순)
+  - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순), `cobweb?`(`assetKey`, `appearedAt`, `cleanable` - 활성 거미줄이 없으면 null)
   - **공개 범위(확정)**: 방 렌더 데이터(가구 배치·surface·착용 캐릭터·성장 레벨)는 미리보기를 통해 로그인 회원 전체에 공개된다(집 탐색 전체공개 정책과 일치, 방 내용물은 장식 데이터). 단 활동 정보(`streak`·`lastAccessedAt`·그날 현황·완료 내역·방명록)와 편집용 값(`layoutRevision`)·소유 리소스 식별자(`userItemId`)·배치 시각은 내려가지 않는다 — 이들은 기존대로 구성원 전용("구성원 방 방문 / 활동 열람" 계약은 불변)
 - 예외: 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
-- table: `house`, `house_members`(isMember 판정·memberRooms·DAILY 진행률 대상), `house_goals`, `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`, `personal_rooms`, `room_surface_slots`, `room_item_placements`, `user_characters` (+ 방·캐릭터 도메인 의존)
+- table: `house`, `house_members`(isMember 판정·memberRooms·DAILY 진행률 대상), `house_goals`, `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`, `personal_rooms`, `room_surface_slots`, `room_item_placements`, `room_cobwebs`, `user_characters` (+ 방·캐릭터 도메인 의존)
 
 ## 집 관리
 
