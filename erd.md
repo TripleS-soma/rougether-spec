@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **34 table**(`banned_words`·`user_invite_codes`·`invite_rewards` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **35 table**(`room_cobwebs` 포함 — ERDCloud 정본 반영 필요).
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -24,8 +24,8 @@
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 - **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
   - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
-  - `reason` 허용값 7종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
-  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM` + 해당 id). 가입 보너스·초대 보상은 원본 참조 없음(null).
+  - `reason` 허용값 8종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
+  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB` + 해당 id). 거미줄 청소는 방 주인 user id를 source id로 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
 - **user_invite_codes**: id* | user_id→users | invite_code VARCHAR | created_at | unique (user_id), unique (invite_code)
@@ -67,6 +67,8 @@
   - unique는 슬롯 upsert 정합의 최후 방어선. 해제는 null 대입이 아니라 row 삭제다(빈 슬롯 row 없음).
 - **room_item_placements**: id* | room_user_id→personal_rooms | user_item_id→user_items | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | z_index INT | scale DECIMAL(4,2) | rotation_deg INT | flipped BOOLEAN | updated_at TIMESTAMP | unique (room_user_id, user_item_id)
   - 자유배치 가구만 저장한다. surface 3종(벽지/바닥/배경)은 `room_surface_slots`를 계속 사용한다.
+- **room_cobwebs**: **room_user_id*** (PK이자 →personal_rooms, 1:1) | appeared_at TIMESTAMP | cleaned_at TIMESTAMP? | cleaned_by_user_id→users? | updated_at TIMESTAMP | index (cleaned_at)
+  - 방마다 행 1개를 재사용한다. `cleaned_at` null이면 활성 상태이고, 청소 시 시각·청소자를 기록한다. 다시 미접속 조건을 만족하면 같은 행을 새 회차로 재활성화한다.
 - **room_guestbooks**: id* | content VARCHAR(500) | created_at | deleted_at? | room_owner_id→users | house_id→house | author_id→users
 
 ### 상점 / 아이템 / 테마
@@ -92,6 +94,7 @@
 - **notification**: id* | user_id→users | type VARCHAR(30) | title VARCHAR(255) | body VARCHAR(1000) | ref_id BIGINT? | is_read BOOLEAN | push_status VARCHAR(20) | created_at
   - 알림 내역. `type`(`NotificationType`): `HOUSE_KICK`/`ROUTINE_REMINDER`/`TODO_REMINDER`/`FRIEND_CHEER`/`HOUSE_MISSION_ACHIEVED`/`HOUSE_MEMBER_JOINED`/`HOUSE_MEMBER_LEFT`. `ROUTINE_REMINDER`·`TODO_REMINDER` 발송은 공용 batch worker(`reminderJob`)로 구현됨(5분 주기 트리거, 루틴 적재 → 투두 적재 → 발송 순, 같은 분 재실행·당일 기발송 건은 중복 발송 방지로 스킵), `FRIEND_CHEER`는 응원 API가 진입점을 같은 트랜잭션에서 직접 호출, `HOUSE_MISSION_ACHIEVED`는 미션 기여 공용부(`HouseMissionService.recordContribution` — 기여 API·연동 루틴 자동 기여 양쪽)가 미션 행 락 트랜잭션 안에서 진입점을 직접 호출한다(WEEKLY 한정, 합산이 처음 목표치 도달하는 순간 1회, 집 활성 멤버 전원 대상, `ref_id` = missionId), `HOUSE_MEMBER_JOINED`/`HOUSE_MEMBER_LEFT`는 가입 확정·탈퇴 트랜잭션이 나머지 ACTIVE 멤버 전원에게 발송한다(`ref_id` = membershipId) — `HOUSE_KICK` 발송 트리거는 후속. `ref_id`는 발송 원인 리소스 ID(예: 루틴 리마인드면 routineId, 투두 리마인드면 todoId, 입주·퇴거면 membershipId)로 중복 발송 판정에 쓰이며 nullable. `push_status`(`PushStatus`: `PENDING`/`SENT`/`BLOCKED`/`FAILED`)는 FCM push 발송 결과를 추적한다 — 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 사용자가 `notification_setting`으로 해당 알림을 꺼서 발송하지 않으면 `BLOCKED`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`로 갱신한다. `BLOCKED`는 설정에 따른 정상 종결이라 발송 실패(`FAILED`)와 구분한다. `FAILED` 재시도는 없다. 목록 API 응답에는 노출하지 않는다. 발송은 공용 진입점 `NotificationService.send(userId, content[, refId])`(`content` = `NotificationContent`(type·title·body) 레코드, 문구는 `NotificationMessages` 팩토리 소유)가 담당하고, 알림 내역 저장(동기)과 FCM push(비동기, best-effort — 실패해도 내역은 남음)를 분리한다. FCM은 사용자 토큰 전체로 멀티캐스트 발송하고 `UNREGISTERED`/`INVALID_ARGUMENT` 응답 token은 `user_device_token`에서 삭제한다. firebase 서비스 계정 JSON은 환경변수/외부 경로로 주입(커밋 금지). 신규 엔드포인트 없음(내부 인프라).
 
+- `ROOM_COBWEB_CLEANED`는 같은 집 구성원이 거미줄을 청소했을 때 방 주인에게 저장·push하며 `ref_id`는 방 주인 user id다.
 - **notification_setting**: id* | user_id→users | type VARCHAR(30) | enabled BOOLEAN | created_at | updated_at
   - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`. **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
 
@@ -151,6 +154,8 @@ erDiagram
     user_items ||--o{ room_surface_slots : placed_as
     personal_rooms ||--o{ room_item_placements : has
     user_items ||--o{ room_item_placements : placed_as
+    personal_rooms ||--o| room_cobwebs : has
+    users ||--o{ room_cobwebs : cleans
     users ||--o{ room_guestbooks : writes
 
     themes ||--o{ items : contains
