@@ -4,7 +4,12 @@
 
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
-- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글(id token JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (미결) 애플 연동(구글과 동일 id token 방식 예정), 회원 탈퇴 시 oauth 연결 처리.
+- **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.
+- **탈퇴 후 개인정보 파기 정책**: (결정됨) 유예기간 없이 탈퇴 트랜잭션에서 즉시 익명화 — `users.email`·`nickname`·`bio`·`profile_image_key` null 처리 + 프로필 S3 원본 삭제(커밋 후 best-effort) + 루틴·투두·카테고리 연쇄 soft delete(완료 이력·스트릭·인증 사진은 보존). 잔여 access token 창에서는 내 정보 조회·수정·프로필 업로드를 401 차단 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영. 완료 이력·인증 사진의 완전 파기 여부는 집 통계 의존 확인 후 별도 결정.
+- **애플 로그인 authorizationCode 교환 실패 처리**: 애플 토큰 엔드포인트 교환이 실패했을 때 로그인 자체를 실패시킬지(fail-closed) 로그인은 허용하고 refresh token 저장만 포기할지(fail-open) 미정. (시크릿 미설정 환경은 fail-closed로 결정됨)
+- **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(100)을 provider 수만큼 받을 수 있다(친구 초대 redeem과 조합하면 더 커짐). 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인)
+- **dev-login 운영 차단**: `POST /api/v1/auth/dev-login`이 프로파일 가드 없이 모든 환경에서 열려 있다(임의 userId로 토큰 발급 가능). 운영 배포 전 프로파일 가드·설정 스위치 도입 필요. (서버)
+- **시각 직렬화 타임존**: 공통 규약은 "ISO-8601 + offset, Asia/Seoul 기준"인데 서버는 `Instant`를 UTC `Z`로 직렬화한다(`lastAccessedAt` 등). 규약을 UTC로 바꿀지 서버에 jackson 타임존을 넣을지 미정.
 
 ## 프로덕트 (PRD / 멘토 피드백)
 
@@ -14,11 +19,13 @@
 
 ## 정책 (기능명세 건의사항)
 
-- 루틴 삭제 시 수행 기록 **숨김 처리**의 통계 보존 정책 범위?
+- 루틴 삭제 시 수행 기록 **숨김 처리**의 통계 보존 정책 범위? (과거 캘린더가 로그 단독 소싱으로 바뀌어 삭제 루틴의 `FAILED` 로그 포함 여부도 이 논의에서 함께 결정)
+- **탈퇴 회원 알림 사본**: 타 회원의 알림 내역(`notification.title`/`body`)에 탈퇴자 닉네임이 발송 시점 텍스트 사본으로 남는다 — 탈퇴 시 익명화가 소급되지 않는데, 이대로 수용할지 파기(치환)할지 미정.
+- **알림 문구의 닉네임 null 폴백**: 응원(`FRIEND_CHEER`)·입주/퇴거 알림 본문이 닉네임을 그대로 연결해, 닉네임이 null(온보딩 전·탈퇴 익명화)이면 "null님"으로 표시된다. 폴백 문구("집 친구" 등) 도입 여부 미정. (서버)
 
 ## 루틴 / 투두
 
-- (착수 전 미결정 없음 — 코인 보상은 루틴 10 / 투두 5, 일일 지급 상한은 루틴+투두 합산 4건으로 결정, features/api 반영)
+- (착수 전 미결정 없음 — 코인 보상은 루틴 10 / 투두 10, 일일 지급 상한은 루틴+투두 합산 50코인으로 결정. 잔여가 정가보다 적으면 잔여만큼만 부분 지급, features/api 반영)
 - (결정됨) 과거 날짜 완료: 루틴·투두 모두 **과거 완료 허용, 미래 거부**. 코인·스트릭은 **당일 완료에만** 반영(과거 완료 소급 없음), features/api 반영
 - **`categories.visibility` 값 집합**: spec은 `PRIVATE`/`HOUSE` 2종, 서버 enum은 `FRIENDS`/`PUBLIC` 포함 4종 허용(집 멤버 활동 열람은 `HOUSE`/`PUBLIC`만 노출로 동작 중). 2종으로 좁힐지 4종으로 확정할지?
 
@@ -30,14 +37,22 @@
 
 ## 뽑기 / 재화
 
-- ~~중복 **아이템** → 다이아 전환 비율?~~ → **서버 실측: 다이아 3** (dev 서버 지갑 이력, 2026-08-13). 캐릭터 중복은 코인 환급이며 **금액은 미검증**(표본 없음, 종전 문서값 200).
-- `gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합? (캐릭터 뽑기는 균등이라 해당 없음, 아이템 뽑기만 미정)
-- 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (서버 실측: 아이템·악세사리 머신 전부 코인 25, 캐릭터 뽑기 코인 500)
+- ~~중복 **아이템** → 다이아 전환 비율?~~ → **확정: 다이아 3** (캐릭터 중복은 코인 100 환급). 환급값은 뽑기 단가에 연동한다 — 단가만 낮추면 중복 전환이 소모 비용을 넘어서 뽑기가 재화 환전 수단이 된다.
+- ~~`gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합?~~ → **확정(서버 구현)**: `weight` 미사용(잔존 컬럼). 아이템 뽑기는 rarity 티어 롤 — `일반` 70% / `희귀` 25% / `전설` 5%, 티어 내 균등. `rarity`는 한글 3종. → [gacha/api.md](domains/gacha/api.md) 반영.
+- 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 500으로 확정)
+- **admin 재화 지급의 원장 미기록**: 어드민 재화 지급 경로는 `wallet_histories`에 기록되지 않는다. 원장에 기록할지, 기록한다면 별도 `reason` 값을 추가할지? (재화 도메인)
+- ~~**뽑기 운영 기간 검증 도입**~~ → **구현됨**: 목록 필터·보상 목록·draw에서 `starts_at`/`ends_at`을 검사한다(기간 밖 `GACHA_INACTIVE`). 상세(GET /{id}) 응답의 기간 노출은 여전히 없음 — 노출 여부만 미정. (서버)
+- ~~**회수 캐릭터 배출 차단**~~ → **구현됨(코드 차단)**: 풀 필터가 엔트리 활성에 더해 보상 참조 활성(`characters.is_active`, `items.is_active`+`themes.is_active`)을 검사한다. admin 카탈로그 사용/미사용 토글로 회수하면 엔트리 조작 없이 추첨·미리보기에서 즉시 빠진다. → [gacha/api.md](domains/gacha/api.md) · [gacha/features.md](domains/gacha/features.md) · [shop/api.md](domains/shop/api.md) 반영.
+- **등급 공백 시 뽑기 확률 처리**: 아이템 비활성화(또는 미등록)로 특정 rarity 등급이 통째로 비면 현재는 전체 활성 풀 균등 fallback으로 추첨한다 — 잔여 등급의 실효 배출률이 공시 확률(70/25/5)과 달라질 수 있다. 잔여 등급으로 재정규화/재롤할지, fallback을 유지할지 미정. (서버)
 
 ### 확정됨
 
-- **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 환급**(금액 미검증). 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
+- **초기 재화**: 가입 시 지갑 발급 잔액 **코인 100·다이아 0**. 온보딩(튜토리얼)에서 가구 뽑기 단챠(코인 25) 1회를 소모시키고 75(단챠 3회분)를 남기는 값(멘토링 피드백 "처음 기본 재화 제공" 반영). → [shop/api.md](domains/shop/api.md) · [member/api.md](domains/member/api.md) 반영.
+- **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 100 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
+- **캐릭터 악세사리 뽑기**: `items.placement_type = character`, 직접 구매 불가, 풀 엔트리 `reward_type = ITEM`·`rarity = NULL`·`weight = 1`로 전체 균등 추첨. 중복은 다른 아이템과 동일하게 **다이아 3 환급**. → [shop/features.md](domains/shop/features.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
+- **탈퇴 회원 처리**(회원 도메인 dependency): (일부 결정됨) 탈퇴 시 집 정리는 확정 — 모든 ACTIVE 멤버십 LEFT + 정원 감소 + pending 입주 신청 철회, 소유 집은 가입일 최선임 ACTIVE 멤버에게 자동 승계(동률 시 membership id 오름차순), 남은 멤버 없으면 집 해체(soft delete) → [member/api.md](domains/member/api.md)·[house/api.md](domains/house/api.md) 반영. 미확정 잔여: 단체미션 `house_mission_participants` 정산·분모 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등 — 프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
+- **탈퇴 회원의 집 완료 내역 노출**(회원 도메인 dependency): 탈퇴 시 카테고리가 연쇄 soft delete되므로, 카테고리 visibility 기반의 집 멤버 완료 내역 조회에서 탈퇴자 이력이 빈 결과가 된다(`routine_logs` 자체는 보존되지만 노출 경로가 끊김). 이대로 수용할지, 집 통계·표시에서 별도 처리가 필요할지 미정.

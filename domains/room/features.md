@@ -1,25 +1,39 @@
 # 개인 방 기능 명세
 
-루틴 달성을 개인 방의 성장·꾸미기로 시각화하는 도메인. 소유 table은 `personal_rooms`, `room_surface_slots`. 스트릭 표시는 `streaks`를 읽기만 한다.
+루틴 달성을 개인 방의 성장·꾸미기로 시각화하는 도메인. 소유 table은 `personal_rooms`, `room_surface_slots`, `room_item_placements`. 스트릭 표시는 `streaks`를 읽기만 한다.
 
 > 소유권 식별자(`user_id` = `personal_rooms` PK, `room_user_id`)로 인증된 사용자의 권한을 확인한다. 이미지/에셋은 `*_key`로 참조한다.
 
 ## 개인 방 성장 현황
 
-- **방 레벨·성장 포인트 조회**: 현재 `growth_level`과 누적 성장 정도를 보여준다. 루틴 달성이 성장의 원천이다. (`personal_rooms`)
-- **레벨업 피드백**: 누적 성장이 임계치를 넘으면 `growth_level`이 오르고 시각 피드백을 노출한다. 성장 포인트 누적·환산 규칙은 루틴 도메인 의존 — **미정**. (`personal_rooms`)
+- **방 레벨 조회**: 현재 `growth_level`을 보여준다(항상 0에서 시작). **성장 포인트 컬럼·누적치는 없고, `growth_level`을 올리는 경로도 서버에 미구현**이다 — 레벨업 트리거·환산 규칙은 루틴 도메인 의존 **미정**. (`personal_rooms`)
+- **레벨업 피드백**: 레벨업 경로 구현 시 시각 피드백을 노출한다(위 미정에 종속). (`personal_rooms`)
+- **대표 캐릭터 착용 상태**: 방에 표시되는 대표 캐릭터와 그 캐릭터에 저장된 악세사리 `accessories[]`를 함께 반환한다. 내 방·친구 방·집 멤버 방/미리보기가 같은 캐릭터별 착용 상태를 사용한다. 적용·해제는 [상점/아이템 도메인](../shop/)이 담당한다.
 
 ## 아이템 배치
 
-- **방 슬롯 조회**: 방의 슬롯(`slot_type`)별로 현재 배치된 보유 아이템(`user_item_id`)을 보여준다. 빈 슬롯은 미배치로 표시. (`room_surface_slots`)
-- **아이템 배치·저장**: 인벤토리에서 아이템을 골라 특정 슬롯에 배치하고 저장한다. 같은 슬롯 재배치 시 기존 배치를 교체하고 `saved_at`을 갱신한다. (`room_surface_slots`, `user_items` 참조)
-- **배치 해제**: 슬롯에서 아이템을 제거해 빈 슬롯으로 되돌린다. (`room_surface_slots`)
-
-> `slot_type` enum 값 집합, 필수 슬롯, `wallpaper`/`floor`의 슬롯 여부는 **미정**. 슬롯에 넣을 수 있는 아이템(`items.surface_slot_type`) 검증은 상점/인벤토리 도메인 계약에 의존.
+- **배치 형식**: `personal_rooms.layout_format`이 방의 정본을 결정한다. `SLOT_V1`은 기존 `room_surface_slots`, `FREE_V1`은 positioned 가구에 `room_item_placements`를 사용한다. 기본값은 `SLOT_V1`이며 자유배치를 처음 저장한 방만 `FREE_V1`으로 지연 전환한다.
+- **surface 배치**: 벽지(`wallpaper`)·바닥(`floor`)·배경(`background`) 3종은 배치 형식과 무관하게 `room_surface_slots`에 저장한다.
+- **슬롯 배치 호환**: 기존 positioned 슬롯 8종(`topLeft`, `topCenter`, `topRight`, `midLeft`, `midRight`, `bottomLeft`, `bottomCenter`, `bottomRight`)을 유지한다. `FREE_V1` 전환 시 기존 positioned row를 삭제하지 않아 구버전 표시 fallback으로 남기되, 정본은 `layout_format`이 결정한다.
+- **최초 변환 fallback**: `items.default_slot`은 구버전 표시와 `SLOT_V1` 방을 새 앱에서 고정 좌표로 변환할 때 사용하므로 유지한다.
+- **새 가구 초기값**: `FREE_V1` 편집기에서 가구를 새로 추가할 때 `items.default_scale`과 nullable 쌍 `default_position_x`·`default_position_y`를 해당 배치에 복사한다. 기본 위치가 null 쌍이면 공유 Room renderer contract의 `newPlacementCenter`(현재 X `0.5`, Y `0.55`)를 사용한다. 좌표 anchor는 가구 중심이며 클라이언트가 현재 배율의 렌더 폭을 반영해 방 안으로 clamp한다. 카탈로그 기본값 변경은 기존 배치에 소급하지 않는다.
+- **가구 자유배치**: 가구별 `position_x`·`position_y`(방 렌더 영역 전체 기준 0.0~1.0), `z_index`, `scale`, `rotation_deg`, `flipped`를 저장한다. 캐릭터 자리와의 겹침을 포함해 서버는 겹침·충돌을 검증하지 않는다. (`room_item_placements`)
+- **보유·중복 규칙**: 호출자가 보유한 `user_item_id`만 배치할 수 있고, 같은 보유 아이템은 한 방에 한 번만 자유배치할 수 있다.
+- **동시 저장 보호**: `layout_revision`은 방 배치 저장이 성공할 때마다 증가한다. 자유배치 저장 요청의 `baseRevision`이 현재 값과 다르면 409로 거부해 다른 기기의 저장을 덮어쓰지 않는다.
+- **구버전 저장 가드**: `FREE_V1` 방에 기존 슬롯 저장 API로 positioned 슬롯을 하나라도 보내면 409 `ROOM_LAYOUT_FORMAT_CONFLICT`를 반환한다. surface 슬롯만 포함한 요청은 허용한다.
 
 ## 스트릭 표시
 
 - **스트릭 조회**: 현재 연속 성공일(`current_count`)과 최장 기록(`longest_count`)을 방 화면에 표시한다. 스트릭 갱신·보너스 산정은 루틴 도메인 담당이며 여기서는 읽기만 한다. (`streaks` 읽기 전용)
+
+## 장기 미접속 거미줄 (MVP)
+
+- **발생**: 매일 12:30 KST(서버 기동 시 누락 보정)에 개인 방이 있고 마지막 접속(`users.last_accessed_at`, 없으면 가입 시각)이 2일 전 이하인 방에 거미줄을 활성화한다.
+- **표시**: 내 방과 같은 집 ACTIVE 구성원 방 조회 응답의 nullable `cobweb`으로 내려주며, 집 구성원 타일과 실제 방 왼쪽 위 모서리에 표시한다. 한 번 발생한 거미줄은 방 주인이 복귀해도 청소 전까지 유지한다.
+- **청소·보상**: 방 주인 또는 같은 집 ACTIVE 구성원이 터치해 청소할 수 있다. 최초 성공 요청만 청소자에게 코인 3개를 지급하고 원장을 남기며, 행·지갑 비관적 락으로 동시 터치 이중 지급을 막는다.
+- **복귀 알림**: 다른 집 구성원이 청소하면 방 주인에게 `ROOM_COBWEB_CLEANED` 집 알림을 저장하고 push한다. 자기 방 청소에는 자기 알림을 보내지 않는다.
+- **재발생**: 청소 시각과 마지막 접속 중 더 늦은 시각부터 다시 2일이 지나고 여전히 미접속이면 같은 방의 거미줄이 새 회차로 재활성화된다.
+- table: `room_cobwebs`, `users`(접속 판정), `user_wallets`·`wallet_histories`(보상), `notification`(복귀 알림).
 
 ## 방 스냅샷 공유
 

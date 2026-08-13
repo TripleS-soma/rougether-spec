@@ -4,13 +4,15 @@
 
 ## 공통 규칙
 
-- prefix: `/api/v1`
+- 사용자 API(`user-api`) prefix: `/api/v1`
+- 관리자 API(`admin-api`) prefix: `/admin`. 사용자 JWT와 분리된 운영자 세션 인증을 사용하며, 브라우저의 상태 변경 요청은 CSRF 보호를 적용한다.
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
 - 타임존: 모든 날짜·당일/자정 판정은 **`Asia/Seoul`(KST, UTC+9)** 기준. 시각 저장도 KST로 통일한다 (`+9` 하드코딩 말고 `Asia/Seoul` 설정값으로).
 - 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.
 - 목록 응답은 `items` 배열로 감싼다.
 - 인증/인가는 **MVP에 포함**한다(멘토 결정). **소셜 로그인(카카오·구글·애플) + JWT** 기반. `me` path는 인증된 사용자를 가리키며, 소유권 식별자(`user_id`, `owner_user_id`, `house_id`, `room_user_id`, `membership_id`)로 권한(guard)을 실제 적용한다. 토큰/세션 상세는 [open-questions.md](open-questions.md).
 - 재화는 `user_wallets.currency_type`로 코인/다이아 구분. 보상 지급·차감은 쓰기 트랜잭션으로 묶는다.
+- **금칙어 차단**: 사용자 입력 텍스트(닉네임·bio·집 이름·방명록·미션 제목)는 금칙어 목록(`banned_words`, 어드민 관리)과 대조해 차단한다. 판정은 정규화(NFKC → 소문자화 → 한글/영문/숫자 외 제거) 후 부분 문자열 포함 매칭 — 특수문자 끼워넣기·전각문자 우회를 무력화한다. 위반 시 400이며 도메인별 에러코드(`*_BANNED`)를 쓰고, **어떤 단어가 걸렸는지는 응답에 노출하지 않는다**. 목록 반영은 user-api 캐시(TTL 5분) 기준 최대 5분 지연.
 
 ## 도메인 API 인덱스
 
@@ -23,6 +25,7 @@
 | 뽑기 | [domains/gacha/api.md](domains/gacha/api.md) |
 | 공동 집 | [domains/house/api.md](domains/house/api.md) |
 | 알림 | [domains/notification/api.md](domains/notification/api.md) |
+| 운영 지원 (버그 제보) | [domains/support/api.md](domains/support/api.md) |
 
 ## 에러 응답
 
@@ -58,4 +61,4 @@ validation 실패(400)는 `fieldErrors`를 포함한다:
 ## 응답 형태 / 페이지네이션
 
 - **envelope 미사용**: 성공 응답은 리소스를 바로 반환한다(`{ success, data }`로 감싸지 않음). 성공/실패는 HTTP status로 구분하고, 목록만 `items` 배열로 감싼다.
-- **페이지네이션(offset)**: 목록이 큰 도메인(상점 아이템·집 탐색)은 `?page=0&size=20`. 응답은 `{ items, page, size, totalElements }`. 목록이 작은 도메인은 생략. 무한스크롤 본격화 시 cursor 전환 검토.
+- **페이지네이션(offset)**: 목록이 큰 도메인(집 탐색)은 `?page=0&size=20`. 응답은 `{ items, page, size, totalElements }`. 목록이 작은 도메인은 생략 — 상점 아이템 목록도 현재 페이지네이션 없이 평면 `items` 반환. 무한스크롤 본격화 시 cursor 전환 검토.
