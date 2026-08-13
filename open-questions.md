@@ -42,7 +42,8 @@
 - 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 500으로 확정)
 - **admin 재화 지급의 원장 미기록**: 어드민 재화 지급 경로는 `wallet_histories`에 기록되지 않는다. 원장에 기록할지, 기록한다면 별도 `reason` 값을 추가할지? (재화 도메인)
 - ~~**뽑기 운영 기간 검증 도입**~~ → **구현됨**: 목록 필터·보상 목록·draw에서 `starts_at`/`ends_at`을 검사한다(기간 밖 `GACHA_INACTIVE`). 상세(GET /{id}) 응답의 기간 노출은 여전히 없음 — 노출 여부만 미정. (서버)
-- **회수 캐릭터 배출 차단**: 풀 필터가 엔트리 활성만 검사해 `characters.is_active=false` 캐릭터도 엔트리가 살아 있으면 배출된다. 코드 차단을 넣을지, 회수 시 엔트리 동시 비활성화 운영 절차로 갈지 미정. (서버)
+- ~~**회수 캐릭터 배출 차단**~~ → **구현됨(코드 차단)**: 풀 필터가 엔트리 활성에 더해 보상 참조 활성(`characters.is_active`, `items.is_active`+`themes.is_active`)을 검사한다. admin 카탈로그 사용/미사용 토글로 회수하면 엔트리 조작 없이 추첨·미리보기에서 즉시 빠진다. → [gacha/api.md](domains/gacha/api.md) · [gacha/features.md](domains/gacha/features.md) · [shop/api.md](domains/shop/api.md) 반영.
+- **등급 공백 시 뽑기 확률 처리**: 아이템 비활성화(또는 미등록)로 특정 rarity 등급이 통째로 비면 현재는 전체 활성 풀 균등 fallback으로 추첨한다 — 잔여 등급의 실효 배출률이 공시 확률(70/25/5)과 달라질 수 있다. 잔여 등급으로 재정규화/재롤할지, fallback을 유지할지 미정. (서버)
 
 ### 확정됨
 

@@ -91,6 +91,23 @@
 - 반영: 저장 이후 사용자 API가 반환하는 `renderProfiles[]`에 즉시 같은 값이 사용된다. 이미 착용 중인 악세사리도 별도 재착용 없이 다음 조회부터 변경된 합성 값을 사용한다.
 - 주요 오류: 없는 프로필 `CHARACTER_ACCESSORY_RENDER_PROFILE_NOT_FOUND`(404), 범위 위반·필수값 누락 `CHARACTER_ACCESSORY_RENDER_PROFILE_INVALID`(400).
 
+## 어드민: 카탈로그 사용/미사용 토글
+
+`admin-api`의 세션 인증을 사용한다. 카탈로그 적재(import)는 insert-only이므로, 이미 등록된 아이템·캐릭터의 노출 제어는 이 토글이 담당한다. 상점·캐릭터 목록·뽑기(추첨/보상 미리보기)가 전부 조회 시점에 `is_active`를 거르므로 토글은 배포 없이 다음 요청부터 반영된다.
+
+### GET /admin/catalog/items · GET /admin/catalog/characters
+
+- 응답: `items[]` — 아이템은 `{ id, name, assetKey, themeCode, themeName, themeActive, categoryCode, placementType, purchaseCurrencyType?, priceAmount?, limited, active }`, 캐릭터는 `{ id, code, name, baseAssetKey, sortOrder, active }`. 비활성 행도 포함한다(관리 화면용).
+- `themeActive`: 아이템이 활성이어도 테마가 비활성이면 상점·뽑기에 노출되지 않으므로 화면 경고용으로 내려준다.
+
+### PUT /admin/catalog/items/{id}/active · PUT /admin/catalog/characters/{id}/active
+
+- 요청 body: `{ active }`(boolean, 필수). 응답은 갱신된 행 1건(목록 원소와 동일 형태).
+- 활성화 시 S3 에셋 존재를 검증한다 — 아이템은 `assetKey`, 캐릭터는 `baseAssetKey`와 code 파생 애니메이션 3종(`characters/{code}/animations/{idle|pose-cycle|wave}.webp`)까지. 하나라도 없으면 400 `CATALOG_ACTIVATION_INVALID`(누락 key 목록 포함) — 애니메이션 key는 DB에 저장하지 않는 파생 계약이라 활성화 시점에 막지 않으면 프론트에서 조용히 404가 난다. 비활성화는 검증 없이 즉시 반영.
+- 주요 오류: 대상 없음 `CATALOG_TARGET_NOT_FOUND`(404), 검증 실패 `CATALOG_ACTIVATION_INVALID`(400).
+- 연관 규칙: 등록된 캐릭터(활성 여부 무관)의 파생 애니메이션 key는 어드민 에셋 삭제 API(`DELETE /admin/assets`)가 409로 거부한다 — `base_asset_key` 참조 차단과 같은 기준.
+- 이미 보유한 자산은 영향 없다 — 비활성 아이템도 보유분·방 배치는 유지되고, 재구매·뽑기 배출만 막힌다.
+
 ## POST /api/v1/items/{id}/purchase
 
 아이템 구매. 잔액 차감 + 보유 추가를 한 트랜잭션으로 처리. 차감 통화는 다이아 고정이 아니라 **아이템의 `purchase_currency_type`을 따른다**(현재 카탈로그는 전부 DIAMOND이지만 계약상 범용).

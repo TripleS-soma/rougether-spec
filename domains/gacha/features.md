@@ -21,8 +21,8 @@
 - **뽑기 실행**: 머신 선택 → 단챠 또는 5+1회 선택 → 코인 차감 → 요청 횟수만큼 풀에서 추첨. (`gacha`, `gacha_pool_entries`)
   - 단챠는 `count=1`로 `cost_amount`를 차감하고 결과 1개를 지급한다.
   - 5+1회는 `count=6`으로 단챠 5회분(`cost_amount × 5`)을 차감하고 결과 6개를 지급한다.
-  - 추첨은 활성 엔트리(`gacha_pool_entries.is_active`)를 **rarity 티어 롤**로 뽑는다 — 일반 70% / 희귀 25% / 전설 5%로 등급을 먼저 정하고 등급 풀 안에서 균등, 빈 등급이면 전체 활성 풀 균등(fallback). `weight` 컬럼은 사용하지 않는다(잔존). `rarity`는 한글 `일반`/`희귀`/`전설` 3종, null이면 `일반` 취급.
-  - 회수(`characters.is_active=false`)된 캐릭터 배출 차단은 **미구현** — 풀 필터가 엔트리 활성만 검사하므로, 캐릭터 회수 시 해당 풀 엔트리를 함께 비활성 처리하는 운영 절차가 필요하다(코드 차단 도입은 미정).
+  - 추첨은 활성 엔트리(`gacha_pool_entries.is_active`) 중 **보상 참조가 활성인 것만**(`ITEM`은 `items.is_active`+`themes.is_active`, `CHARACTER`는 `characters.is_active`) **rarity 티어 롤**로 뽑는다 — 일반 70% / 희귀 25% / 전설 5%로 등급을 먼저 정하고 등급 풀 안에서 균등, 빈 등급이면 전체 활성 풀 균등(fallback). `weight` 컬럼은 사용하지 않는다(잔존). `rarity`는 한글 `일반`/`희귀`/`전설` 3종, null이면 `일반` 취급.
+  - 회수된 보상 배출 차단은 풀 필터가 코드에서 보장한다 — 캐릭터·아이템·테마를 admin에서 비활성화하면 풀 엔트리를 손대지 않아도 추첨·미리보기에서 즉시 빠진다. 이미 지급된 보유분은 회수하지 않는다.
   - `reward_type`으로 아이템 보상(`item_id`→`items`) / 캐릭터 보상(`character_id`→`characters`) / 재화 보상(`currency_type`·`reward_amount`) 구분.
 - **비용 검증·차감**: 보유 코인이 선택한 옵션의 비용(단챠 `cost_amount`, 5+1회 `cost_amount × 5`)보다 적으면 실행 불가(예외). 차감과 보상 지급은 하나의 쓰기 트랜잭션. (`user_wallets` — 의존)
 - **활성 검증**: `is_active`가 false면 실행 거부(409 `GACHA_INACTIVE`). 운영 기간은 검사하지 않는다(도입 미정).
