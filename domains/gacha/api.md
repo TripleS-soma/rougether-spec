@@ -62,7 +62,7 @@
 ### 캐릭터 뽑기 (테마 무관 전용 머신)
 
 - 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, `costAmount = 500`.
-- 풀은 캐릭터 6개 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 100 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 100`). 균등은 별도 분기가 아니라 **캐릭터 엔트리의 rarity가 전부 null이라는 데이터 전제**에서 성립한다(전부 `일반` 티어로 묶여 티어 내 균등 추첨) — 캐릭터 엔트리에 rarity를 채우면 균등이 깨지므로 운영 데이터 규칙으로 유지한다. 캐릭터 수 6개도 코드가 강제하지 않는다.
+- 풀은 캐릭터 **8개** 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 100 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 100`). 균등은 별도 분기가 아니라 **캐릭터 엔트리의 rarity가 전부 null이라는 데이터 전제**에서 성립한다(전부 `일반` 티어로 묶여 티어 내 균등 추첨) — 캐릭터 엔트리에 rarity를 채우면 균등이 깨지므로 운영 데이터 규칙으로 유지한다. 캐릭터 수도 코드가 강제하지 않는다 — 2026-08-13 dev 서버 실측 기준 마스터 `GET /characters` 8종, 풀 `GET /gacha/12/rewards` 8엔트리(모두 `rarity = null`).
 - 신규 캐릭터는 `user_characters`로 지급되고 응답에 `characterId`·`assetKey`가 포함된다.
 
 ## 미정 / 의존
