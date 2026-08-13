@@ -24,20 +24,23 @@
 
 뽑기 실행 (코인 소모 → 보상 지급). 아이템 뽑기와 캐릭터 뽑기가 같은 엔드포인트를 쓰며, `reward_type`으로 보상이 갈린다.
 
-- **목적**: 코인 `cost_amount` 차감 → `draw_count` 추첨 → 아이템/캐릭터/재화 지급. **중복 아이템은 다이아 30 전환, 중복 캐릭터는 코인 200 환급**. 가구(테마) 뽑기 단가 250(10연 = 단가 x5 = 1250), 캐릭터 뽑기 단가 1000.
+- **목적**: 코인 `cost_amount` 차감 → `draw_count` 추첨 → 아이템/캐릭터/재화 지급. **중복 아이템은 다이아 3 전환**, 중복 캐릭터는 코인 환급(금액 미검증 — 아래 캐릭터 뽑기 절 참고).
+- **단가(서버 실측)**: 테마 아이템·악세사리 머신 전부 **코인 25 / `drawCount` 1**, 캐릭터 머신 **코인 500**. (dev 서버 실측 2026-08-13 — `GET /api/v1/gacha`)
+  - 다회 뽑기는 `POST /gacha/{id}/draw`의 `count`로 요청한다. 앱은 단챠(`count=1`)와 보너스 뽑기(`count=6` = 5+1회, 표시 비용 = 단가 x5 = 125)를 쓴다 — **x5 배수의 서버 청구 규칙은 미검증**(클라이언트 표기 기준).
 - **요청 핵심 필드**: (path `id`) 머신 식별. 본문은 인증된 사용자(`me`) 기준 — 소유권 식별자 `userId`로 guard 적용. 추가 옵션 **미정**(예: 연속 뽑기 수).
 - **응답 핵심 필드**: `results[]` — 각 추첨에 대해 `rewardType`(`ITEM`/`CHARACTER`/`CURRENCY`), `rarity`, `converted`(중복 여부).
   - 아이템 보상이면 `itemId`·`assetKey`.
   - **캐릭터 보상이면 `characterId`·`assetKey`**(`characters.base_asset_key`)·`name`. 중복이면 `converted=true`로 캐릭터 대신 코인 환급(`refundAmount`).
-  - 재화/환급이면 `currencyType`·`refundAmount`(아이템 중복=다이아, 캐릭터 중복=코인 200).
+  - 재화/환급이면 `currencyType`·`refundAmount`(아이템 중복=**다이아 3**, 캐릭터 중복=코인).
   - 갱신된 지갑 잔액(`wallet`: `currencyType`·`balance`) 포함.
 - **검증/예외**: 보유 코인 부족, `is_active=false`, 운영 기간 밖 → 거부. 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 
 ### 캐릭터 뽑기 (테마 무관 전용 머신)
 
-- 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, `costAmount = 1000`.
-- 풀은 캐릭터 6개 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 200 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount = 200`).
+- 캐릭터 뽑기 머신은 `themeId = null`, `costCurrencyType = COIN`, **`costAmount = 500`**.
+- 풀은 캐릭터 **8개**(서버 `GET /characters` 기준: bear·otter·sheep·horse·panda·cat·dog·tiger) 전체를 **균등 추첨**하고, 이미 보유한 캐릭터가 나오면 지급 대신 **코인 환급**(`rewardType = CURRENCY`, `converted = true`, `refundAmount`).
+  - 환급액은 **미검증** — 실서버 지갑 이력에 캐릭터 중복 표본이 없다(확인하려면 캐릭터 뽑기를 실제로 돌려야 한다). 종전 문서값은 200이었다.
 - 신규 캐릭터는 `user_characters`로 지급되고 응답에 `characterId`·`assetKey`가 포함된다.
 
 ## 미정 / 의존

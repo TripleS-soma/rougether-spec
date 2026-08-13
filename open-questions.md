@@ -30,13 +30,13 @@
 
 ## 뽑기 / 재화
 
-- ~~중복 **아이템** → 다이아 전환 비율?~~ → **확정: 다이아 30** (캐릭터 중복은 코인 200 환급).
+- ~~중복 **아이템** → 다이아 전환 비율?~~ → **서버 실측: 다이아 3** (dev 서버 지갑 이력, 2026-08-13). 캐릭터 중복은 코인 환급이며 **금액은 미검증**(표본 없음, 종전 문서값 200).
 - `gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합? (캐릭터 뽑기는 균등이라 해당 없음, 아이템 뽑기만 미정)
-- 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 1000으로 확정)
+- 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (서버 실측: 아이템·악세사리 머신 전부 코인 25, 캐릭터 뽑기 코인 500)
 
 ### 확정됨
 
-- **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 1000**, 6개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 200 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
+- **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 환급**(금액 미검증). 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 
 ## 집
 

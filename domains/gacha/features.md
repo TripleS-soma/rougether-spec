@@ -28,9 +28,9 @@
 온보딩 기본 캐릭터 외 나머지 캐릭터를 획득하는 전용 머신이다. 테마별 아이템 뽑기와 별개의 흐름을 쓴다.
 
 - **전용 머신**: 캐릭터 뽑기는 **테마 무관 머신 1개**로 운영한다(`gacha.theme_id`는 NULL). 풀 엔트리는 모두 `reward_type = CHARACTER`이며 `character_id`→`characters`를 가리킨다. (`gacha`, `gacha_pool_entries`)
-- **비용**: **코인 1000**(`cost_currency_type = COIN`, `cost_amount = 1000`). 보유 코인이 부족하면 실행 거부.
-- **추첨**: 캐릭터 **6개 전체를 균등 추첨**한다(캐릭터 엔트리는 등급/`weight` 차등 없이 동일 확률). 온보딩 기본 캐릭터도 풀에 포함된다.
-- **중복 시 코인 환급**: 이미 보유한 캐릭터(`user_characters` 보유)가 나오면 지급 대신 **코인 200을 환급**한다. 신규 캐릭터는 `user_characters`로 지급하고 `acquired_at`을 기록한다. (`user_characters`, `user_wallets` — 의존)
+- **비용**: **코인 500**(`cost_currency_type = COIN`, `cost_amount = 500`). 보유 코인이 부족하면 실행 거부.
+- **추첨**: 캐릭터 **8개 전체를 균등 추첨**한다(캐릭터 엔트리는 등급/`weight` 차등 없이 동일 확률). 온보딩 기본 캐릭터도 풀에 포함된다.
+- **중복 시 코인 환급**: 이미 보유한 캐릭터(`user_characters` 보유)가 나오면 지급 대신 **코인을 환급**한다(금액 미검증 — 종전 문서값 200). 신규 캐릭터는 `user_characters`로 지급하고 `acquired_at`을 기록한다. (`user_characters`, `user_wallets` — 의존)
   - 캐릭터 중복 환급은 **다이아가 아니라 코인**으로 돌려준다(아이템 뽑기의 다이아 전환과 다름).
 
 ## 뽑기 결과 확인
@@ -40,7 +40,7 @@
 - **결과 표시**: 이번 실행으로 획득한 아이템/다이아 목록. 아이템은 `items.asset_key`, 이름·rarity 표시. (`gacha_pool_entries`, `items`)
 - **아이템 지급**: 미보유 아이템은 `user_items`로 인벤토리에 추가. (`user_items` — 의존)
 - **중복 → 다이아 전환**: 사용자가 **이미 보유한 아이템**(`user_items` 보유)이 나오면 아이템 대신 다이아로 전환해 지갑에 적립. (`gacha_pool_entries`, `user_items`, `user_wallets` — 의존)
-  - 전환 비율: **미정** → [open-questions.md](../../open-questions.md).
+  - 전환량: **다이아 3**(고정 — dev 서버 지갑 이력 `GET /api/v1/me/wallets/histories` 실측 2026-08-13).
 
 ## 관련 table 요약
 

@@ -54,7 +54,7 @@
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
   - `theme_id`는 **NULL 허용**: 아이템 뽑기는 테마별, **캐릭터 뽑기는 테마 무관(NULL)**.
 - **gacha_pool_entries**: id* | gacha_id→gacha | reward_type VARCHAR(30) | item_id→items? | character_id→characters? | currency_type VARCHAR(30)? | reward_amount INT? | rarity VARCHAR(30)? | weight INT | is_active BOOLEAN
-  - `reward_type`로 아이템(`ITEM`) / 캐릭터(`CHARACTER`) / 재화(`CURRENCY`) 보상을 구분. 중복 아이템은 다이아로 전환, **중복 캐릭터는 코인 200 환급**.
+  - `reward_type`로 아이템(`ITEM`) / 캐릭터(`CHARACTER`) / 재화(`CURRENCY`) 보상을 구분. 중복 아이템은 **다이아 3**으로 전환, 중복 캐릭터는 **코인 환급**(금액 미검증).
 
 ### 알림
 - **user_device_token**: id* | user_id→users | token VARCHAR(255) UNIQUE | platform VARCHAR(20) | created_at | updated_at
@@ -127,6 +127,6 @@ erDiagram
 - 개인 방: `personal_rooms`는 `user_id`를 PK로 쓰는 users와 1:1.
 - 방 배치(`room_surface_slots`)는 에셋이 아니라 보유 아이템(`user_items`)을 참조.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
-- **캐릭터 획득**: 온보딩에서 6개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 1000, 6개 균등, 중복 시 코인 200 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
+- **캐릭터 획득**: 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 **코인 500**, 8개 균등, 중복 시 코인 환급(금액 미검증). → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.
