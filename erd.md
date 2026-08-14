@@ -101,7 +101,8 @@
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
-- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP?
+- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | sort_order INT?
+  - `sort_order`는 **집 탭에서 내 집이 보이는 순서**다. 멤버십 행에 두므로 사용자별 개인 설정이며 같은 집의 다른 구성원에게 영향을 주지 않는다. 0부터 오름차순. NULL은 "아직 정렬한 적 없음"이라 뒤로 밀리고 그 안에서는 `joined_at` 오름차순 — 새로 가입한 집이 기존 순서를 흐트러뜨리지 않고 끝에 붙는다.
 - **house_join_requests**: id* | house_id→house | user_id→users | status VARCHAR(30)(PENDING/ACCEPTED/REJECTED) | requested_at | processed_at?
   - 탐색 입주 신청 이력. `UNIQUE(house_id, user_id)`로 중복 행을 막고, 거절 뒤 재신청은 기존 행을 PENDING으로 되돌린다. 초대코드 즉시가입 또는 방장 수락 시 ACCEPTED, 방장 거절 시 REJECTED로 종결한다.
 - **house_member_cheers**: id* | house_id→house | sender_user_id→users | target_user_id→users | cheer_type VARCHAR(20) | cheer_date DATE | daily_seq INT | created_at | unique (sender_user_id, target_user_id, cheer_type, cheer_date, daily_seq)
@@ -195,7 +196,7 @@ erDiagram
 - 방 자유배치는 `room_item_placements`에 보유 아이템과 정규화 좌표·z-index·scale·rotation·flip을 저장한다. 같은 보유 아이템은 한 방에 한 번만 배치할 수 있다.
 - 배치 정본은 `personal_rooms.layout_format`이 결정한다. `SLOT_V1` 방만 자유배치 첫 저장 시 `FREE_V1`으로 지연 전환하며, surface 3종은 형식과 무관하게 `room_surface_slots`에 남는다.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
-- **캐릭터 획득**: 온보딩에서 6개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 6개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
+- **캐릭터 획득**: 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 8개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
 - **캐릭터 악세사리 획득**: `items.placement_type = character`인 아이템은 직접 구매하지 않고 테마별 뽑기에서 `reward_type = ITEM`으로 획득한다. 풀 엔트리는 `rarity = NULL`, `weight = 1`로 균등 추첨하며 중복 시 다른 아이템과 동일하게 다이아 3을 환급한다.
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.
