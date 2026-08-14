@@ -101,7 +101,8 @@
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
-- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP?
+- **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | sort_order INT?
+  - `sort_order`는 **집 탭에서 내 집이 보이는 순서**다. 멤버십 행에 두므로 사용자별 개인 설정이며 같은 집의 다른 구성원에게 영향을 주지 않는다. 0부터 오름차순. NULL은 "아직 정렬한 적 없음"이라 뒤로 밀리고 그 안에서는 `joined_at` 오름차순 — 새로 가입한 집이 기존 순서를 흐트러뜨리지 않고 끝에 붙는다.
 - **house_join_requests**: id* | house_id→house | user_id→users | status VARCHAR(30)(PENDING/ACCEPTED/REJECTED) | requested_at | processed_at?
   - 탐색 입주 신청 이력. `UNIQUE(house_id, user_id)`로 중복 행을 막고, 거절 뒤 재신청은 기존 행을 PENDING으로 되돌린다. 초대코드 즉시가입 또는 방장 수락 시 ACCEPTED, 방장 거절 시 REJECTED로 종결한다.
 - **house_member_cheers**: id* | house_id→house | sender_user_id→users | target_user_id→users | cheer_type VARCHAR(20) | cheer_date DATE | daily_seq INT | created_at | unique (sender_user_id, target_user_id, cheer_type, cheer_date, daily_seq)

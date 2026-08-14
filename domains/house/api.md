@@ -14,10 +14,22 @@
 - table: `house`, `house_goals`
 
 ### GET /api/v1/me/houses
-내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 먼저 가입한 집 먼저, 페이지네이션 없음(다중 가입 소수 전제).
+내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 페이지네이션 없음(다중 가입 소수 전제).
 - res: `{ items }` / items[]: `houseId`, `name`, `coverImageKey`, `level`, `currentMemberCount`, `maxMembers`, `myRole`, `joinedAt`
+- **정렬**: `house_members.sort_order` 오름차순, NULL은 뒤로(그 안에서는 `joined_at` 오름차순). 사용자가 순서를 지정한 적 없으면 전부 NULL이라 종전과 같은 "먼저 가입한 집 먼저"가 된다. 새로 가입한 집은 `sort_order=NULL`이라 끝에 붙어 기존 순서를 흐트러뜨리지 않는다.
 - 삭제된 집(`deleted_at`)·탈퇴(left) membership 은 제외
 - table: `house_members`, `house`
+
+### PUT /api/v1/me/houses/order
+집 탭에서 **내 집이 보이는 순서**를 저장한다 (모바일 #820). 멤버십에 저장하는 개인 설정이라 같은 집의 다른 구성원에게는 아무 영향이 없다.
+- req: `houseIds`(number[]) — 원하는 순서대로 나열한, **내가 active 구성원인 집의 전체 목록**
+- res: `{ items }` — `GET /me/houses`와 동일한 형태·동일한 순서(클라이언트가 재조회 없이 그대로 반영)
+- 저장: 배열 index를 `house_members.sort_order`에 0부터 기록
+- **전량 전송 계약**: 부분 목록을 허용하지 않는다. 빠진 집을 서버가 임의 위치로 밀어 넣으면 사용자가 지정하지 않은 순서가 조용히 생긴다.
+- 예외:
+  - 중복 id·내가 구성원이 아닌 집 id 포함 → `HOUSE_ORDER_INVALID`(400)
+  - 내 active 집 집합과 불일치(다른 기기에서 가입·탈퇴가 일어난 경우) → `HOUSE_ORDER_STALE`(409). 클라이언트는 `GET /me/houses`로 다시 받아 편집을 재시작한다.
+- table: `house_members`
 
 ### POST /api/v1/houses/{houseId}/join-requests
 탐색 결과에서 선택한 집에 **입주 신청**한다. 신청만으로 구성원이 되지 않으며 `house.current_member_count`도 바뀌지 않는다. 같은 집에서 거절된 신청은 동일 행을 `PENDING`으로 되돌려 재신청한다.
