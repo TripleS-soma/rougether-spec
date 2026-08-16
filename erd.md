@@ -57,7 +57,10 @@
   - `status`(`RoutineLogStatus`): `PENDING`/`COMPLETED`/`FAILED` — enum 3종이나 `PENDING`을 쓰는 경로는 현재 없다(미사용 잠정값 `MISSED`는 제거). `FAILED`는 day-end 배치가 기록하는 미수행 로그 — `completed_at` null, 보상 0. 늦은(과거) 완료 시 `FAILED` row는 `COMPLETED`로 전이(UPDATE)되고, 과거 수행 대상 완료를 취소하면 다시 `FAILED`로 복원된다(당일·유효기간 밖 완료의 취소는 hard delete). 과거 캘린더는 그제(D-2) 이전 날짜에서 이 로그를 단독 소싱한다(어제는 그날 유효 버전 재계산 + `COMPLETED` 병합 — routine-todo api.md 캘린더 참고). unique(`routine_id`, `routine_date`)가 같은 날짜 중복 로그를 막는다(배치 멱등성의 기반).
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
   - `privacy_scope`: `categories.visibility`와 같은 값 집합(`PRIVATE`/`FRIENDS`/`HOUSE`/`PUBLIC`). 단, 사진 인증 API는 현재 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중(컬럼은 스키마상 유지). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(enum `PENDING`/`APPROVED`/`REJECTED`, DDL 기본값 `PENDING`, 쓰기 경로 미구현·미노출).
-- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
+- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at? | external_source VARCHAR(30)? | external_id VARCHAR(255)? | unique (user_id, external_source, external_id)
+  - `external_source`/`external_id`는 **기기 캘린더에서 가져온 일정**의 원본 참조(모바일 #844). `external_source`는 `GOOGLE_CALENDAR` 등 출처, `external_id`는 그 캘린더의 이벤트 id다. **중복 임포트를 막는 유일한 근거**이며 unique가 그 방어선이다 — 동기화는 반복 실행되므로 이 값이 없으면 같은 일정이 실행할 때마다 복제된다.
+  - 사용자 단위 "연동함" 플래그로는 중복을 막을 수 없다. 어느 이벤트를 이미 가져왔는지는 **항목마다** 알아야 한다.
+  - 임포트로 만들어진 뒤에는 **일반 투두와 완전히 동일하게 취급**한다 — 사용자가 카테고리를 옮기고, 제목을 고치고, 지울 수 있다. 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 
 ### 방 (개인)
