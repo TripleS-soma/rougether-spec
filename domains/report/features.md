@@ -24,7 +24,7 @@
 - **LLM 출력 스키마**: `{ "summary": string(≤300자), "highlights": string[≤3], "failurePatterns": string[≤3], "suggestions": string[≤3] }`. `summary`가 없으면 스키마 위반으로 보고, 길이·개수 초과는 잘라서 수용한다(모델이 제한을 어겨도 회고를 살린다). 코드펜스·앞뒤 잡음은 벗겨내고 파싱한다.
 - **저장**: `status = GENERATED`, `model` = 사용한 모델 id, `summary`, `sections_json` = `{ highlights, failurePatterns, suggestions }`, `stats_json`, `generated_at`.
 - **실패 처리(`FALLBACK`)**: 파싱/스키마 위반 시 1회 재요청. 재실패·HTTP 오류·타임아웃이면 `status = FALLBACK`으로 저장한다 — `stats_json`은 그대로, `summary`는 서버 고정 문구 `"이번 주 루틴 {scheduledCount}회 중 {completedCount}회를 완료했어요."`, `sections_json`의 세 배열은 빈 배열, `model`은 null. **재생성은 없다**(허용 여부 미정 — open-questions).
-- **LLM 연동**: OpenAI 호환 chat completions API를 쓴다(현재 NVIDIA NIM). 모델·타임아웃·temperature는 서버 설정값이라 코드 변경 없이 교체 가능. 무료 티어 RPM을 고려해 사용자를 **순차 처리**하고 429/5xx는 지수 백오프로 2회 재시도한다. **API 키가 주입되지 않은 환경(stub)에서는 회고를 생성하지 않는다**(가짜 회고가 재생성 불가한 정본으로 남지 않게 fail-closed).
+- **LLM 연동**: OpenAI 호환 chat completions API를 쓴다(현재 OpenAI, 기본 모델 `gpt-4.1-mini`, JSON mode 사용). base-url·모델·타임아웃·temperature는 서버 설정값이라 코드 변경 없이 다른 호환 공급자로 교체 가능. 요청 한도를 고려해 사용자를 **순차 처리**하고 429/5xx는 지수 백오프로 2회 재시도하며, 401/403(키 오류)은 폴백하지 않고 배치를 실패시켜 키 수정 후 재시작으로 회수한다. **API 키가 주입되지 않은 환경(stub)에서는 회고를 생성하지 않는다**(가짜 회고가 재생성 불가한 정본으로 남지 않게 fail-closed).
 
 ## 생성 배치 (`weeklyReportJob`, 내부, 신규 엔드포인트 없음)
 
