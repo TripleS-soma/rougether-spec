@@ -80,18 +80,17 @@
 | --- | --- | --- | --- |
 | `GET /api/v1/today` | 오늘 루틴·투두·진행률·스트릭 | — (파라미터 없음, 항상 KST 오늘 고정. 임의 날짜는 `/calendar` 사용) | `date`(조회 기준일 에코), 카테고리별 routine/todo 목록, `summary`(`completedCount`·`remainingCount`·`progressRate`), `streak`(`currentCount` 등) |
 | `GET /api/v1/calendar` | 캘린더에서 특정 날짜의 루틴·투두·진행률 | `date`(필수) | `date`, 카테고리별 routine/todo 목록, `summary`(`completedCount`·`remainingCount`·`progressRate`) |
-| `GET /api/v1/calendar/month` | 달력 월 뷰의 **투두 있는 날** 표시 | `month`(필수, `YYYY-MM`) | `{ items }` / items[]: `date`, `todoCount`, `completedTodoCount` |
+| `GET /api/v1/calendar/month` | 달력 월 뷰의 날짜별 루틴·투두 개수 표시 | `yearMonth`(필수, `YYYY-MM`) | `yearMonth`(에코), `days[]`: `date`, `routineCount`, `todoCount` — 그 달 1일~말일 전부 |
 
 > today·calendar의 카테고리 그룹은 `categoryId`만 담고 카테고리 이름·색상은 embed하지 않는다(루틴·투두 응답과 동일 규칙 — `GET /api/v1/categories`에서 resolve). 미분류 그룹은 `categoryId=null`. 진행률 필드는 최상위가 아니라 `summary` 객체 안에 중첩된다.
 > 정렬: 카테고리 그룹은 `categoryId` 오름차순(미분류 null 그룹은 맨 뒤), 그룹 안에서 루틴은 `scheduledTime` 오름차순(null 뒤) → `id`, 투두는 `dueTime` 오름차순(null 뒤) → `id`.
 > `/api/v1/today`는 상위 [api.md](../../api.md)의 오늘 현황 엔드포인트와 동일. 방 도메인의 스트릭 표시와 `streaks` 데이터를 공유한다.
 > today·calendar 모두 **투두는 마감일(`dueDate`)이 기준일과 정확히 같은 것만** 포함한다(지난 마감·미래 마감을 누적하지 않으며, 마감일 없는 투두는 제외). 두 엔드포인트의 투두 소싱 규칙은 동일하다.
-> `/api/v1/calendar/month`는 **월 뷰의 점 표시 전용**이다 (모바일 #838). 날짜를 눌러보기 전에 "뭐가 있는 날"을 알려주는 게 목적이라 목록이 아니라 개수만 준다.
-> - **루틴은 포함하지 않는다.** 루틴은 대부분의 날에 반복되므로 점을 찍으면 거의 모든 날에 찍혀 아무것도 구분하지 못한다. 신호가 되는 건 **일회성 할 일(투두)** 뿐이다.
-> - 투두 소싱 규칙은 `/calendar`와 동일하다 — `dueDate`가 그날인 것만(마감일 없는 투두 제외).
-> - **투두가 없는 날은 `items`에서 생략한다.** 빈 날까지 31개를 채우면 응답의 대부분이 0이 된다.
-> - `completedTodoCount`는 "그날 것을 다 끝냈는지"를 점의 채움/비움으로 구분하기 위한 값이다. 클라이언트가 처음부터 쓰지 않을 수 있지만 같은 쿼리에서 나오므로 함께 준다.
-> - 월 경계는 KST 기준. 과거·미래 월 모두 조회할 수 있고, 과거 투두도 `dueDate` 기준이라 `/calendar`의 루틴 3갈래 소싱 규칙과 무관하다.
+> `/api/v1/calendar/month`는 **월 뷰의 날짜별 표시 전용**이다 (모바일 #838). 날짜를 눌러보기 전에 각 날에 뭐가 얼마나 있는지 알려주는 게 목적이라 목록·완료 여부가 아니라 개수만 준다. 내용은 눌러서 `/calendar`로 본다.
+> - 응답은 그 달 **1일~말일 모든 날짜**를 순서대로 담고, 대상이 없는 날도 `routineCount`·`todoCount`를 0으로 포함한다(클라이언트가 날짜별로 채울 필요 없음).
+> - `routineCount`는 그날 대상 루틴 개수, `todoCount`는 그날 마감 투두 개수이며 둘 다 **완료·미완료 합산**이다(완료 개수는 내려주지 않음).
+> - **날짜별 소싱 규칙은 `/calendar`와 동일하다.** 루틴은 아래 3갈래 규칙(오늘·미래는 현재 ACTIVE 버전의 반복 대상, 어제는 그날 유효했던 버전으로 재계산, 그제 이전은 그날 `routine_logs`(`COMPLETED`+`FAILED`) 건수 — 로그 없는 날은 0), 투두는 `dueDate`가 그날인 것만(마감일 없는 투두 제외). 따라서 어떤 날짜의 개수는 그 날짜를 `/calendar`로 조회했을 때의 루틴·투두 건수와 항상 같다.
+> - `yearMonth` 누락·형식 오류(`2026-8`, `2026-08-01` 등)는 400. 월 경계는 KST 기준이며 과거·미래 월 모두 조회할 수 있다.
 
 > `/api/v1/calendar`는 달력에서 날짜를 클릭해 그날의 현황을 보는 용도다. `/today`와 달리 응답에 `streak`을 포함하지 않고, 과거·미래 날짜 모두 조회할 수 있다.
 > 루틴 소싱은 조회 날짜가 오늘(KST) 기준 어디에 있는지에 따라 세 갈래로 갈린다.
