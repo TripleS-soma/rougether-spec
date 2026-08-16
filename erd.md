@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **35 table**(`room_cobwebs` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **36 table**(`room_cobwebs`·`weekly_reports` 포함 — ERDCloud 정본 반영 필요).
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -59,6 +59,13 @@
   - `privacy_scope`: `categories.visibility`와 같은 값 집합(`PRIVATE`/`FRIENDS`/`HOUSE`/`PUBLIC`). 단, 사진 인증 API는 현재 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중(컬럼은 스키마상 유지). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(enum `PENDING`/`APPROVED`/`REJECTED`, DDL 기본값 `PENDING`, 쓰기 경로 미구현·미노출).
 - **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at?
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
+
+### AI 주간 회고
+- **weekly_reports**: id* | user_id→users | week_start_date DATE | week_end_date DATE | status VARCHAR(30) | model VARCHAR(100)? | stats_json JSON | summary VARCHAR(600) | sections_json JSON | generated_at TIMESTAMP | created_at | unique (user_id, week_start_date)
+  - 주 경계는 **일~토(`Asia/Seoul`)** — `week_start_date` = 일요일, `week_end_date` = 토요일. 사용자·주당 1건이며 unique가 재생성 불허의 DB 방어선이다(늦은 완료로 로그가 뒤집혀도 갱신 없음). 목록 조회(user_id, week_start_date desc)도 이 unique 인덱스가 커버하므로 별도 인덱스 없음.
+  - `status`(`WeeklyReportStatus`): `GENERATED`(LLM 회고 포함) / `FALLBACK`(LLM 실패 — 서버 통계 + 고정 요약, 섹션 배열 비어 있음). `model`은 생성에 쓴 LLM 모델 id, `FALLBACK`이면 null.
+  - `stats_json`은 서버 집계(`scheduledCount`/`completedCount`/`failedCount`/`completionRate`/`byWeekday[]`/`byRoutine[]`/`streak`), `sections_json`은 LLM 섹션(`highlights`/`failurePatterns`/`suggestions`, 각 최대 3개) — 배치가 직렬화해 저장하고 조회 API가 역직렬화해 내려주는 공유 계약이며 스키마는 [report/api.md](domains/report/api.md) 참고. `summary`는 LLM 요약(목표 300자 이내, 컬럼 600).
+  - 매주 일요일 00:30 KST 배치(`weeklyReportJob`)가 직전 주 `routine_logs`(`COMPLETED`/`FAILED`, 삭제 루틴 제외)가 있는 미탈퇴 사용자에게만 생성한다(로그 0건은 행 없음). 탈퇴 잔여 데이터 하드 파기 시 함께 삭제한다.
 
 ### 방 (개인)
 - **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
@@ -136,6 +143,7 @@ erDiagram
     users ||--o{ routines : creates
     users ||--o{ todos : creates
     users ||--o{ streaks : has
+    users ||--o{ weekly_reports : reviewed_in
     users ||--o{ user_items : owns
     users ||--o{ house_members : joins
     users ||--o{ house_join_requests : requests

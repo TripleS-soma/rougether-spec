@@ -14,7 +14,7 @@
 ## 프로덕트 (PRD / 멘토 피드백)
 
 - **킬러 피처 1개 정의**: MVP에서 유저를 Lock-in 시킬 단일 핵심 기능은? (멘토 박영용 — 기능 나열보다 과감한 '덜어내기')
-- 루틴 실패 패턴 분석 기반 초개인화를 MVP에서 어디까지 넣을지?
+- 루틴 실패 패턴 분석 기반 초개인화를 MVP에서 어디까지 넣을지? (첫 단계로 AI 주간 회고 생성 배치는 구현됨 → [report/](domains/report/). 맞춤 추천·리마인드 문구 등 나머지는 미정)
 - 그룹 확장(가족·학교·회사)을 데이터 모델에서 미리 고려할지, 지인 '집'만 우선할지?
 
 ## 정책 (기능명세 건의사항)
@@ -50,6 +50,14 @@
 - **초기 재화**: 가입 시 지갑 발급 잔액 **코인 100·다이아 0**. 온보딩(튜토리얼)에서 가구 뽑기 단챠(코인 25) 1회를 소모시키고 75(단챠 3회분)를 남기는 값(멘토링 피드백 "처음 기본 재화 제공" 반영). → [shop/api.md](domains/shop/api.md) · [member/api.md](domains/member/api.md) 반영.
 - **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 100 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 - **캐릭터 악세사리 뽑기**: `items.placement_type = character`, 직접 구매 불가, 풀 엔트리 `reward_type = ITEM`·`rarity = NULL`·`weight = 1`로 전체 균등 추첨. 중복은 다른 아이템과 동일하게 **다이아 3 환급**. → [shop/features.md](domains/shop/features.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
+
+## AI 회고
+
+- **AI 분석 동의 정책**: 주간 회고는 그 주 루틴 로그가 있는 모든 사용자에게 동의 절차 없이 생성된다. 사용자 opt-in/opt-out(설정 토글·온보딩 동의)을 둘지, 둔다면 기본값을 무엇으로 할지 미정. (회원 도메인 dependency)
+- **LLM 개인정보 3자 전송**: 회고 생성 시 닉네임·소개글(`bio`)·선택 목표·루틴 제목·카테고리명이 외부 LLM 제공자(OpenAI 호환 API, 현재 OpenAI)로 전송된다(이메일·집·타인 정보는 제외). 개인정보 처리방침·약관에 3자 제공 고지가 필요한지, 루틴 제목 같은 자유 텍스트를 마스킹/요약해 보낼지 미정.
+- **삭제 루틴 포함 여부**: 현재 삭제된 루틴(`routines.deleted_at` not null)의 로그는 집계에서 제외한다. "루틴 삭제 시 수행 기록 숨김 처리" 정책(위 정책 절)과 함께 회고 통계에 포함할지 결정 필요.
+- **재생성 허용 여부**: 사용자·주당 1건(unique)이며 `FALLBACK`(LLM 실패)이라도 재생성하지 않는다. LLM 실패 주에 대한 재시도 배치·사용자 수동 재생성을 허용할지, 늦은 완료로 로그가 뒤집힌 주를 갱신할지 미정.
+- **회고 완성 알림**: 회고 저장 후 푸시 알림(`NotificationType.WEEKLY_REPORT_READY` 등)을 보낼지, 보낸다면 알림 설정 그룹(`REMINDER`/`HOUSE`/신규) 어디에 묶을지 미정. (알림 도메인 협의)
 
 ## 집
 
