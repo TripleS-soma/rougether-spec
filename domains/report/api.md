@@ -2,15 +2,20 @@
 
 공통 규칙은 전체 [api.md](../../api.md) 참조 (prefix `/api/v1`, 목록은 `items` 배열, ISO-8601 + offset, 인증된 사용자 기준 소유권 guard 적용). 기능 명세는 [features.md](features.md), 데이터는 [erd.md](../../erd.md) `weekly_reports`.
 
-## 회고 조회 (**예정 — 이슈 #287**)
+## 회고 조회
+
+읽기 전용(재화·쓰기 없음). 회고 생성·재생성 API는 없다(배치 전용).
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/reports/weekly` | 내 주간 회고 목록 조회 | 예정 — 본인 회고만, `week_start_date` 내림차순. 응답 필드는 #287에서 확정 | `weekly_reports` |
-| `GET /api/v1/reports/weekly/{reportId}` | 주간 회고 상세 조회 | 예정 — 본인 소유(`user_id`) guard. 응답 필드는 #287에서 확정 | `weekly_reports` |
+| `GET /api/v1/reports/weekly` | 내 주간 회고 목록 조회 | resp: `items[]`(`reportId`, `weekStartDate`, `weekEndDate`, `status`, `completionRate`, `completedCount`, `scheduledCount`, `summary`, `generatedAt`). 최신 주 우선(`weekStartDate` 내림차순), 페이지 없이 전체. 회고가 없으면 빈 `items`(200) | `weekly_reports` |
+| `GET /api/v1/reports/weekly/{reportId}` | 주간 회고 상세 조회 | resp: 목록 항목과 같은 머리 필드 + `stats`(`scheduledCount`, `completedCount`, `failedCount`, `completionRate`, `byWeekday[7]`, `byRoutine[]`, `streak`) + `highlights[]`, `failurePatterns[]`, `suggestions[]` | `weekly_reports` |
 
-- **서버 미구현** — path만 확정된 상태이며 요청/응답 필드·에러코드는 #287에서 채운다. 클라이언트 구현 대상 아님.
-- 응답에 실리는 통계·섹션은 배치가 저장한 `stats_json`·`sections_json`을 그대로 역직렬화한 것이라, 아래 스키마가 곧 조회 계약이다.
+- 인증 필수. **본인 회고만** 조회할 수 있다(소유권 guard: `user_id`). 없는 id·타인 회고 모두 404 `WEEKLY_REPORT_NOT_FOUND`로 통일한다(존재 여부 노출 회피).
+- 목록 항목(상세와 공통인 머리 부분): `reportId` — 상세 조회의 path 값 · `weekStartDate`/`weekEndDate` — 회고 대상 주의 일요일/토요일(`YYYY-MM-DD`, KST) · `status` — `GENERATED`(AI 회고 문장 포함) / `FALLBACK`(AI 생성 실패 — 통계와 고정 요약 문구만) · `completionRate`(0~1, 소수 둘째 자리) · `completedCount` · `scheduledCount`(완료+실패) · `summary`(최대 300자, FALLBACK이면 고정 문구) · `generatedAt`(회고 생성 시각, ISO-8601 UTC `Z`).
+- 상세의 `stats`는 아래 `stats_json` 스키마와 동일한 형태(`byWeekday`는 일~토 순 7개 고정, `byRoutine`은 그 주 기록이 있는 루틴만·`categoryName`은 null 가능, `streak`은 생성 시점 스냅샷). `highlights`·`failurePatterns`·`suggestions`는 `sections_json`의 세 배열(각 최대 3개, 각 80자 이내)이며 `status = FALLBACK`이면 모두 빈 배열이다. `byRoutine[].lineageId`는 루틴 목록(`GET /api/v1/routines`)의 `originRoutineId`(없으면 `id`)와 대응한다.
+- 응답에 실리는 통계·섹션은 배치가 저장한 `stats_json`·`sections_json`을 그대로 역직렬화한 것이라(서버 재계산 없음), 아래 스키마가 곧 조회 계약이다.
+- 목록은 매주 일요일 00:30 KST 배치가 만든 회고만 담긴다 — 그 주 루틴 완료/실패 기록이 없는 주는 회고 자체가 없으므로 목록에서 빠진다.
 
 ## 저장 데이터 스키마 (배치 ↔ 조회 API 공유 계약)
 

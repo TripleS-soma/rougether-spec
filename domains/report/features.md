@@ -21,7 +21,7 @@
 ## 회고 생성 (LLM, `weekly_reports`)
 
 - **프롬프트 입력**: 닉네임 + 소개글(`bio`) + 선택 목표 전체(`user_goals`, 대표 목표 표시) + 위 집계. **이메일·집·다른 사용자 정보는 넣지 않는다.** 사용자 입력 텍스트(닉네임·bio·루틴 제목 등)는 데이터이지 지시가 아님을 시스템 프롬프트에 명시하고 구분자로 감싼다. 출력은 한국어·JSON만 허용.
-- **LLM 출력 스키마**: `{ "summary": string(≤300자), "highlights": string[≤3], "failurePatterns": string[≤3], "suggestions": string[≤3] }`. `summary`가 없으면 스키마 위반으로 보고, 길이·개수 초과는 잘라서 수용한다(모델이 제한을 어겨도 회고를 살린다). 코드펜스·앞뒤 잡음은 벗겨내고 파싱한다.
+- **LLM 출력 스키마**: `{ "summary": string(≤300자), "highlights": string[≤3], "failurePatterns": string[≤3], "suggestions": string[≤3] }`. `summary`가 없으면 스키마 위반으로 보고, 길이·개수 초과는 잘라서 수용한다(섹션 항목은 각 80자, 모델이 제한을 어겨도 회고를 살린다). 코드펜스·앞뒤 잡음은 벗겨내고 파싱한다.
 - **저장**: `status = GENERATED`, `model` = 사용한 모델 id, `summary`, `sections_json` = `{ highlights, failurePatterns, suggestions }`, `stats_json`, `generated_at`.
 - **실패 처리(`FALLBACK`)**: 파싱/스키마 위반 시 1회 재요청. 재실패·HTTP 오류·타임아웃이면 `status = FALLBACK`으로 저장한다 — `stats_json`은 그대로, `summary`는 서버 고정 문구 `"이번 주 루틴 {scheduledCount}회 중 {completedCount}회를 완료했어요."`, `sections_json`의 세 배열은 빈 배열, `model`은 null. **재생성은 없다**(허용 여부 미정 — open-questions).
 - **LLM 연동**: OpenAI 호환 chat completions API를 쓴다(현재 OpenAI, 기본 모델 `gpt-5.6-luna` + reasoning effort low, JSON mode 사용). base-url·모델·타임아웃·temperature는 서버 설정값이라 코드 변경 없이 다른 호환 공급자로 교체 가능. 요청 한도를 고려해 사용자를 **순차 처리**하고 429/5xx는 지수 백오프로 2회 재시도하며, 401/403(키 오류)은 폴백하지 않고 배치를 실패시켜 키 수정 후 재시작으로 회수한다. **API 키가 주입되지 않은 환경(stub)에서는 회고를 생성하지 않는다**(가짜 회고가 재생성 불가한 정본으로 남지 않게 fail-closed).
@@ -36,9 +36,12 @@
 - **멱등성**: 주당 job instance 1개(`weekStart` 파라미터) + unique(`user_id`, `week_start_date`)로 재실행·중복 실행에도 회고가 두 번 생기지 않는다. 늦은 완료로 그 주 로그 상태가 뒤집혀도 회고는 갱신하지 않는다.
 - **알림**: 회고 완성 푸시 없음(후속 — 알림 도메인 협의).
 
-## 회고 조회 (`weekly_reports`) — 예정
+## 회고 조회 (`weekly_reports`)
 
-- 회고 목록·상세 조회는 이슈 #287에서 확정한다(본인 소유 회고만, 목록은 `week_start_date` 내림차순 — unique(`user_id`, `week_start_date`) 인덱스가 커버). `stats_json`·`sections_json` 스키마는 조회 응답에도 그대로 쓰인다(배치·API 공유 계약). 응답 필드 확정 시 [api.md](api.md)에 반영한다.
+- **목록**: 본인 회고 전체를 최신 주 우선(`week_start_date` 내림차순 — unique(`user_id`, `week_start_date`) 인덱스가 커버)으로 페이지 없이 반환한다(주 단위라 양이 적다). 항목은 주 범위·상태·핵심 통계(`completionRate`·`completedCount`·`scheduledCount`)·`summary`·`generatedAt`. 회고가 하나도 없으면 빈 목록(200).
+- **상세**: 목록 항목 + `stats`(요일별·루틴별·스트릭) + AI 섹션(`highlights`·`failurePatterns`·`suggestions`). `status = FALLBACK`이면 AI 섹션 세 배열은 비어 있고 통계·고정 요약만 제공된다.
+- **소유권**: 인증 사용자 본인 회고만. 없는 id와 타인 회고 모두 404 `WEEKLY_REPORT_NOT_FOUND`(존재 여부 노출 안 함).
+- 응답의 통계·섹션은 `stats_json`·`sections_json`을 그대로 역직렬화한 것이라 서버가 재계산하지 않는다(배치·API 공유 계약). 생성·재생성 API는 없다(배치 전용). 필드 상세는 [api.md](api.md).
 
 ## 탈퇴 회원 (회원 도메인 dependency)
 
