@@ -22,6 +22,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 | 상점 / 재화 | [domains/shop/](domains/shop/) | 아이템·인벤토리·구매, 코인/다이아 |
 | 뽑기 | [domains/gacha/](domains/gacha/) | 테마별 뽑기, 보상 풀 |
 | 공동 집 | [domains/house/](domains/house/) | 집 참여·관리·단체 미션·레벨 |
+| AI 주간 회고 | [domains/report/](domains/report/) | 주간 루틴 집계·LLM 회고 생성 배치, 회고 조회(예정) |
 
 ## 도메인 (MVP)
 
