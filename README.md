@@ -5,7 +5,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 ## 루트 문서
 
 - **프로덕트 개요(PRD)** (비전·문제·타겟·KPI·수익) → [product.md](product.md) · 출처 기획서
-- **전체 ERD / 데이터 모델** (30 table) → [erd.md](erd.md) · 출처 [ERDCloud](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi)
+- **전체 ERD / 데이터 모델** (37 table) → [erd.md](erd.md) · 출처 [ERDCloud](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi)
 - **API 공통 규약** → [api.md](api.md)
 - **전체 기능 인덱스** → [features.md](features.md) · 출처 [Notion](https://www.notion.so/MVP-3782b260870e80988962cc129f651b6f)
 - **미결정 사항** → [open-questions.md](open-questions.md)
@@ -22,10 +22,11 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 | 상점 / 재화 | [domains/shop/](domains/shop/) | 아이템·인벤토리·구매, 코인/다이아 |
 | 뽑기 | [domains/gacha/](domains/gacha/) | 테마별 뽑기, 보상 풀 |
 | 공동 집 | [domains/house/](domains/house/) | 집 참여·관리·단체 미션·레벨 |
+| 연속 출석 이벤트 | [domains/attendance/](domains/attendance/) | KST 일일 출석, 일차별 코인, 10일차 가구 보상 |
 
 ## 도메인 (MVP)
 
-회원 · 루틴/투두 · 방(개인) · 뽑기 · 상점 · 집(공동). 재화는 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)로 구분.
+회원 · 루틴/투두 · 방(개인) · 뽑기 · 상점 · 집(공동) · 연속 출석 이벤트. 재화는 **코인**(루틴 실천·이벤트 보상)과 **다이아**(아이템 구매)로 구분.
 
 ## 작성 규칙
 

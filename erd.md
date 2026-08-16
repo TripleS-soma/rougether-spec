@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **35 table**(`room_cobwebs` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **37 table**(`attendance_events`·`attendance_check_ins` 포함 — ERDCloud 정본 반영 필요).
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -24,8 +24,8 @@
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 - **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
   - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
-  - `reason` 허용값 8종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
-  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB` + 해당 id). 거미줄 청소는 방 주인 user id를 source id로 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
+  - `reason` 허용값 9종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
+  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
 - **user_invite_codes**: id* | user_id→users | invite_code VARCHAR | created_at | unique (user_id), unique (invite_code)
@@ -80,6 +80,12 @@
   - 캐릭터별 슬롯 착용 상태. 같은 슬롯 적용은 기존 row를 교체하고, 캐릭터 선택을 바꿔도 row를 유지한다. `character_slot_type`은 적용 시 `items.character_slot_type`을 복사하며 클라이언트 입력값을 신뢰하지 않는다.
 - **character_accessory_render_profiles**: id* | item_id→items | character_id→characters | render_state VARCHAR(40) | asset_key VARCHAR(255) | canvas_width INT | canvas_height INT | asset_width INT | asset_height INT | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | width_ratio DECIMAL(5,4) | rotation_deg INT | z_index INT | created_at | updated_at | unique (item_id, character_id, render_state)
   - 캐릭터 원본 캔버스 위에 단품 악세사리를 합성하기 위한 카탈로그 메타데이터. 캔버스·단품 이미지 크기는 양수이고, 좌표는 중심점 기준 정규화 값이다. `default` 상태가 있으면 해당 아이템을 해당 캐릭터에 착용할 수 있으며, 포즈별 상태는 동일한 `(item, character)`의 `default` 값을 선택적으로 대체한다.
+
+### 연속 출석 이벤트
+- **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
+  - 첫 이벤트는 `target_days=10`, `daily_coin_amount=30`, `bonus_day=5`, `bonus_coin_amount=50`이다. `bonus_coin_amount`는 추가분이 아니라 해당 일차의 총 지급량이다.
+- **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | reward_processed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
+  - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전에는 가구 보상 3개 컬럼이 모두 null이고, 완료 row에서는 모두 값이 있다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
@@ -161,6 +167,10 @@ erDiagram
 
     themes ||--o{ items : contains
     items ||--o{ user_items : acquired_as
+    items ||--o{ attendance_events : rewarded_by
+    attendance_events ||--o{ attendance_check_ins : records
+    users ||--o{ attendance_check_ins : checks_in
+    user_items ||--o{ attendance_check_ins : rewarded_as
     gacha ||--o{ gacha_pool_entries : has
     items ||--o{ gacha_pool_entries : rewarded_as
     characters ||--o{ gacha_pool_entries : rewarded_as
