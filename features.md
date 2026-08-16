@@ -12,3 +12,4 @@
 | 상점 / 재화 | 아이템 조회, 인벤토리, 다이아 구매 | [domains/shop/features.md](domains/shop/features.md) |
 | 뽑기 | 뽑기 목록, 테마별 뽑기, 결과 확인 | [domains/gacha/features.md](domains/gacha/features.md) |
 | 공동 집 | 탐색/참여, 집 관리, 구성원 관리, 방 방문, 단체 미션, 집 레벨 | [domains/house/features.md](domains/house/features.md) |
+| 연속 출석 이벤트 | 이벤트 생성, 오늘 출석, 일차별 코인, 10일차 가구 지급 | [domains/attendance/features.md](domains/attendance/features.md) |
