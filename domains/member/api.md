@@ -40,6 +40,7 @@
 - `PUT /api/v1/onboarding/goals`: 전체 교체(기존 `user_goals` 삭제 후 재구성, 단일 트랜잭션). `goalIds`가 빈 배열이면 거부(최소 1개, `GOAL_REQUIRED`), 상한 없음. 중복 `goalId`는 dedupe. 모든 `goalId`는 존재 + `isActive=true`여야 함(아니면 `INVALID_GOAL`). `primaryGoalId`는 선택(생략 시 대표 없음), 지정 시 `goalIds`에 포함돼야 함(아니면 `PRIMARY_GOAL_NOT_IN_SELECTION`).
 - `PUT /api/v1/onboarding/character`: 대상 `characterId`는 존재 + `isActive=true` 마스터여야 함(아니면 `CHARACTER_NOT_FOUND`). 보유(`deleted_at` null) 중이면 이전 대표 `is_selected=false`·대상 `is_selected=true`로 무료 교체. 미보유 + 보유 0개(최초)면 대상을 보유 등록(`acquired_at` 기록)+선택(스타터 지급). 미보유 + 보유 1개 이상이면 거부(`CHARACTER_NOT_OWNED`) — 신규 획득은 뽑기/상점 도메인 소관. 이전 대표 해제 + 신규 선택/등록은 단일 트랜잭션이며 `is_selected` 유일성을 보장(대상 유저 행 비관적 락으로 동시 요청 직렬화). 이미 선택된 캐릭터 재선택은 무해(idempotent). 온보딩 이후의 착용 교체는 `PUT /api/v1/me/characters/select`(보유 캐릭터 전용) 사용을 권장한다 — 이 경로의 교체 동작은 하위호환으로 유지.
 - `completed`는 (선택 목표 ≥1개) && (대표 캐릭터 존재)로 계산. `primaryGoalId`는 optional이라 완료 기준에서 제외. 온보딩 요약(`completed`·`primaryGoalId`·`selectedCharacterId`)은 `GET /api/v1/onboarding`과 `GET /api/v1/me`가 동일 read model을 공유.
+- 목표·대표 캐릭터가 처음 모두 갖춰지는 `PUT` 요청은 기본 공동집도 같은 트랜잭션에서 1회 생성한다. 목표→캐릭터·캐릭터→목표 순서를 모두 지원하고, 두 쓰기 경로를 사용자 행 비관적 락으로 직렬화해 동시 호출·재시도 중복을 막는다. 기본값은 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목이며, 집 목표는 대표 목표 우선 + 나머지 `sortOrder` 순으로 최대 3개를 연결한다. 이후 일반 집 설정 API로 수정할 수 있다. (`house`, `house_members`, `house_goals`)
 - 선택값은 모두 `user_id`(소유권 식별자)에 귀속. 인증된 사용자 기준.
 
 ## 보유 캐릭터 / 착용
