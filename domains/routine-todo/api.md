@@ -66,11 +66,17 @@
 | --- | --- | --- | --- |
 | `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?`(정확 일치) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `dueTime`, `status`, `completedAt`. 정렬 `dueDate asc, id asc` |
 | `GET /api/v1/todos/{id}` | 단건 조회 | — | todo 상세(목록과 동일 필드) |
-| `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?`, `dueTime?`(마감 시각, 5분 단위) | 생성된 todo |
+| `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?`, `dueTime?`(마감 시각, 5분 단위), `externalSource?`·`externalId?`(기기 캘린더 임포트 — 아래 참고) | 생성된 todo |
 | `PUT /api/v1/todos/{id}` | 수정 | 위 필드 — null이면 기존 값 유지, 단 **`categoryId`·`dueTime`은 null이면 해제** | 수정된 todo |
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 204. `deleted_at`만 세팅 — 완료 상태·보상 기록(`reward_amount`)은 그대로 보존된다(일일 상한 집계에 계속 포함, features.md 참고) |
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | 201. `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(완료 시점 제한 없음) | — | 200. 롤백 반영된 todo 전체(코인 롤백) |
+
+> **기기 캘린더 일정 임포트** (모바일 #844): 앱이 기기 캘린더(구글 캘린더 등)의 **오늘 이후** 일정을 읽어 투두로 만든다. 서버는 OAuth를 하지 않는다 — 읽기는 전적으로 앱이 OS 권한으로 하고, 서버는 만들어진 투두를 받을 뿐이다.
+> - `POST /todos`에 `externalSource`(`GOOGLE_CALENDAR` 등)·`externalId`(그 캘린더의 이벤트 id)를 함께 받아 `todos`에 저장한다. **`unique (user_id, external_source, external_id)`가 중복 임포트의 유일한 방어선**이다 — 동기화는 앱을 열 때마다 돌므로 이 값이 없으면 같은 일정이 계속 복제된다.
+> - 같은 쌍이 이미 있으면 **409**로 거절한다(앱이 이미 가져온 것으로 판정해 건너뛴다). 사용자 단위 "연동함" 플래그로는 이걸 대신할 수 없다 — 어느 이벤트를 가져왔는지는 항목마다 알아야 한다.
+> - 임포트된 투두는 그 뒤로 **일반 투두와 완전히 동일**하다. 사용자가 카테고리를 옮기고 제목을 고치고 지울 수 있으며, 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
+> - 보상 규칙도 그대로다 — `dueDate`가 오늘인 완료만 코인 10, 일일 상한 50코인 합산. 미래 마감은 완료 불가라 미리 체크할 수 없다.
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
 
