@@ -11,7 +11,8 @@
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
-- table: `house`, `house_goals`
+- **ACTIVE 멤버가 동거 봇(`users.is_bot`)뿐인 집은 제외**(봇만 남은 집이 추천에 뜨지 않게). 사람 ACTIVE 멤버가 1명 이상이거나 ACTIVE 멤버가 아예 없는 집은 기존대로 노출. `goalCode`·`excludeJoined` 조합 모두 같은 조건을 공유한다. 봇 계정 정의는 [member/features.md](../member/features.md) "동거 봇 계정".
+- table: `house`, `house_goals`, `house_members`
 
 ### GET /api/v1/me/houses
 내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 페이지네이션 없음(다중 가입 소수 전제).

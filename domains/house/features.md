@@ -6,7 +6,7 @@
 
 ## 집 탐색 / 참여
 
-- **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. (`house`, `house_goals`)
+- **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. ACTIVE 멤버가 동거 봇(`users.is_bot`)뿐인 집은 노출하지 않는다(멤버가 없는 집은 노출). (`house`, `house_goals`, `house_members`)
 - **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. (`house_join_requests`, `house_members`, `house`)
 - **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
   - 즉시가입 시 같은 집의 대기 중인 입주 신청이 있으면 함께 ACCEPTED로 종결한다.

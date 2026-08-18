@@ -9,8 +9,9 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | is_bot BOOLEAN | bot_key VARCHAR(40)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at? | unique (bot_key)
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
+  - `is_bot`(기본 false)·`bot_key`는 서버가 시드하는 **동거 봇 계정** 구분용. 별도 테이블 없이 `users` 행으로 존재하며, `bot_key`는 코드 프로필 카탈로그와 1:1로 매핑되는 시드 멱등 키(일반 회원은 null). `is_bot`은 관측·보상·알림·배치·회고 격리와 응답 표시의 판정 기준 → [member/features.md](domains/member/features.md) "동거 봇 계정".
   - `bio`는 프로필 소개글(최대 100자, nullable).
   - `profile_image_key`는 프로필 사진 S3 object key(`profile/{uuid}.{ext}`). 전체 URL이 아닌 key만 저장하며, null이면 기본 이미지를 표시한다.
   - 회원탈퇴 시 `email`·`nickname`·`bio`·`profile_image_key`는 탈퇴 트랜잭션에서 즉시 null 처리(익명화)하고, 프로필 S3 원본은 커밋 후 best-effort로 삭제한다 → [member/api.md](domains/member/api.md) "회원탈퇴".

@@ -51,6 +51,14 @@
 - **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 100 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 - **캐릭터 악세사리 뽑기**: `items.placement_type = character`, 직접 구매 불가, 풀 엔트리 `reward_type = ITEM`·`rarity = NULL`·`weight = 1`로 전체 균등 추첨. 중복은 다른 아이템과 동일하게 **다이아 3 환급**. → [shop/features.md](domains/shop/features.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 
+## 동거 봇
+
+봇 계정 자체(스키마·시드·로그인 불가·격리)는 확정 → [member/features.md](domains/member/features.md) "동거 봇 계정". 아래는 아직 spec에 계약이 없는 후속 항목이다.
+
+- **기본 집 자동 입주·자리 양보·해체 규칙**(서버 [#309](https://github.com/TripleS-soma/rougether-server/issues/309), **구현 예정**): 온보딩 기본 집("나의 집")에 봇 자동 입주, 사람이 오면 봇이 자리를 비켜주는 규칙, 봇에게 소유권 양도 불가·탈퇴 승계 후보 제외, "마지막 1인이면 집 soft delete"를 "마지막 사람이면"으로 바꾸는 변경, 집 구성원·방명록 응답의 `bot` 표시 필드. 확정되면 [house/api.md](domains/house/api.md)·[member/api.md](domains/member/api.md) 회원탈퇴 절에 반영한다.
+- **활동 스케줄러**(서버 [#310](https://github.com/TripleS-soma/rougether-server/issues/310), **구현 예정**): 봇이 활동 프로필 시간대에 루틴 완료·단체 미션 기여·응원·방명록·거미줄 청소·방 레이아웃 순환을 수행하는 규칙(확률·일일 상한·재화 지급 경로). 확정되면 [routine-todo](domains/routine-todo/features.md)·[house](domains/house/features.md)·[room](domains/room/features.md) 문서에 반영한다.
+- **`rougether.bots.enabled` 켜는 시점**: 기본 false. 격리와 입주·활동 규칙이 갖춰진 뒤 배포 환경에서 켠다(운영 판단).
+
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
