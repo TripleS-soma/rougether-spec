@@ -49,7 +49,9 @@
   - `house_id`: 연동된 집(단체미션용 카테고리 표시, 추가 2026-07-29 server V35). **FK 미부여** — `house` 논리 참조. 집 탈퇴·강퇴 시 서버가 null 로 일괄 해제.
 
 ### 루틴 / 투두
-- **routines**: id* | user_id→users | category_id→categories? | origin_routine_id→routines? | house_mission_id BIGINT? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at?
+- **routines**: id* | user_id→users | category_id→categories? | origin_routine_id→routines? | house_mission_id BIGINT? | title VARCHAR(160) | auth_type VARCHAR(30) | status VARCHAR(30) | repeat_type VARCHAR(40)? | repeat_days JSON? | scheduled_time TIME? | starts_on DATE? | ends_on DATE? | created_at | updated_at | deleted_at? | external_source VARCHAR(30)? | external_id VARCHAR(255)? | unique (user_id, external_source, external_id)
+  - `external_source`/`external_id`는 **기기 캘린더의 반복 일정**에서 만든 루틴의 원본 참조(모바일 #844). `todos`의 같은 이름 컬럼과 뜻·역할이 같다 — **중복 임포트를 막는 유일한 근거**다. 동기화는 앱을 열 때마다 돌므로 이 값이 없으면 같은 반복 일정이 실행할 때마다 새 루틴으로 복제된다.
+  - 루틴은 **시리즈 하나당 한 행**이므로 `external_id`는 **시리즈 id**를 쓴다(회차 id가 아니다). 안드로이드 `instanceId`는 문서상 volatile이라 쓸 수 없다. 회차 단위로 들어가는 투두는 `시리즈 id + 날짜`를 쓴다.
   - `house_mission_id`: 연동된 단체미션(오늘 완료 시 자동 기여, 추가 2026-07-29 server V35). **FK 미부여** — `house_missions` 논리 참조. 미션 삭제·집 탈퇴/강퇴 시 서버가 null 로 일괄 해제, 버전 분기 시 새 버전으로 승계.
   - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`, `repeat_days`(JSON): `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":[...]}`, `MONTHLY`일 때 `{"dayOfMonth":N}`, `YEARLY`일 때 `{"month":M,"day":D}`. `BIWEEKLY`는 `starts_on`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격 판정하므로 `starts_on` 필수. `visibility` 없음(공개는 카테고리를 따름).
   - `origin_routine_id`: 루틴 시간버전 계보 루트(최초 생성 시 자기 자신). 스케줄 수정으로 버전이 갈려도 불변 — 완료·취소의 계보 판정(중복 완료 가드·`FAILED` 전이/복원·day-end 배치)과 같은 루틴 묶음 판별에 사용.
