@@ -60,6 +60,7 @@
 - **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at? | external_source VARCHAR(30)? | external_id VARCHAR(255)? | unique (user_id, external_source, external_id)
   - `external_source`/`external_id`는 **기기 캘린더에서 가져온 일정**의 원본 참조(모바일 #844). `external_source`는 `GOOGLE_CALENDAR` 등 출처, `external_id`는 그 캘린더의 이벤트 id다. **중복 임포트를 막는 유일한 근거**이며 unique가 그 방어선이다 — 동기화는 반복 실행되므로 이 값이 없으면 같은 일정이 실행할 때마다 복제된다.
   - 사용자 단위 "연동함" 플래그로는 중복을 막을 수 없다. 어느 이벤트를 이미 가져왔는지는 **항목마다** 알아야 한다.
+  - unique는 `deleted_at`을 포함하지 않으므로 **soft delete 된 행도 중복 판정에 들어간다** — 사용자가 지운 임포트 투두의 쌍은 다시 등록되지 않는다(지운 일정을 되살리지 않음). 일반 투두는 둘 다 NULL이라 unique의 NULL 다중 허용으로 영향 없다. `external_source`는 대문자 영숫자·언더스코어(`^[A-Z][A-Z0-9_]{0,29}$`, 서버가 값을 해석하지 않음), `external_id`는 앞뒤 공백을 trim한 값을 저장한다.
   - 임포트로 만들어진 뒤에는 **일반 투두와 완전히 동일하게 취급**한다 — 사용자가 카테고리를 옮기고, 제목을 고치고, 지울 수 있다. 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
 - **streaks**: id* | user_id→users | current_count INT | longest_count INT | last_success_date DATE? | last_evaluated_date DATE? | status VARCHAR(30) | updated_at
 

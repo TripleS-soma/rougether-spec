@@ -32,6 +32,7 @@
 | `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드. null 처리 규칙: `categoryId`·`scheduledTime`·`endsOn`은 **null이면 해제**, `title`·`authType`·`repeatType`·`repeatDays`·`startsOn`은 null이면 기존 값 유지, `houseMissionId?`는 **null=기존 연동 유지**(해제 아님) | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고, 연동은 새 버전으로 승계) |
 | `DELETE /api/v1/routines/{id}/house-mission-link` | 단체미션 연동 해제(멱등) | — | 204. 루틴은 유지, 과거 자동 기여는 미회수 |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 204. 루틴 row에 `deleted_at`만 세팅 — 기존 `routine_logs`는 건드리지 않으며 과거 캘린더에 계속 노출된다(로그 보존 정책은 [features.md](features.md) 참고) |
+| `POST /api/v1/routines/similarity` | 날짜·제목별 유사 루틴·투두 힌트(캘린더 임포트 미리보기) | → 아래 "유사 루틴·투두 비교" 절 | 〃 |
 
 > 단체미션 연동(`houseMissionId`) 검증 에러코드: 미션이 없거나 삭제됐으면 404 `HOUSE_MISSION_NOT_FOUND`, 그 미션이 있는 집의 ACTIVE 구성원이 아니면 403 `HOUSE_NOT_MEMBER`.
 >
@@ -64,21 +65,38 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?`(정확 일치) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `dueTime`, `status`, `completedAt`. 정렬 `dueDate asc, id asc` |
+| `GET /api/v1/todos` | 내 투두 목록 | filter: `categoryId?`, `status?`, `dueDate?`(정확 일치) | `items[]`: `id`, `title`, `description`, `categoryId`, `dueDate`, `dueTime`, `status`, `completedAt`, `externalSource`·`externalId`(기기 캘린더 임포트 참조 — 일반 투두는 둘 다 null). 정렬 `dueDate asc, id asc` |
 | `GET /api/v1/todos/{id}` | 단건 조회 | — | todo 상세(목록과 동일 필드) |
 | `POST /api/v1/todos` | 투두 등록 | `title`, `description?`, `categoryId?`, `dueDate?`, `dueTime?`(마감 시각, 5분 단위), `externalSource?`·`externalId?`(기기 캘린더 임포트 — 아래 참고) | 생성된 todo |
-| `PUT /api/v1/todos/{id}` | 수정 | 위 필드 — null이면 기존 값 유지, 단 **`categoryId`·`dueTime`은 null이면 해제** | 수정된 todo |
+| `PUT /api/v1/todos/{id}` | 수정 | 위 필드 — null이면 기존 값 유지, 단 **`categoryId`·`dueTime`은 null이면 해제**. `externalSource`·`externalId`는 받지 않는다(생성 후 불변) | 수정된 todo |
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 204. `deleted_at`만 세팅 — 완료 상태·보상 기록(`reward_amount`)은 그대로 보존된다(일일 상한 집계에 계속 포함, features.md 참고) |
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | 201. `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(완료 시점 제한 없음) | — | 200. 롤백 반영된 todo 전체(코인 롤백) |
 
 > **기기 캘린더 일정 임포트** (모바일 #844): 앱이 기기 캘린더(구글 캘린더 등)의 **오늘 이후** 일정을 읽어 투두로 만든다. 서버는 OAuth를 하지 않는다 — 읽기는 전적으로 앱이 OS 권한으로 하고, 서버는 만들어진 투두를 받을 뿐이다.
 > - `POST /todos`에 `externalSource`(`GOOGLE_CALENDAR` 등)·`externalId`(그 캘린더의 이벤트 id)를 함께 받아 `todos`에 저장한다. **`unique (user_id, external_source, external_id)`가 중복 임포트의 유일한 방어선**이다 — 동기화는 앱을 열 때마다 돌므로 이 값이 없으면 같은 일정이 계속 복제된다.
-> - 같은 쌍이 이미 있으면 **409**로 거절한다(앱이 이미 가져온 것으로 판정해 건너뛴다). 사용자 단위 "연동함" 플래그로는 이걸 대신할 수 없다 — 어느 이벤트를 가져왔는지는 항목마다 알아야 한다.
+> - 요청 형식: `externalSource`는 대문자 영숫자·언더스코어 1~30자(`^[A-Z][A-Z0-9_]{0,29}$`)이며 서버는 값을 해석하지 않는다(enum 없음 — 새 출처를 붙일 때 서버 변경 불필요). `externalId`는 1~255자, 공백만은 불가, 앞뒤 공백은 trim해서 저장·비교한다. 형식 위반은 validation 400(`VALIDATION_FAILED`). 둘은 **반드시 함께** 보낸다 — 한쪽만 오면 400 `TODO_EXTERNAL_REF_INCOMPLETE`, 둘 다 없으면 일반 투두.
+> - 같은 쌍이 이미 있으면 **409 `TODO_EXTERNAL_DUPLICATE`**로 거절한다(앱이 이미 가져온 것으로 판정해 건너뛴다). 사용자 단위 "연동함" 플래그로는 이걸 대신할 수 없다 — 어느 이벤트를 가져왔는지는 항목마다 알아야 한다. 동시 요청이 unique를 깨는 경우도 같은 409다.
+> - **soft delete 된 임포트 투두도 중복 판정에 포함**한다(unique가 `deleted_at`을 보지 않음) — 사용자가 지운 일정은 다음 동기화에서 되살아나지 않는다. 다른 회원의 같은 `externalId`는 서로 무관하다.
+> - 응답(`GET` 목록·단건, `POST`, `PUT` 공통)에 `externalSource`·`externalId`를 그대로 노출한다 — 일반 투두는 둘 다 null. `PUT /todos/{id}`는 이 두 필드를 받지 않는다(생성 후 불변).
 > - 임포트된 투두는 그 뒤로 **일반 투두와 완전히 동일**하다. 사용자가 카테고리를 옮기고 제목을 고치고 지울 수 있으며, 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
 > - 보상 규칙도 그대로다 — `dueDate`가 오늘인 완료만 코인 10, 일일 상한 50코인 합산. 미래 마감은 완료 불가라 미리 체크할 수 없다.
+> - 가져오기 전 미리보기에서 "비슷한 루틴·투두가 이미 있어요" 힌트를 보여주려면 `POST /api/v1/routines/similarity`(아래 유사 루틴·투두 비교 절)를 쓴다. 이 힌트는 안내용이며 중복 방지의 정본은 위 `externalId` unique다.
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
+
+## 유사 루틴·투두 비교 (`routines`, `todos` — 기기 캘린더 임포트 힌트)
+
+| method · path | 목적 | 요청 핵심 | 응답 핵심 |
+| --- | --- | --- | --- |
+| `POST /api/v1/routines/similarity` | 날짜·제목 목록마다 그 날짜의 내 루틴·투두 중 제목이 유사한 것을 찾는다(캘린더 임포트 미리보기 힌트, 저장 없음) | `items[]`(1~200개): `date`(필수, `YYYY-MM-DD`), `title`(trim 후 1~160자) | `embeddingApplied`, `items[]`(요청 순서 유지): `date`, `title`(trim 적용), `hasSimilar`, `similar[]`(score 내림차순 최대 3개, 없으면 빈 배열): `kind`(`ROUTINE`/`TODO`), `id`, `title`, `score`(0~1), `matchType`(`EXACT`/`EMBEDDING`) |
+
+> 기기 캘린더 임포트(모바일 #844) 미리보기에서 "비슷한 게 이미 있어요"를 보여주기 위한 **읽기 전용 힌트 API**다. 아무것도 저장하지 않으며, 중복 임포트를 막는 정본은 투두 `externalId` unique(위 임포트 블록)이고 이 결과는 안내에만 쓴다. 인증된 사용자 본인의 루틴·투두만 후보로 본다.
+> - **후보(날짜별, live 소싱)**: 그 날짜에 반복 대상인 `ACTIVE`·미삭제 루틴 + 그 날짜가 마감(`dueDate`)인 미삭제 투두(`status` 무관 — 완료 투두도 포함). 과거 날짜도 같은 규칙으로 **현재 활성 항목 기준**이며 `routine_logs`로 그날을 재구성하지 않는다(캘린더 조회의 과거 3갈래 소싱과 다르다 — 임포트 힌트라 "지금 있는 것"이 기준). 마감일 없는 투두는 후보가 아니다.
+> - **판정**: 1차 `EXACT` — 요청 제목과 후보 제목의 정규화 결과가 같으면 `score` 1.0. 정규화는 NFKC(전각→반각) → 소문자 → 공백 전부 제거이며 구두점·이모지는 남긴다("물 마시기" = "물마시기", "PT!" ≠ "PT"). 2차 `EMBEDDING` — EXACT가 아닌 쌍만 임베딩(text-embedding-3-large, 1024차원) 코사인 유사도로 보고 **임계값 이상만** 채택한다. 임계값은 서버 설정 `routine.similarity.threshold`(env `ROUTINE_SIMILARITY_THRESHOLD`, 기본 **0.50** — 한글 제목 쌍 30개 실측값: 무관 쌍 최고 0.44, 유사 쌍은 0.57 이상에 몰림. 약어·동의어 "헬스/PT"·"러닝/조깅"류는 어떤 임계값으로도 못 잡는다 → [open-questions.md](../../open-questions.md)). 후보가 없거나 전부 EXACT면 임베딩을 호출하지 않는다.
+> - **정렬·개수**: `similar`는 `score` 내림차순, 동점이면 `ROUTINE` → `TODO`, 그다음 `id` 오름차순으로 최대 3개. `hasSimilar`는 `similar`가 비어 있지 않은지와 같다.
+> - **fail-open**: 임베딩을 쓸 수 없는 환경(LLM 키 미설정 stub·외부 API 장애)에서는 HTTP 200으로 **EXACT 결과만** 돌려주고 `embeddingApplied=false`로 알린다 — 임포트 흐름을 막지 않는다(힌트가 덜 잡힐 수 있음). `embeddingApplied`는 "임베딩을 쓸 수 있었는지"(stub 아님 + 호출 실패 없음)의 의미라, 후보가 없거나 전부 EXACT여서 호출이 필요 없던 경우도 `true`다.
+> - **검증**: `items` 누락·0개·201개 이상, `date` 누락·형식 오류, `title` 공백만·trim 후 161자 이상은 모두 400 `VALIDATION_FAILED`(공통). 도메인 에러코드는 없다. `date`는 과거·미래 제한이 없다. 요율 제한은 두지 않는다.
 
 ## 오늘 현황 · 캘린더 (`routines`, `routine_logs`, `todos`, `streaks`)
 
@@ -116,6 +134,7 @@
 - `routine.status`: `ACTIVE` (등록 시 `ACTIVE`. `status` 필드·필터 파라미터는 유지하되 현재 유효값은 `ACTIVE`만)
 - `authType`: `CHECK`/`PHOTO`
 - `todo.status`: `PENDING`/`COMPLETED`
+- 유사 비교(`POST /routines/similarity`) `similar[].kind`: `ROUTINE`/`TODO`, `similar[].matchType`: `EXACT`(정규화 제목 일치, `score` 1.0)/`EMBEDDING`(임베딩 코사인 ≥ 임계값)
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개)
 - 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 10 정가. 일일 지급 상한은 루틴+투두 합산 50코인이며, 잔여가 정가보다 적으면 잔여만큼만 지급(`rewardAmount`에 실지급액 기록, 취소 환불도 그 금액)
 - 완료 허용 범위: 과거 허용·미래 거부(루틴 `routineDate`, 투두 `dueDate` 기준). 코인·스트릭은 당일 완료에만 반영(과거 완료는 `rewardAmount=0`)
