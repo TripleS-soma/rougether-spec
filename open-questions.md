@@ -53,9 +53,12 @@
 
 ## 동거 봇
 
-봇 계정 자체(스키마·시드·로그인 불가·격리)는 확정 → [member/features.md](domains/member/features.md) "동거 봇 계정". 기본 집 자동 입주·자리 양보·해체 규칙과 구성원 `bot`·방명록 `authorBot` 표시 필드(서버 [#309](https://github.com/TripleS-soma/rougether-server/issues/309))도 확정 → [house/features.md](domains/house/features.md) "동거 봇 거주" · [house/api.md](domains/house/api.md) · [member/api.md](domains/member/api.md) 회원탈퇴 절 반영. 아래는 아직 spec에 계약이 없는 후속 항목이다.
+봇 계정 자체(스키마·시드·로그인 불가·격리)는 확정 → [member/features.md](domains/member/features.md) "동거 봇 계정". 기본 집 자동 입주·자리 양보·해체 규칙과 구성원 `bot`·방명록 `authorBot` 표시 필드(서버 [#309](https://github.com/TripleS-soma/rougether-server/issues/309))도 확정 → [house/features.md](domains/house/features.md) "동거 봇 거주" · [house/api.md](domains/house/api.md) · [member/api.md](domains/member/api.md) 회원탈퇴 절 반영. 활동 스케줄러(서버 [#310](https://github.com/TripleS-soma/rougether-server/issues/310) — 10분 틱·활동 창·쉬는 날 15%·루틴 완료 70%·미션 기여 70%·응원 30~90분/사람당 봇 1명 하루 2회·방명록 월 100%/목 50%·거미줄 틱당 10%·월요일 레이아웃 순환·실패 격리)도 확정 → [member/features.md](domains/member/features.md) 활동 스케줄러 항목 · [house/features.md](domains/house/features.md) "동거 봇 활동" · [routine-todo/features.md](domains/routine-todo/features.md) 루틴 완료 처리 · [room/features.md](domains/room/features.md) 거미줄·아이템 배치 반영. 아래는 남은 미결·후속 항목이다.
 
-- **활동 스케줄러**(서버 [#310](https://github.com/TripleS-soma/rougether-server/issues/310), **구현 예정**): 봇이 활동 프로필 시간대에 루틴 완료·단체 미션 기여·응원·방명록·거미줄 청소·방 레이아웃 순환을 수행하는 규칙(확률·일일 상한·재화 지급 경로). 확정되면 [routine-todo](domains/routine-todo/features.md)·[house](domains/house/features.md)·[room](domains/room/features.md) 문서에 반영한다.
+- **거미줄 청소 확률**: 확정값은 "활동 창 틱당 10%"인데, 원래 의도였던 "12시간 내 약 50%"와는 계산이 맞지 않는다(72틱이면 사실상 100%). 이대로면 사람이 복귀해 스스로 청소할 기회(3코인)를 봇이 거의 항상 선점하므로 틱당 ~1% 수준으로 낮출지 결정 필요 — 결정 전까지 10% 유지.
+- **봇 응원 체감 빈도**: 하루 2회 상한이 봇 1명 기준이라 기본 집(봇 2명)에서 사람 1명이 하루 최대 4건의 봇 응원 알림(`FRIEND_CHEER`)을 받을 수 있다. 사람 기준 합산 상한으로 바꿀지 체감 확인 후 결정.
+- **활동 전용 스위치 분리**: 지금은 `rougether.bots.enabled` 하나가 시드(#307)와 활동(#310)을 함께 켠다. 활동만 끄는 `rougether.bots.activity.enabled` 분리는 후속.
+- **멀티 인스턴스 분산 락**: 스케줄러는 단일 인스턴스 전제. 인스턴스를 늘리면 같은 틱을 중복 처리하므로(방명록은 UNIQUE 가 없어 check-then-write 창 있음) DB 1행 분산 락을 후속으로 추가한다.
 - **`rougether.bots.enabled` 켜는 시점**: 기본 false. 격리와 입주·활동 규칙이 갖춰진 뒤 배포 환경에서 켠다(운영 판단).
 
 ## 집
