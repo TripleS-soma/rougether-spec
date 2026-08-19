@@ -27,7 +27,7 @@
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
 | `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status`, `originRoutineId`(버전 계보 루트 id — 스케줄 수정으로 `id`가 바뀌어도 불변, 프론트 목록 key로 사용), `houseMissionId`(연동 단체미션 id — 미연동 null) |
-| `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`), `repeatDays?`, `scheduledTime?`(5분 단위), `startsOn?`, `endsOn?`, `houseMissionId?`(단체미션 연동 — 그 미션이 있는 집의 ACTIVE 구성원만) | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
+| `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`), `repeatDays?`, `scheduledTime?`(5분 단위), `startsOn?`, `endsOn?`, `houseMissionId?`(단체미션 연동 — 그 미션이 있는 집의 ACTIVE 구성원만), `externalSource?`·`externalId?`(기기 캘린더 반복 일정 임포트 — 아래 참고) | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
 | `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세(목록과 동일 필드). 카테고리는 `categoryId`만 담고, 이름·색상은 `GET /api/v1/categories`에서 resolve |
 | `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드. null 처리 규칙: `categoryId`·`scheduledTime`·`endsOn`은 **null이면 해제**, `title`·`authType`·`repeatType`·`repeatDays`·`startsOn`은 null이면 기존 값 유지, `houseMissionId?`는 **null=기존 연동 유지**(해제 아님) | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고, 연동은 새 버전으로 승계) |
 | `DELETE /api/v1/routines/{id}/house-mission-link` | 단체미션 연동 해제(멱등) | — | 204. 루틴은 유지, 과거 자동 기여는 미회수 |
@@ -82,6 +82,12 @@
 > - 임포트된 투두는 그 뒤로 **일반 투두와 완전히 동일**하다. 사용자가 카테고리를 옮기고 제목을 고치고 지울 수 있으며, 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
 > - 보상 규칙도 그대로다 — `dueDate`가 오늘인 완료만 코인 10, 일일 상한 50코인 합산. 미래 마감은 완료 불가라 미리 체크할 수 없다.
 > - 가져오기 전 미리보기에서 "비슷한 루틴·투두가 이미 있어요" 힌트를 보여주려면 `POST /api/v1/routines/similarity`(아래 유사 루틴·투두 비교 절)를 쓴다. 이 힌트는 안내용이며 중복 방지의 정본은 위 `externalId` unique다.
+
+> **반복 일정은 루틴으로** (모바일 #844): 같은 임포트에서 **반복 일정은 루틴**, 일회성은 투두로 들어간다.
+> - `POST /routines`도 `externalSource`·`externalId`를 받아 `routines`에 저장하고, **`unique (user_id, external_source, external_id)`로 중복을 막는다.** 같은 쌍이 이미 있으면 투두와 같이 **409**. 이게 없으면 앱을 열 때마다 같은 반복 일정이 새 루틴으로 복제된다.
+> - 루틴은 **시리즈 하나당 한 행**이므로 `externalId`는 **시리즈 id**다(회차 id가 아니다). 회차 단위로 들어가는 투두는 `시리즈 id + 날짜`를 쓴다 — 둘의 id 체계가 다르므로 서버는 값의 형식을 강제하지 않는다.
+> - **반복 규칙 판정은 앱이 한다.** 서버는 완성된 `repeatType`·`repeatDays`를 받을 뿐이다. 앱은 캘린더의 반복 규칙을 번역하지 않고 조회 창의 **실제 발생 날짜에서 역산**한다(`daysOfTheWeek`가 iOS 전용이라 규칙 번역은 플랫폼이 갈린다). 확신이 서지 않는 패턴(예: 매월 셋째 화요일, 불규칙, 연 1회)은 루틴으로 만들지 않고 발생분을 투두로 넣는다.
+> - 임포트된 루틴도 그 뒤로 **일반 루틴과 완전히 동일**하다. 완료 시 코인·스트릭·주간 회고·집 미션 기여에 그대로 반영된다 — 회의 같은 의무가 습관 통계에 섞이는 건 인지된 트레이드오프다(모바일 #844 논의). 원본 일정이 바뀌거나 지워져도 서버는 이 루틴을 건드리지 않는다.
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
 
