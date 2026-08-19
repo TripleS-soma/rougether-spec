@@ -53,14 +53,13 @@
 
 ## 동거 봇
 
-봇 계정 자체(스키마·시드·로그인 불가·격리)는 확정 → [member/features.md](domains/member/features.md) "동거 봇 계정". 아래는 아직 spec에 계약이 없는 후속 항목이다.
+봇 계정 자체(스키마·시드·로그인 불가·격리)는 확정 → [member/features.md](domains/member/features.md) "동거 봇 계정". 기본 집 자동 입주·자리 양보·해체 규칙과 구성원 `bot`·방명록 `authorBot` 표시 필드(서버 [#309](https://github.com/TripleS-soma/rougether-server/issues/309))도 확정 → [house/features.md](domains/house/features.md) "동거 봇 거주" · [house/api.md](domains/house/api.md) · [member/api.md](domains/member/api.md) 회원탈퇴 절 반영. 아래는 아직 spec에 계약이 없는 후속 항목이다.
 
-- **기본 집 자동 입주·자리 양보·해체 규칙**(서버 [#309](https://github.com/TripleS-soma/rougether-server/issues/309), **구현 예정**): 온보딩 기본 집("나의 집")에 봇 자동 입주, 사람이 오면 봇이 자리를 비켜주는 규칙, 봇에게 소유권 양도 불가·탈퇴 승계 후보 제외, "마지막 1인이면 집 soft delete"를 "마지막 사람이면"으로 바꾸는 변경, 집 구성원·방명록 응답의 `bot` 표시 필드. 확정되면 [house/api.md](domains/house/api.md)·[member/api.md](domains/member/api.md) 회원탈퇴 절에 반영한다.
 - **활동 스케줄러**(서버 [#310](https://github.com/TripleS-soma/rougether-server/issues/310), **구현 예정**): 봇이 활동 프로필 시간대에 루틴 완료·단체 미션 기여·응원·방명록·거미줄 청소·방 레이아웃 순환을 수행하는 규칙(확률·일일 상한·재화 지급 경로). 확정되면 [routine-todo](domains/routine-todo/features.md)·[house](domains/house/features.md)·[room](domains/room/features.md) 문서에 반영한다.
 - **`rougether.bots.enabled` 켜는 시점**: 기본 false. 격리와 입주·활동 규칙이 갖춰진 뒤 배포 환경에서 켠다(운영 판단).
 
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
-- **탈퇴 회원 처리**(회원 도메인 dependency): (일부 결정됨) 탈퇴 시 집 정리는 확정 — 모든 ACTIVE 멤버십 LEFT + 정원 감소 + pending 입주 신청 철회, 소유 집은 가입일 최선임 ACTIVE 멤버에게 자동 승계(동률 시 membership id 오름차순), 남은 멤버 없으면 집 해체(soft delete) → [member/api.md](domains/member/api.md)·[house/api.md](domains/house/api.md) 반영. 미확정 잔여: 단체미션 `house_mission_participants` 정산·분모 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등 — 프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
+- **탈퇴 회원 처리**(회원 도메인 dependency): (일부 결정됨) 탈퇴 시 집 정리는 확정 — 모든 ACTIVE 멤버십 LEFT + 정원 감소 + pending 입주 신청 철회, 소유 집은 가입일 최선임 ACTIVE 사람 멤버에게 자동 승계(동률 시 membership id 오름차순, 동거 봇 제외), 남은 사람 멤버 없으면 봇 전원 LEFT + 집 해체(soft delete) → [member/api.md](domains/member/api.md)·[house/api.md](domains/house/api.md) 반영. 미확정 잔여: 단체미션 `house_mission_participants` 정산·분모 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등 — 프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
 - **탈퇴 회원의 집 완료 내역 노출**(회원 도메인 dependency): 탈퇴 시 카테고리가 연쇄 soft delete되므로, 카테고리 visibility 기반의 집 멤버 완료 내역 조회에서 탈퇴자 이력이 빈 결과가 된다(`routine_logs` 자체는 보존되지만 노출 경로가 끊김). 이대로 수용할지, 집 통계·표시에서 별도 처리가 필요할지 미정.

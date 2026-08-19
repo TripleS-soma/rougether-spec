@@ -7,8 +7,8 @@
 ## 집 탐색 / 참여
 
 - **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. ACTIVE 멤버가 동거 봇(`users.is_bot`)뿐인 집은 노출하지 않는다(멤버가 없는 집은 노출). (`house`, `house_goals`, `house_members`)
-- **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. (`house_join_requests`, `house_members`, `house`)
-- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
+- **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. 정원이 찼어도 동거 봇이 채운 자리가 있으면 신청을 **접수**하고(수락 시점에 봇이 자리를 비움), 사람만으로 만석이면 신청 단계에서 거부한다 → 아래 "동거 봇 거주". (`house_join_requests`, `house_members`, `house`)
+- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 정원 초과 판정은 동거 봇 자리 양보를 거친 뒤의 값이다(만석이어도 비켜줄 봇이 있으면 참여 성공 → 아래 "동거 봇 거주"). 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
   - 즉시가입 시 같은 집의 대기 중인 입주 신청이 있으면 함께 ACCEPTED로 종결한다.
   - 다중 집 가입 허용: 다른 집에 이미 속해 있어도 새 집 참여 가능. 같은 집 중복만 차단.
 - **집 순서 변경**: 집 탭에서 내 집들이 보이는 순서를 사용자가 직접 정한다(모바일 #820). `house_members.sort_order`에 저장하는 **개인 설정**이라 같은 집의 다른 구성원에게는 영향이 없다. 정한 적 없으면 기존과 같은 가입순이고, 새로 가입한 집은 끝에 붙는다. 순서를 정하지 않은 사용자에게는 아무 변화도 없어야 한다. (`house_members`)
@@ -16,17 +16,29 @@
 ## 집 관리
 
 - **대표 이미지 후보 조회**: 집 생성·설정 화면은 서버의 게시 승인 manifest에서 프론트 식별용 `code`, 화면 표시용 `name`, 이미지 로딩용 `coverImageKey` 목록을 조회하고, 선택한 key만 `cover_image_key`로 저장한다. S3 `house/`의 초안·중복 파일은 후보에 자동 노출하지 않으며, 전체 URL은 저장하지 않고 클라이언트가 CDN base URL과 조합한다.
-- **집 생성**: 이름(2~30자)·대표 이미지(`cover_image_key`)·집 목표(`goal_ids` 필수 1~3개, 활성 goal 만)·참여 제한(`max_members` 1~10, 기본 4) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`·`status=active`로 즉시 등록(`current_member_count=1`). 집은 레벨 0·성장 포인트 0에서 시작. 생성 시 초대코드(영대문자+숫자 8자, 혼동문자 I,O,L,0,1 제외, 만료 7일) 발급. (`house`, `house_members`, `house_goals`)
-- **온보딩 기본 집**: 목표와 대표 캐릭터가 처음 모두 갖춰지는 온보딩 저장 트랜잭션에서 사용자 소유의 기본 공동집을 1회 생성한다. 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목을 적용하고, 집 목표는 대표 목표 우선 + 나머지 목표 마스터 정렬순으로 최대 3개를 연결한다. 동시 저장·재시도에도 중복 생성하지 않으며 이후 일반 설정 API로 변경 가능하다. (`house`, `house_members`, `house_goals`)
+- **집 생성**: 이름(2~30자)·대표 이미지(`cover_image_key`)·집 목표(`goal_ids` 필수 1~3개, 활성 goal 만)·참여 제한(`max_members` 1~10, 기본 4) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`·`status=active`로 즉시 등록(`current_member_count=1`). 집은 레벨 0·성장 포인트 0에서 시작. 생성 시 초대코드(영대문자+숫자 8자, 혼동문자 I,O,L,0,1 제외, 만료 7일) 발급. 사용자가 직접 만든 집에는 동거 봇이 들어가지 않는다(봇 자동 입주는 온보딩 기본 집 한정). (`house`, `house_members`, `house_goals`)
+- **온보딩 기본 집**: 목표와 대표 캐릭터가 처음 모두 갖춰지는 온보딩 저장 트랜잭션에서 사용자 소유의 기본 공동집을 1회 생성한다. 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목을 적용하고, 집 목표는 대표 목표 우선 + 나머지 목표 마스터 정렬순으로 최대 3개를 연결한다. 같은 트랜잭션에서 **동거 봇 2명이 MEMBER 로 함께 입주**해 사람 1 + 봇 2(`current_member_count=3`)로 시작한다 — 봇 풀에서 활성 멤버십 수가 가장 적은 봇을 고르고, 봇 풀이 비어 있으면(시드 전) 사람 1명 집으로 만든다. 봇 입주에는 `HOUSE_MEMBER_JOINED` 알림을 보내지 않는다. 동시 저장·재시도에도 중복 생성하지 않으며 이후 일반 설정 API로 변경 가능하다 → 아래 "동거 봇 거주". (`house`, `house_members`, `house_goals`, `users.is_bot`)
 - **설정 수정**: 이름·소개글(`description`)·대표 이미지(`cover_image_key`)·최대 인원(`max_members`) 수정. 소유자만. (`house`)
 - **초대코드 재발급**: ACTIVE 구성원 누구나. 소유자는 집 공용 코드(`house.invite_code`, 즉시가입), 일반 구성원은 본인 개인 코드(`house_members.invite_code`, 방장 승인 대기)를 재발급하고 `invite_expires_at` 을 갱신한다. 재발급 시 같은 종류의 기존 코드는 즉시 만료. (`house`, `house_members`)
 
 ## 구성원 관리
 
-- **입주 신청 관리**: 소유자만 대기 중인 신청을 조회하고 수락·거절한다. 수락 시점에 집 정원을 다시 검사하고 구성원 등록·신청 종결·`current_member_count` 증가를 한 트랜잭션으로 처리한다. (`house_join_requests`, `house_members`, `house`)
-- **강퇴**: 소유자만 가능. 대상 `house_members.status`를 강퇴 상태로 전환(또는 `left_at` 기록), `current_member_count` 감소. 강퇴 구성원에게 알림(알림 발송은 의존 도메인). (`house_members`, `house`)
-- **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지되며 집 활동·미션에는 더는 참여하지 못한다. **재가입은 허용**(기존 row 재활성화). `current_member_count` 감소. 마지막 1인 탈퇴 시 집 soft delete. (`house_members`, `house`)
-- **소유자 양도 후 탈퇴**: 소유자는 탈퇴 전 다른 구성원에게 소유권 양도 필요. 대상 구성원 `role=owner`로 변경 + `house.owner_user_id` 갱신 후 기존 소유자 탈퇴. (`house_members`, `house`)
+- **입주 신청 관리**: 소유자만 대기 중인 신청을 조회하고 수락·거절한다. 수락 시점에 집 정원을 다시 검사하고 구성원 등록·신청 종결·`current_member_count` 증가를 한 트랜잭션으로 처리한다. 수락 시 만석이면 동거 봇이 자리를 비운 뒤 등록한다(비켜줄 봇이 없으면 정원 초과 거부) → 아래 "동거 봇 거주". (`house_join_requests`, `house_members`, `house`)
+- **강퇴**: 소유자만 가능. 대상 `house_members.status`를 강퇴 상태로 전환(또는 `left_at` 기록), `current_member_count` 감소. 강퇴 구성원에게 알림(알림 발송은 의존 도메인). 동거 봇 구성원도 같은 규칙으로 강퇴할 수 있다(KICKED, 그 집 재입주 없음). (`house_members`, `house`)
+- **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지되며 집 활동·미션에는 더는 참여하지 못한다. **재가입은 허용**(기존 row 재활성화). `current_member_count` 감소. **마지막 사람이 나가면**(남은 ACTIVE 구성원이 동거 봇뿐이거나 없으면) 남은 봇을 전원 LEFT 처리하고 집을 soft delete 한다 → 아래 "동거 봇 거주". (`house_members`, `house`)
+- **소유자 양도 후 탈퇴**: 소유자는 탈퇴 전 다른 **사람** 구성원에게 소유권 양도 필요(동거 봇에게는 양도할 수 없고, 사람 구성원이 본인뿐이면 봇이 남아 있어도 바로 탈퇴 가능). 대상 구성원 `role=owner`로 변경 + `house.owner_user_id` 갱신 후 기존 소유자 탈퇴. (`house_members`, `house`)
+
+## 동거 봇 거주
+
+동거 봇 계정(`users.is_bot`, 정의는 [member/features.md](../member/features.md) "동거 봇 계정")이 집에 들어오고 나가는 규칙. 봇은 `house_members` 행으로 일반 구성원과 같은 role/status 를 쓰고 여러 집에 동시 소속될 수 있다. 정원 카운트(`current_member_count`)와 봇 멤버십 상태 변경은 항상 집 행 락 안에서 함께 처리한다.
+
+- **입주(온보딩 기본 집 한정)**: 기본 집 생성 트랜잭션에서 봇 풀(soft delete 되지 않은 `is_bot=true` 계정) 중 **활성(ACTIVE) 멤버십 수가 가장 적은 봇 2명**(동률이면 id 오름차순)을 MEMBER·ACTIVE 로 등록해 `current_member_count=3` 으로 시작한다. 봇 풀이 비어 있으면 사람 1명 집으로 생성하고 기본 집 생성 자체는 막지 않는다. 사용자가 직접 만든 집(`POST /api/v1/houses`)이나 기존 집에는 봇이 알아서 들어가지 않는다. 봇 입주는 `HOUSE_MEMBER_JOINED` 알림을 발송하지 않는다.
+- **자리 양보**: 사람이 입주 확정되는 경로(집 공용 코드 즉시가입, 입주 신청 수락, 초대자가 owner 인 개인 코드)에서 집이 만석(`current_member_count >= max_members`)이고 ACTIVE 봇이 있으면 **가장 나중에 들어온 봇 1명**(`joined_at` 내림차순, 동률이면 membership id 내림차순)이 LEFT 로 바뀌고 카운트가 1 내려간 뒤 정상 입주한다. 비켜줄 봇이 없으면(사람만으로 만석) 기존대로 `HOUSE_FULL`. 정원 4 기준 사람 3명이면 봇 1, 사람 4명이면 봇 0 이 된다. 양보한 봇의 방명록·응원 기록은 남는다. 양보·해체로 봇이 나갈 때 `HOUSE_MEMBER_LEFT` 알림은 발송하지 않는다(사람 입주에 대한 `HOUSE_MEMBER_JOINED` 는 기존대로).
+- **입주 신청 접수**: 탐색 신청·구성원 개인 코드 신청은 "정원이 남았거나 비켜줄 ACTIVE 봇이 있으면" 접수하고, 방장이 수락하는 시점에 위 양보 규칙으로 자리를 만든다. 사람만으로 만석이면 신청 단계에서 `HOUSE_FULL`. 집 미리보기의 `isFull` 도 같은 기준("사람이 더 들어갈 수 없는지")이다.
+- **소유권·해체**: 봇에게는 소유권을 양도할 수 없다(`HOUSE_OWNER_TRANSFER_TO_BOT`). 소유자 탈퇴 판정 "혼자 남았으면 바로 탈퇴 / 다른 구성원이 있으면 양도 선행"은 **사람 ACTIVE 구성원 수 기준**이다 — 봇만 남아 있어도 바로 탈퇴할 수 있고, 다른 사람이 있으면 `HOUSE_OWNER_MUST_TRANSFER`. 회원탈퇴의 자동 승계 후보에서도 봇은 제외한다. **사람이 0명이 되면**(마지막 사람의 집 탈퇴·회원탈퇴) 남은 봇을 전원 LEFT 처리하고 카운트를 내린 뒤 집을 soft delete 한다 — 종전 "마지막 1인이면 soft delete" 규칙을 "마지막 사람이면"으로 대체한 것이며, 봇만 남은 집을 유지하지 않는다.
+- **강퇴·퇴장 경로**: 방장은 봇을 강퇴할 수 있다(KICKED — 강퇴 이력이라 그 집에 다시 들어오지 않음). 봇이 스스로 집을 나가는 경로는 자리 양보와 해체뿐이다(봇은 로그인하지 않으므로 탈퇴 API·회원탈퇴 경로가 없음).
+- **표시**: 구성원 목록 응답의 `bot`, 방명록 목록 응답의 `authorBot`(boolean)으로 구분한다. 닉네임에 "(봇)" 같은 접미는 붙이지 않고 프론트가 배지만 표시한다. 방 방문·응원 응답에는 봇 필드를 두지 않는다(구성원 목록으로 판별).
+- **미션 분모**: `DAILY_MEMBER_RATE` 달성률의 분모(`current_member_count`)에 봇도 포함한다 — 봇을 일반 멤버와 동일하게 취급한다. 봇의 미션 기여·응원·방명록 등 활동 규칙은 활동 스케줄러(서버 #310)에서 확정한다 → [open-questions.md](../../open-questions.md) "동거 봇".
 
 ## 구성원 방 방문
 
@@ -40,7 +52,7 @@
 - **미션 조회**: 집의 미션 목록(최신 생성순)·진행률 조회. 별도 미션 목록·상세는 구성원 전용이고, 집 미리보기에는 입주 전 판단용 요약 목록을 로그인 회원에게 읽기 전용으로 공개한다. WEEKLY 진행률은 참여자 기여 합(`house_mission_participants.contribution_value`)과 `target_value`로, DAILY 진행률은 오늘(KST) 기여 멤버 수 / 집 활성 멤버 수의 비율 %와 `target_value`(%)로 산출. (`house_missions`, `house_mission_participants`, `house_mission_daily_contributions`)
 - **미션 기여**: 구성원이 **공동 미션 자체를 직접 수행 체크**(`POST .../contribute`, 본인 +1·KST 하루 1회)한다 — 모델 확정 2026-07-05. 하루 1회는 일별 기여 이력(`house_mission_daily_contributions`)의 UNIQUE 로 강제(유형 공통 기록). 여기에 더해 미션에 연동된 개인 루틴(`routines.house_mission_id`)을 오늘 완료하면 자동 기여된다 — **재도입 확정 2026-07-29, server PR #234** (2026-07-05 의 "개인 루틴 완료와 무관·자동 연동 폐기(이슈 #93·PR #94)" 결정 변경. 프론트가 이름 매칭으로 우회 구현하던 연동을 서버 식별자 기반으로 정식화). 하루 1회 이력은 직접 체크와 공유하고, 루틴 완료 취소는 기여를 회수하지 않는다. 수행 인증(사진 등)은 후속. (`house_mission_participants`, `house_mission_daily_contributions`, `house_members`, `routines.house_mission_id`)
 - **미션 달성 (WEEKLY)**: 기여 합이 목표 이상일 때 구성원 누구나 보상 수령(claim, 미션당 최초 1회). `house_missions.status` COMPLETED 전환 + 집 성장 포인트 +100(`house.growth_points`, 개인 재화 보상 없음 — 후속 검토) + 참여자 `reward_claimed` 일괄 true. 동시 claim 은 행 락으로 이중 지급 방지. (`house_missions`, `house_mission_participants`, `house`)
-- **미션 달성 (DAILY, 매일 반복)**: 오늘(KST) 달성률이 `target_value`% 이상일 때 구성원 누구나 **하루 1회** claim → 집 성장 포인트 +20 (WEEKLY 의 1/5). COMPLETED 전환 없이 다음날 0%부터 반복하고, 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 하루 1회는 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE 와 행 락으로 이중 지급 방지. 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴 멤버 제외). (`house_missions`, `house_mission_daily_rewards`, `house`)
+- **미션 달성 (DAILY, 매일 반복)**: 오늘(KST) 달성률이 `target_value`% 이상일 때 구성원 누구나 **하루 1회** claim → 집 성장 포인트 +20 (WEEKLY 의 1/5). COMPLETED 전환 없이 다음날 0%부터 반복하고, 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 하루 1회는 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE 와 행 락으로 이중 지급 방지. 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴 멤버 제외, 동거 봇 구성원 포함). (`house_missions`, `house_mission_daily_rewards`, `house`)
 - **미션 만료(EXPIRED)**: `ends_at`이 지난 ACTIVE 미션은 배치(매시 정각 KST + 기동 시 1회)가 `status=EXPIRED`로 전이. 유형 무관이며 무기한 미션은 대상 아님, COMPLETED 는 만료보다 우선. **만료 후에는 기여·claim 모두 불가(유예 없음)** — 배치 전이 전이라도 기간 검사로 즉시 거부. EXPIRED 미션은 목록·상세에 그대로 노출. (`house_missions`)
 
 ## 집 레벨
