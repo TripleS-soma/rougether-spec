@@ -11,6 +11,7 @@
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
+- `goals[]`는 빈 배열일 수 있다(가입 시 만들어진 기본 집은 온보딩 목표 저장 전까지 집 목표가 없음). 목표 없는 집은 `goalCode` 필터에 매칭되지 않는다.
 - table: `house`, `house_goals`
 
 ### GET /api/v1/me/houses
@@ -86,12 +87,14 @@
 - 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
 - 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
 - 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400) · 목록에 없는 `coverImageKey` → `HOUSE_COVER_IMAGE_INVALID`(400)
+- `goalIds` 1~3개 필수 규칙은 이 API에만 적용. 회원가입 시 서버가 만드는 기본 집만 목표 없이 생성된다([features.md](features.md) 회원가입 기본 집).
 - table: `house`, `house_members`(owner row), `house_goals`
 
 ### GET /api/v1/houses/{houseId}
 집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수). **ACTIVE 구성원만** 조회 가능.
 - res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`(`goalId`,`code`,`name`), `myRole`, `inviteCode`, `inviteExpiresAt`
 - `inviteCode`/`inviteExpiresAt` 는 **소유자에게만** 값, 그 외 null. `myRole` 은 화면의 소유자 UI 분기용
+- `goals[]`는 빈 배열일 수 있다(가입 직후 온보딩 목표 저장 전의 기본 집)
 - 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
 - table: `house`, `house_members`, `house_goals`
 

@@ -17,7 +17,7 @@
 
 - **대표 이미지 후보 조회**: 집 생성·설정 화면은 서버의 게시 승인 manifest에서 프론트 식별용 `code`, 화면 표시용 `name`, 이미지 로딩용 `coverImageKey` 목록을 조회하고, 선택한 key만 `cover_image_key`로 저장한다. S3 `house/`의 초안·중복 파일은 후보에 자동 노출하지 않으며, 전체 URL은 저장하지 않고 클라이언트가 CDN base URL과 조합한다.
 - **집 생성**: 이름(2~30자)·대표 이미지(`cover_image_key`)·집 목표(`goal_ids` 필수 1~3개, 활성 goal 만)·참여 제한(`max_members` 1~10, 기본 4) 설정. 생성자는 `owner_user_id`로 기록되고 `house_members`에 `role=owner`·`status=active`로 즉시 등록(`current_member_count=1`). 집은 레벨 0·성장 포인트 0에서 시작. 생성 시 초대코드(영대문자+숫자 8자, 혼동문자 I,O,L,0,1 제외, 만료 7일) 발급. (`house`, `house_members`, `house_goals`)
-- **온보딩 기본 집**: 목표와 대표 캐릭터가 처음 모두 갖춰지는 온보딩 저장 트랜잭션에서 사용자 소유의 기본 공동집을 1회 생성한다. 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목을 적용하고, 집 목표는 대표 목표 우선 + 나머지 목표 마스터 정렬순으로 최대 3개를 연결한다. 동시 저장·재시도에도 중복 생성하지 않으며 이후 일반 설정 API로 변경 가능하다. (`house`, `house_members`, `house_goals`)
+- **회원가입 기본 집**: 회원가입(최초 소셜 로그인·dev-login 신규 가입) 트랜잭션에서 지갑 발급과 함께 사용자 소유의 기본 공동집을 1회 생성한다. 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목을 적용하고, **집 목표는 비어 있는 채로** 만든다. 집 생성 실패는 가입 실패다(집 없는 계정을 만들지 않음). 서버의 동거 봇 규칙에 따라 초기 구성원이 함께 들어갈 수 있다. 집 목표는 `PUT /api/v1/onboarding/goals` 저장 시 "내가 OWNER이고 집 목표가 비어 있는 집"에 대표 목표 우선 + 나머지 목표 마스터 정렬순으로 최대 3개를 1회 채우며, 이후 사용자 목표 변경은 집 목표에 반영하지 않는다. 기본 집을 나갔거나 해체된 뒤 재생성하지 않고, 기존 계정에 소급 생성하지 않는다. (`house`, `house_members`, `house_goals`)
 - **설정 수정**: 이름·소개글(`description`)·대표 이미지(`cover_image_key`)·최대 인원(`max_members`) 수정. 소유자만. (`house`)
 - **초대코드 재발급**: ACTIVE 구성원 누구나. 소유자는 집 공용 코드(`house.invite_code`, 즉시가입), 일반 구성원은 본인 개인 코드(`house_members.invite_code`, 방장 승인 대기)를 재발급하고 `invite_expires_at` 을 갱신한다. 재발급 시 같은 종류의 기존 코드는 즉시 만료. (`house`, `house_members`)
 
