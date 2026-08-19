@@ -13,7 +13,7 @@
 | `POST /api/v1/auth/apple` | 애플 identityToken으로 로그인. 최초 로그인이면 회원 자동 생성 | req: `idToken`, `authorizationCode` / res: `userId`, `accessToken`, `refreshToken`, `isNewUser` | `users`, `oauth_accounts` |
 | `POST /api/v1/auth/refresh` | refresh token으로 access/refresh 재발급. **1회용(회전)** — 사용한 refresh는 즉시 폐기되고 새 토큰으로 교체. 정상 회전 성공 시 `users.last_accessed_at` 갱신 | req: `refreshToken` / res: `accessToken`, `refreshToken` | `refresh_tokens` |
 | `POST /api/v1/auth/logout` | 전달한 refresh token 폐기. **멱등**(없는/이미 폐기된 토큰도 성공) — access token은 만료까지 유효하므로 클라이언트가 삭제 | req: `refreshToken` / res: 204 | `refresh_tokens` |
-| `POST /api/v1/auth/dev-login` | **개발 전용** — userId로 토큰 발급(생략 시 새 회원 생성 — 소셜 가입과 동일하게 지갑 발급 포함). 운영에서는 사용하지 않는 것이 정책이나, **현재 프로파일 가드·설정 스위치가 없어 어느 환경에서도 열려 있다**(운영 차단은 미결 → [open-questions.md](../../open-questions.md)) | req: `userId?` / res: 로그인과 동일 | `users` |
+| `POST /api/v1/auth/dev-login` | **개발 전용** — userId로 토큰 발급(생략 시 새 회원 생성 — 소셜 가입과 동일하게 지갑 발급 포함). 동거 봇 계정(`users.is_bot`)의 userId는 401 `AUTH_BOT_LOGIN_NOT_ALLOWED`로 거부. 운영에서는 사용하지 않는 것이 정책이나, **현재 프로파일 가드·설정 스위치가 없어 어느 환경에서도 열려 있다**(운영 차단은 미결 → [open-questions.md](../../open-questions.md)) | req: `userId?` / res: 로그인과 동일 | `users` |
 
 - 프론트(RN)가 네이티브 카카오 SDK로 얻은 **access token**을 보낸다(authorization code·redirect URI 미사용). 서버는 카카오로 토큰을 검증(앱 `app_id` 대조로 타 앱 토큰 치환 차단)하고 회원번호·이메일을 조회한다.
 - 최초 로그인은 자동 가입: `oauth_accounts`에 (provider, provider_user_id)가 없으면 `users`와 통화별 지갑을 생성해 연동하고 `isNewUser=true`. 지갑 초기 잔액은 코인 100·다이아 0(정책은 재화 도메인 소유 → [shop/api.md](../shop/api.md)). 닉네임은 가입 시 비우고 온보딩에서 채운다. 이메일은 카카오가 제공/동의한 경우 가입 시에만 저장(미제공 시 null, 재로그인 시 갱신 안 함).
@@ -21,6 +21,7 @@
 - 애플도 구글과 동일하게 프론트가 **identityToken(JWT)** 을 보낸다(Sign in with Apple). 서버는 애플 공개키(JWK, RS256)로 서명·만료를 검증하고 `iss`가 `https://appleid.apple.com`인지, `aud`가 허용 client_id(App ID/Service ID) 목록에 있는지 대조한 뒤 `sub`(회원번호)·이메일을 추출한다. 목록 미설정 시 전부 거부(fail-closed). 애플은 **최초 로그인에만 이메일을 제공**하고 이메일 가리기를 선택하면 private relay 주소(`@privaterelay.appleid.com`)를 주므로, 이메일은 없을 수도 relay 주소일 수도 있다 — 받은 값을 그대로 가입 시에만 저장한다. 요청에는 identityToken과 함께 **`authorizationCode`(필수)** 를 보낸다 — native Sign in with Apple이 identityToken과 함께 반환하는 값이라 추가 UX는 없지만 **기존 계약 변경이므로 프론트 동시 배포가 필요**하다. 서버는 로그인 성공 시 `authorizationCode`를 애플 토큰 엔드포인트(`https://appleid.apple.com/auth/token`)로 교환해 refresh token을 받고, 암호화해 `oauth_accounts.apple_refresh_token_encrypted`에 저장한다(재로그인 시 갱신) — 회원탈퇴 시 연동 해제(revoke)에 사용한다. 교환·암호화에 필요한 시크릿 미설정 환경에서는 조용히 건너뛰지 않고 애플 로그인이 실패한다(fail-closed).
 - 인증 토큰은 JWT(stateless) access + 불투명 refresh(회전·재사용 감지) 기반. access 유효기간 30분, refresh 14일. refresh는 원문이 아닌 해시만 `refresh_tokens`에 저장. 소셜 provider는 카카오·구글·애플을 지원한다.
 - `users.last_accessed_at`은 **마지막 토큰 발급 시각**이다. 소셜/dev 로그인과 refresh 정상 회전 성공 시 갱신하고, 재사용 감지→전체 폐기 경로에서는 갱신하지 않는다. 갱신은 **역행 무시 조건부 UPDATE**다 — 기존 값이 null이거나 새 값보다 과거일 때만 갱신해, 다기기 동시 회전이 최신값을 되돌리지 않는다. access 유효기간(30분)만큼의 오차를 허용한다(알림·휴면 판별 용도로 충분).
+- **동거 봇 계정은 로그인할 수 없다.** 봇(`users.is_bot=true`)은 서버가 시드하는 계정으로 `oauth_accounts`·`refresh_tokens`가 없어 소셜 로그인·refresh 경로는 원천 불가이고, dev-login에 봇 userId를 넘기면 401 `AUTH_BOT_LOGIN_NOT_ALLOWED`. 따라서 봇의 `last_accessed_at`은 갱신되지 않는다(휴면 판별 배치는 봇을 제외한다) → [features.md](features.md) "동거 봇 계정".
 
 ## 마스터 조회 (목표 · 캐릭터)
 
@@ -40,7 +41,7 @@
 - `PUT /api/v1/onboarding/goals`: 전체 교체(기존 `user_goals` 삭제 후 재구성, 단일 트랜잭션). `goalIds`가 빈 배열이면 거부(최소 1개, `GOAL_REQUIRED`), 상한 없음. 중복 `goalId`는 dedupe. 모든 `goalId`는 존재 + `isActive=true`여야 함(아니면 `INVALID_GOAL`). `primaryGoalId`는 선택(생략 시 대표 없음), 지정 시 `goalIds`에 포함돼야 함(아니면 `PRIMARY_GOAL_NOT_IN_SELECTION`).
 - `PUT /api/v1/onboarding/character`: 대상 `characterId`는 존재 + `isActive=true` 마스터여야 함(아니면 `CHARACTER_NOT_FOUND`). 보유(`deleted_at` null) 중이면 이전 대표 `is_selected=false`·대상 `is_selected=true`로 무료 교체. 미보유 + 보유 0개(최초)면 대상을 보유 등록(`acquired_at` 기록)+선택(스타터 지급). 미보유 + 보유 1개 이상이면 거부(`CHARACTER_NOT_OWNED`) — 신규 획득은 뽑기/상점 도메인 소관. 이전 대표 해제 + 신규 선택/등록은 단일 트랜잭션이며 `is_selected` 유일성을 보장(대상 유저 행 비관적 락으로 동시 요청 직렬화). 이미 선택된 캐릭터 재선택은 무해(idempotent). 온보딩 이후의 착용 교체는 `PUT /api/v1/me/characters/select`(보유 캐릭터 전용) 사용을 권장한다 — 이 경로의 교체 동작은 하위호환으로 유지.
 - `completed`는 (선택 목표 ≥1개) && (대표 캐릭터 존재)로 계산. `primaryGoalId`는 optional이라 완료 기준에서 제외. 온보딩 요약(`completed`·`primaryGoalId`·`selectedCharacterId`)은 `GET /api/v1/onboarding`과 `GET /api/v1/me`가 동일 read model을 공유.
-- 목표·대표 캐릭터가 처음 모두 갖춰지는 `PUT` 요청은 기본 공동집도 같은 트랜잭션에서 1회 생성한다. 목표→캐릭터·캐릭터→목표 순서를 모두 지원하고, 두 쓰기 경로를 사용자 행 비관적 락으로 직렬화해 동시 호출·재시도 중복을 막는다. 기본값은 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목이며, 집 목표는 대표 목표 우선 + 나머지 `sortOrder` 순으로 최대 3개를 연결한다. 이후 일반 집 설정 API로 수정할 수 있다. (`house`, `house_members`, `house_goals`)
+- 목표·대표 캐릭터가 처음 모두 갖춰지는 `PUT` 요청은 기본 공동집도 같은 트랜잭션에서 1회 생성한다. 목표→캐릭터·캐릭터→목표 순서를 모두 지원하고, 두 쓰기 경로를 사용자 행 비관적 락으로 직렬화해 동시 호출·재시도 중복을 막는다. 기본값은 이름 `나의 집`, 정원 4명, 게시 승인 커버 manifest 첫 항목이며, 집 목표는 대표 목표 우선 + 나머지 `sortOrder` 순으로 최대 3개를 연결한다. 같은 트랜잭션에서 동거 봇 2명이 MEMBER 로 함께 입주해 사람 1 + 봇 2 로 시작한다(봇 풀이 비어 있으면 사람 1명 집, 규칙은 [house/features.md](../house/features.md) "동거 봇 거주"). 이후 일반 집 설정 API로 수정할 수 있다. (`house`, `house_members`, `house_goals`)
 - 선택값은 모두 `user_id`(소유권 식별자)에 귀속. 인증된 사용자 기준.
 
 ## 보유 캐릭터 / 착용
@@ -99,8 +100,8 @@
 - **집 도메인도 같은 트랜잭션에서 정리한다** (외부 API 호출이 없어 전부 트랜잭션 안):
   - **대기 중 입주 신청 철회** — 탈퇴자의 `PENDING` 입주 신청(`house_join_requests`)을 전부 `REJECTED`로 전환한다(철회 전용 상태 없이 기존 상태값 재사용).
   - **모든 ACTIVE 멤버십 LEFT 처리** — 참여 중인 모든 집에서 status=LEFT + `left_at` 기록, 각 집의 `current_member_count` 감소. 집 나가기·강퇴와 동일한 부수 정리로 그 집의 단체미션 루틴 연동(`routines.house_mission_id`)·카테고리 집 연동(`categories.house_id`)도 해제한다.
-  - **소유 집은 자동 승계** — 남은 ACTIVE 멤버 중 **가입일(`house_members` 가입 시각)이 가장 오래된 멤버**에게 소유권을 이전한다(동률 시 membership id 오름차순 — 결정적 규칙). 집 나가기 API와 달리 양도 선행(`HOUSE_OWNER_MUST_TRANSFER`) 없이 진행된다.
-  - **남은 멤버가 없으면 집 해체** — 집 soft delete(`deleted_at`). 해체된 집은 탐색에서 빠지고 그 집 초대코드(`house.invite_code`)로의 신규 가입도 불가.
+  - **소유 집은 자동 승계** — 남은 ACTIVE **사람** 멤버 중 **가입일(`house_members` 가입 시각)이 가장 오래된 멤버**에게 소유권을 이전한다(동률 시 membership id 오름차순 — 결정적 규칙). 동거 봇(`users.is_bot`)은 승계 후보에서 제외한다(방장은 항상 사람). 집 나가기 API와 달리 양도 선행(`HOUSE_OWNER_MUST_TRANSFER`) 없이 진행된다.
+  - **남은 사람 멤버가 없으면 집 해체** — 남아 있는 동거 봇을 전원 LEFT 처리(정원 감소)하고 집 soft delete(`deleted_at`). 소유 집이 아니어도 탈퇴자가 그 집의 마지막 사람이면 같은 규칙으로 해체한다(봇만 남은 집을 유지하지 않음 → [house/features.md](../house/features.md) "동거 봇 거주"). 해체된 집은 탐색에서 빠지고 그 집 초대코드(`house.invite_code`)로의 신규 가입도 불가.
   - 승인 경로의 동시성 방어(탈퇴자 신청 승인 시도 가드)는 [house/api.md](../house/api.md) "입주 신청 수락" 참고.
 - **보존하는 것**: `last_accessed_at`(접속기록), revoked `refresh_tokens` row(해시만 저장, 비개인정보), 알림 내역(`notification`)·설정, `routine_logs`·`streaks`·인증 사진, `created_at`/`deleted_at`.
 - **provider 연동 해제(revoke)는 트랜잭션 커밋 이후 best-effort**로 호출한다 — 외부 API 실패가 탈퇴를 롤백하지 않고, 실패는 로그만 남기며 재시도 없음. App Store 심사 가이드라인 5.1.1(v)의 소셜 자격증명 revoke 요구를 충족한다.
@@ -122,6 +123,7 @@
 - 보상은 **초대자 50 / 피초대자 50 코인**(50 = 가구 뽑기 단챠 2회분이자 루틴·투두 일일 보상 상한 하루치). 초대자 보상은 **10건 한도** — 초과하면 redeem 자체는 성공하되 초대자 몫만 0.
 - redeem은 계정당 **평생 1회**(`invite_rewards` unique — 피초대자 기준). 에러코드: 없는 코드 404 `INVITE_CODE_NOT_FOUND`, 자기 코드 입력 400 `INVITE_SELF_NOT_ALLOWED`, 이미 사용 409 `INVITE_ALREADY_REDEEMED`.
 - **탈퇴 계정 차단(양방향)**: 초대자가 탈퇴한 코드는 무효 코드와 동일하게 404 `INVITE_CODE_NOT_FOUND`, 본인이 탈퇴한 뒤 잔여 access token으로 redeem하면 401 `AUTH_INVALID_TOKEN` — 탈퇴 계정 지갑에 보상이 지급되는 경로를 양쪽 다 막는다. 탈퇴 시 코드 row 자체를 비활성화하지는 않는다(redeem 시점 가드로 충분).
+- **동거 봇 차단(양방향)**: 봇 계정(`users.is_bot`)은 초대 보상에 참여할 수 없다 — 봇의 `GET /api/v1/invites/me`(코드 발급·조회)와, 초대자 또는 피초대자가 봇인 redeem은 모두 403 `INVITE_BOT_NOT_ALLOWED`. 재화 변동 없이 거부한다(봇을 통한 코인 파밍 통로 차단, 락 진입 전에 거른다) → [features.md](features.md) "동거 봇 계정".
 - 집 초대코드(`house.invite_code`)와는 별개 체계다(그쪽은 집 도메인).
 
 ## 연동 (다른 도메인)

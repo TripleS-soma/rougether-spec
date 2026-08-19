@@ -11,7 +11,8 @@
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
-- table: `house`, `house_goals`
+- **ACTIVE 멤버가 동거 봇(`users.is_bot`)뿐인 집은 제외**(봇만 남은 집이 추천에 뜨지 않게). 사람 ACTIVE 멤버가 1명 이상이거나 ACTIVE 멤버가 아예 없는 집은 기존대로 노출. `goalCode`·`excludeJoined` 조합 모두 같은 조건을 공유한다. 봇 계정 정의는 [member/features.md](../member/features.md) "동거 봇 계정".
+- table: `house`, `house_goals`, `house_members`
 
 ### GET /api/v1/me/houses
 내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 페이지네이션 없음(다중 가입 소수 전제).
@@ -34,20 +35,21 @@
 ### POST /api/v1/houses/{houseId}/join-requests
 탐색 결과에서 선택한 집에 **입주 신청**한다. 신청만으로 구성원이 되지 않으며 `house.current_member_count`도 바뀌지 않는다. 같은 집에서 거절된 신청은 동일 행을 `PENDING`으로 되돌려 재신청한다.
 - res(201): `requestId`, `houseId`, `userId`, `nickname`, `status=PENDING`, `requestedAt`
-- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 이미 구성원 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409)
-- table: `house_join_requests`
+- 정원 판정은 **사람 기준** — 정원이 찼어도 비켜줄 ACTIVE 동거 봇이 있으면 신청을 접수하고, 방장이 수락하는 시점에 봇이 자리를 비운다. 사람만으로 만석이면 신청 단계에서 `HOUSE_FULL` → [features.md](features.md) "동거 봇 거주".
+- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과(사람만으로 만석) `HOUSE_FULL`(409) · 이미 구성원 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409)
+- table: `house_join_requests`, `house_members`(봇 자리 판정)
 - 이전 앱의 `POST /api/v1/houses/{houseId}/join`도 이 API와 동일하게 **신청만 생성**하는 deprecated alias로 유지한다. 즉시가입 우회 경로로 사용하지 않는다.
 
 ### POST /api/v1/houses/join-by-code
 초대코드/링크로 참여. 코드 종류에 따라 두 흐름으로 갈린다.
-- 집 공용 코드(`house.invite_code`, 소유자 공유): **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다. 같은 집에 `PENDING` 입주 신청이 있으면 함께 `ACCEPTED`로 종결한다.
-- 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다.
+- 집 공용 코드(`house.invite_code`, 소유자 공유): **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다. 같은 집에 `PENDING` 입주 신청이 있으면 함께 `ACCEPTED`로 종결한다. 만석이어도 ACTIVE 동거 봇이 있으면 가장 나중에 들어온 봇 1명이 LEFT 로 자리를 비운 뒤 입주한다(집 행 락 안, 비켜줄 봇이 없으면 `HOUSE_FULL`) → [features.md](features.md) "동거 봇 거주".
+- 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다. 정원 판정은 탐색 신청과 같은 사람 기준(봇이 채운 만석은 접수, 수락 시 봇 양보).
 - 코드 조회는 집 공용 코드 → 구성원 개인 코드 순. 두 네임스페이스는 발급 시점에 두 테이블을 함께 존재 검사해 겹치지 않게 한다(사전 검사 기반). 초대자가 참여 시점에 owner 면(소유권 양도 등) 개인 코드도 즉시가입으로 처리한다.
 - req: `inviteCode`
 - res: `membershipId`, `houseId`, `status`, `pendingApproval`, `joinRequestId` — 즉시가입이면 `pendingApproval=false`·`joinRequestId=null`, 승인 대기면 `pendingApproval=true`·`joinRequestId` 반환에 `membershipId`·`status`는 null
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
 - 같은 집에 `PENDING` 입주 신청이 있으면 즉시가입과 함께 해당 신청을 `ACCEPTED`로 종결한다.
-- 예외: 없는 코드·초대자 탈퇴/강퇴 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409, 구성원 개인 코드 경로) · 탈퇴 계정의 잔여 access token `AUTH_INVALID_TOKEN`(401)
+- 예외: 없는 코드·초대자 탈퇴/강퇴 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과(사람만으로 만석) `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409, 구성원 개인 코드 경로) · 탈퇴 계정의 잔여 access token `AUTH_INVALID_TOKEN`(401)
 - 탈퇴 계정 가드: 회원탈퇴 후 잔여 access token(만료 전 최대 30분)의 참여 확정은 401 `AUTH_INVALID_TOKEN`으로 차단한다(가입 확정 공통 경로 — 탈퇴 트랜잭션의 멤버십 정리가 되돌아가지 않게 함, [member/api.md](../member/api.md) "회원탈퇴"). 해체(soft delete)된 집의 초대코드는 없는 코드와 동일하게 참여 불가.
 - table: `house`, `house_members`, `house_join_requests`
 
@@ -60,7 +62,7 @@
 ### GET /api/v1/houses/{houseId}/preview
 탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
 - res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`, `myJoinRequestStatus?`, `missions[]`, `memberRooms[]`
-- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(신청 버튼 비활성용), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
+- 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 **사람이 더 들어갈 수 없는지**(신청 버튼 비활성용 — 정원이 찼어도 비켜줄 ACTIVE 동거 봇이 있으면 false, 사람만으로 만석일 때만 true. "정원이 찼는지"에서 의미 변경 → [features.md](features.md) "동거 봇 거주"), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
 - `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다. WEEKLY 진행 수치는 기여 누적 합, DAILY 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
 - `memberRooms[]`: 구성원 타일에 실제 방을 렌더하기 위한 데이터(서버 #177 확정). 가입순, ACTIVE 구성원만. 항목은 `membershipId`, `nickname`(온보딩 전 null), `room`(방 미생성 구성원은 null - 기본 방 타일로 표시)
   - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순), `cobweb?`(`assetKey`, `appearedAt`, `cleanable` - 요청자가 같은 집 ACTIVE 구성원이고 활성 거미줄이 있을 때만 제공, 비구성원 미리보기에서는 null)
@@ -83,7 +85,7 @@
 집 생성. 생성자가 `owner`. 이름은 금칙어 검사(공통 규칙, 위반 400 `HOUSE_NAME_BANNED` — 설정 수정의 이름 변경도 동일).
 - req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
-- 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
+- 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작. 동거 봇은 들어가지 않는다(봇 자동 입주는 온보딩 기본 집 한정 → [features.md](features.md) "동거 봇 거주").
 - 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
 - 예외: 없는/비활성 goal 포함 → `HOUSE_GOAL_INVALID`(400) · 목록에 없는 `coverImageKey` → `HOUSE_COVER_IMAGE_INVALID`(400)
 - table: `house`, `house_members`(owner row), `house_goals`
@@ -117,7 +119,7 @@
 - table: `house_join_requests`, `users`
 
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/accept
-입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장한다(`refId` = 입주자 membershipId, 문구는 notification 도메인 참고).
+입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 만석이어도 ACTIVE 동거 봇이 있으면 가장 나중에 들어온 봇 1명이 LEFT 로 자리를 비운 뒤 등록한다(같은 락 안, 비켜줄 봇이 없으면 `HOUSE_FULL`). 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장한다(`refId` = 입주자 membershipId, 문구는 notification 도메인 참고).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
 - **신청자 탈퇴 가드**: 신청자가 이미 회원탈퇴한 신청을 수락하려 하면 신청을 `REJECTED`로 전환하고 409 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`을 응답한다(거절 전환은 에러 응답과 함께 확정됨 — 탈퇴 트랜잭션의 신청 철회와 엇갈리는 동시성 방어).
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 신청자 탈퇴 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
@@ -131,29 +133,30 @@
 
 ### GET /api/v1/houses/{houseId}/members
 구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
-- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`, `lastAccessedAt`(갱신 이력 없으면 null)
+- res(items[]): `membershipId`, `userId`, `nickname`(온보딩 전 null), `role`, `status`, `joinedAt`, `lastAccessedAt`(갱신 이력 없으면 null), `bot`(boolean)
 - `lastAccessedAt` 은 회원의 마지막 접속 시각(UTC, `users.last_accessed_at`) - 로그인·refresh 재발급 성공 시 갱신되므로 해상도는 access token TTL(30분) 단위. "N분/시간 전 접속" 표시용이며 실시간 접속중 뱃지 용도가 아니다. 같은 집 구성원에게만 노출(미리보기에는 없음)
+- `bot` 은 동거 봇 구성원 여부(`users.is_bot`). true 면 프론트는 닉네임 옆에 배지만 표시하고(닉네임에 "(봇)" 접미 없음), 소유권 양도 대상으로 고를 수 없다(400 `HOUSE_OWNER_TRANSFER_TO_BOT`). 봇은 로그인하지 않으므로 `lastAccessedAt` 은 갱신되지 않는다(null) → [features.md](features.md) "동거 봇 거주"
 - 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
-- table: `house_members`, `users`(`last_accessed_at` 읽기)
+- table: `house_members`, `users`(`last_accessed_at`·`is_bot` 읽기)
 
 ### DELETE /api/v1/houses/{houseId}/members/{membershipId}
-강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). `HOUSE_KICK` 알림 발송은 **미구현**(후속 — enum 값만 존재, 알림 도메인 의존).
+강퇴. **소유자만**. 대상은 status=kicked + `left_at` 전환되고 **재가입 불가**(초대코드·탐색 모두 `HOUSE_KICKED_MEMBER` 409). 동거 봇 구성원(`bot=true`)도 같은 규칙으로 강퇴할 수 있다(KICKED — 그 집에 다시 들어오지 않음). `HOUSE_KICK` 알림 발송은 **미구현**(후속 — enum 값만 존재, 알림 도메인 의존).
 - res: 204 / 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 자기 자신 `HOUSE_KICK_SELF`(400) · 대상 무효 `HOUSE_MEMBER_NOT_FOUND`(404) · 없는/삭제 집 404
 - table: `house_members`(status=kicked/`left_at`), `house`(`current_member_count` 감소)
 
 ### DELETE /api/v1/houses/{houseId}/members/me
 탈퇴. status=left + `left_at` 기록, `current_member_count` 감소. 기여 기록은 유지되며 **재가입은 허용**(기존 row 재활성화 - 탈퇴하면 집 활동·미션에 더는 참여하지 못한다는 의미). 같은 트랜잭션에서 남은 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_LEFT` 알림 내역을 저장한다(`refId` = 떠난 membershipId).
-- 소유자는 다른 active 구성원이 있으면 **양도 선행** 필요 → `HOUSE_OWNER_MUST_TRANSFER`(409)
-- **마지막 1인 탈퇴 시 집 soft delete**(`deleted_at`) - 빈 집이 탐색에 남지 않음
+- 소유자는 다른 **사람** active 구성원이 있으면 **양도 선행** 필요 → `HOUSE_OWNER_MUST_TRANSFER`(409). 판정은 사람 ACTIVE 구성원 수 기준이라 동거 봇만 남아 있으면 바로 탈퇴할 수 있다(봇은 양도 대상이 아니므로).
+- **마지막 사람 탈퇴 시 집 soft delete**(`deleted_at`) - 남은 ACTIVE 구성원이 동거 봇뿐이면 봇을 전원 LEFT 처리하고 카운트를 내린 뒤 해체한다. 봇만 남은 집을 유지하지 않고, 빈 집이 탐색에 남지 않음 → [features.md](features.md) "동거 봇 거주"
 - res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
 - table: `house_members`(`left_at`), `house`
-- **회원탈퇴(`DELETE /api/v1/me`) 경로**: 탈퇴 트랜잭션에서 모든 ACTIVE 멤버십이 같은 규칙(LEFT·`left_at`·정원 감소·미션 루틴/카테고리 연동 해제)으로 정리된다. 단 이 API 와 달리 소유자도 양도 선행 없이 진행 — 소유 집은 **가입일 최선임 ACTIVE 멤버에게 자동 승계**(동률 시 membership id 오름차순), 남은 멤버가 없으면 집 soft delete(마지막 1인 탈퇴와 동일). 탈퇴자의 `PENDING` 입주 신청도 함께 `REJECTED` 철회. 상세는 [member/api.md](../member/api.md) "회원탈퇴".
+- **회원탈퇴(`DELETE /api/v1/me`) 경로**: 탈퇴 트랜잭션에서 모든 ACTIVE 멤버십이 같은 규칙(LEFT·`left_at`·정원 감소·미션 루틴/카테고리 연동 해제)으로 정리된다. 단 이 API 와 달리 소유자도 양도 선행 없이 진행 — 소유 집은 **가입일 최선임 ACTIVE 사람 멤버에게 자동 승계**(동률 시 membership id 오름차순, 동거 봇은 후보에서 제외), 남은 사람 멤버가 없으면 남은 봇 전원 LEFT + 집 soft delete(마지막 사람 탈퇴와 동일). 탈퇴자의 `PENDING` 입주 신청도 함께 `REJECTED` 철회. 상세는 [member/api.md](../member/api.md) "회원탈퇴".
 
 ### POST /api/v1/houses/{houseId}/transfer-ownership
 소유권 양도. **소유자만**. 대상 구성원을 `owner`로 승격 + 기존 소유자는 `member`로 + `house.owner_user_id` 갱신 - 단일 트랜잭션.
-- req: `targetMembershipId` (같은 집의 다른 active 구성원)
+- req: `targetMembershipId` (같은 집의 다른 active **사람** 구성원 — 구성원 목록의 `bot=false`)
 - res: `houseId`, `newOwnerMembershipId`, `newOwnerUserId`
-- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대상 무효(비구성원/비활성/자기자신/타집) `HOUSE_TRANSFER_TARGET_INVALID`(400) · 없는/삭제 집 404
+- 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대상 무효(비구성원/비활성/자기자신/타집) `HOUSE_TRANSFER_TARGET_INVALID`(400) · 대상이 동거 봇 `HOUSE_OWNER_TRANSFER_TO_BOT`(400 — 방장은 항상 사람, [features.md](features.md) "동거 봇 거주") · 없는/삭제 집 404
 - table: `house_members`(role 변경), `house`(`owner_user_id`)
 
 ## 구성원 방 방문 / 활동 열람
@@ -203,7 +206,8 @@
 ### GET /api/v1/rooms/{roomOwnerId}/guestbooks
 방명록 조회(최신순 = `guestbookId` 내림차순). **커서 기반 무한스크롤** — offset 페이징은 새 글 유입 시 중복/누락이 생겨 배제.
 - query: `houseId`(필수), `cursor?`(이전 응답의 nextCursor, 첫 요청 생략), `size?`(기본 20, 최대 50)
-- res: `items[]`(`guestbookId`, `authorId`, `authorNickname`, `content`, `createdAt`) + `nextCursor`(더 없으면 null) + `hasNext`
+- res: `items[]`(`guestbookId`, `authorId`, `authorNickname`, `content`, `createdAt`, `authorBot`) + `nextCursor`(더 없으면 null) + `hasNext`
+- `authorBot`(boolean)은 작성자가 동거 봇(`users.is_bot`)인지 — true 면 프론트는 작성자 이름 옆에 배지만 표시한다(닉네임 접미 없음). 자리 양보·해체로 집을 떠난 봇의 글도 그대로 남아 조회된다 → [features.md](features.md) "동거 봇 거주"
 - `houseId`는 인가용이자 **조회 범위 필터**다 — 그 집 맥락(`house_id`)에서 작성된 글만 반환한다. 여러 집을 공유하는 상대의 방명록은 집별로 분리돼 보인다
 - 삭제된 글(`deleted_at` not null)은 제외
 - table: `room_guestbooks`
@@ -223,7 +227,7 @@
 미션 유형별 모델이 다르다:
 
 - `WEEKLY_MEMBER_COUNT` — **누적 카운트 미션**. 진행 수치는 전 기간 기여 누적 합, 목표 도달 시 1회 claim(+100)으로 COMPLETED 종료.
-- `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`). 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴한 멤버는 제외).
+- `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`). 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴한 멤버는 제외). 동거 봇 구성원도 일반 멤버와 동일하게 분모에 포함한다(봇 기여는 활동 스케줄러 계약 → [open-questions.md](../../open-questions.md) "동거 봇").
 
 미션 만료(`EXPIRED`):
 
@@ -277,7 +281,7 @@
 - 기여·claim·삭제는 같은 미션 행 비관적 락으로 직렬화한다 — "삭제 커밋 직전 읽은 미션"에 기여가 기록되거나 claim 과 삭제가 겹치는 경합을 차단.
 - table: `house_missions`(`deleted_at`)
 
-에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`·`HOUSE_MISSION_TARGET_INVALID`·`HOUSE_MISSION_TITLE_BANNED`·`HOUSE_NAME_BANNED`·`GUESTBOOK_CONTENT_BANNED`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
+에러코드: `HOUSE_MISSION_NOT_FOUND`(404), `HOUSE_MISSION_TYPE_NOT_SUPPORTED`·`HOUSE_MISSION_PERIOD_INVALID`·`HOUSE_MISSION_TARGET_INVALID`·`HOUSE_MISSION_TITLE_BANNED`·`HOUSE_NAME_BANNED`·`GUESTBOOK_CONTENT_BANNED`·`HOUSE_OWNER_TRANSFER_TO_BOT`(400), `HOUSE_MISSION_NOT_ACTIVE`·`HOUSE_MISSION_ALREADY_CONTRIBUTED`·`HOUSE_MISSION_NOT_ACHIEVED`·`HOUSE_MISSION_ALREADY_CLAIMED`(409), `HOUSE_NOT_OWNER`(403)
 
 ## 집 레벨
 
