@@ -26,10 +26,10 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status`, `originRoutineId`(버전 계보 루트 id — 스케줄 수정으로 `id`가 바뀌어도 불변, 프론트 목록 key로 사용), `houseMissionId`(연동 단체미션 id — 미연동 null) |
+| `GET /api/v1/routines` | 내 루틴 목록 | filter: `categoryId?`, `status?` | `items[]`: `id`, `title`, `categoryId`(미분류면 null), `authType`, `repeatType`, `repeatDays`, `scheduledTime`, `startsOn`, `endsOn`, `status`, `originRoutineId`(버전 계보 루트 id — 스케줄 수정으로 `id`가 바뀌어도 불변, 프론트 목록 key로 사용), `houseMissionId`(연동 단체미션 id — 미연동 null), `externalSource`·`externalId`(기기 캘린더 반복 일정 임포트 참조 — 일반 루틴은 둘 다 null. 스케줄 수정으로 버전이 갈려도 계보 원본 값을 유지, 아래 "반복 일정은 루틴으로" 참고) |
 | `POST /api/v1/routines` | 루틴 등록 | `title`, `categoryId?`, `authType`(`CHECK`/`PHOTO`), `repeatType`(`DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`), `repeatDays?`, `scheduledTime?`(5분 단위), `startsOn?`, `endsOn?`, `houseMissionId?`(단체미션 연동 — 그 미션이 있는 집의 ACTIVE 구성원만), `externalSource?`·`externalId?`(기기 캘린더 반복 일정 임포트 — 아래 참고) | 생성된 routine. `status`는 서버가 `ACTIVE`로 주입 |
 | `GET /api/v1/routines/{id}` | 단건 조회 | — | routine 상세(목록과 동일 필드). 카테고리는 `categoryId`만 담고, 이름·색상은 `GET /api/v1/categories`에서 resolve |
-| `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드. null 처리 규칙: `categoryId`·`scheduledTime`·`endsOn`은 **null이면 해제**, `title`·`authType`·`repeatType`·`repeatDays`·`startsOn`은 null이면 기존 값 유지, `houseMissionId?`는 **null=기존 연동 유지**(해제 아님) | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고, 연동은 새 버전으로 승계) |
+| `PUT /api/v1/routines/{id}` | 수정 | 위 등록 필드. null 처리 규칙: `categoryId`·`scheduledTime`·`endsOn`은 **null이면 해제**, `title`·`authType`·`repeatType`·`repeatDays`·`startsOn`은 null이면 기존 값 유지, `houseMissionId?`는 **null=기존 연동 유지**(해제 아님). `externalSource`·`externalId`는 받지 않는다(보내도 무시, 생성 후 불변) | 수정된 routine. 반복 스케줄을 바꾸고 이미 경과한 날이 있는 루틴이면 새 버전으로 분기해 응답의 `id`가 바뀐다(아래 시간버전 참고, 연동은 새 버전으로 승계) |
 | `DELETE /api/v1/routines/{id}/house-mission-link` | 단체미션 연동 해제(멱등) | — | 204. 루틴은 유지, 과거 자동 기여는 미회수 |
 | `DELETE /api/v1/routines/{id}` | 삭제(soft) | — | 204. 루틴 row에 `deleted_at`만 세팅 — 기존 `routine_logs`는 건드리지 않으며 과거 캘린더에 계속 노출된다(로그 보존 정책은 [features.md](features.md) 참고) |
 | `POST /api/v1/routines/similarity` | 날짜·제목별 유사 루틴·투두 힌트(캘린더 임포트 미리보기) | → 아래 "유사 루틴·투두 비교" 절 | 〃 |
@@ -84,9 +84,13 @@
 > - 가져오기 전 미리보기에서 "비슷한 루틴·투두가 이미 있어요" 힌트를 보여주려면 `POST /api/v1/routines/similarity`(아래 유사 루틴·투두 비교 절)를 쓴다. 이 힌트는 안내용이며 중복 방지의 정본은 위 `externalId` unique다.
 
 > **반복 일정은 루틴으로** (모바일 #844): 같은 임포트에서 **반복 일정은 루틴**, 일회성은 투두로 들어간다.
-> - `POST /routines`도 `externalSource`·`externalId`를 받아 `routines`에 저장하고, **`unique (user_id, external_source, external_id)`로 중복을 막는다.** 같은 쌍이 이미 있으면 투두와 같이 **409**. 이게 없으면 앱을 열 때마다 같은 반복 일정이 새 루틴으로 복제된다.
+> - `POST /routines`도 `externalSource`·`externalId`를 받아 `routines`에 저장하고, **`unique (user_id, external_source, external_id)`로 중복을 막는다.** 같은 쌍이 이미 있으면 투두와 같이 **409 `ROUTINE_EXTERNAL_DUPLICATE`**로 거절한다(앱이 이미 가져온 것으로 판정해 건너뛴다). 사전 조회를 통과한 동시 요청이 unique를 깨는 경우도 같은 409다. 이게 없으면 앱을 열 때마다 같은 반복 일정이 새 루틴으로 복제된다.
+> - 요청 형식은 투두와 대칭이다: `externalSource`는 대문자 영숫자·언더스코어 1~30자(`^[A-Z][A-Z0-9_]{0,29}$`)이며 서버는 값을 해석하지 않는다(enum 없음). `externalId`는 1~255자, 공백만은 불가, 앞뒤 공백은 trim한 값으로 검증·저장·비교한다. 형식 위반은 validation 400(`VALIDATION_FAILED`). 둘은 **반드시 함께** 보낸다 — 한쪽만 오면 400 `ROUTINE_EXTERNAL_REF_INCOMPLETE`, 둘 다 없으면 일반 루틴. 반복 규칙(`repeatType`·`repeatDays`·`startsOn`)은 임포트 여부와 무관하게 기존 검증 그대로다.
 > - 루틴은 **시리즈 하나당 한 행**이므로 `externalId`는 **시리즈 id**다(회차 id가 아니다). 회차 단위로 들어가는 투두는 `시리즈 id + 날짜`를 쓴다 — 둘의 id 체계가 다르므로 서버는 값의 형식을 강제하지 않는다.
 > - **반복 규칙 판정은 앱이 한다.** 서버는 완성된 `repeatType`·`repeatDays`를 받을 뿐이다. 앱은 캘린더의 반복 규칙을 번역하지 않고 조회 창의 **실제 발생 날짜에서 역산**한다(`daysOfTheWeek`가 iOS 전용이라 규칙 번역은 플랫폼이 갈린다). 확신이 서지 않는 패턴(예: 매월 셋째 화요일, 불규칙, 연 1회)은 루틴으로 만들지 않고 발생분을 투두로 넣는다.
+> - **soft delete 된 행도 중복 판정에 포함**한다(unique가 `deleted_at`을 보지 않음) — 사용자가 지운 임포트 루틴은 물론, 스케줄 수정으로 닫힌 옛 버전 row도 unique를 점유하므로 같은 시리즈는 다시 임포트되지 않는다. 다른 회원의 같은 `externalId`는 서로 무관하다.
+> - **버전 분기와 외부 참조**: 외부 참조는 임포트로 만들어진 **원본 row에만** 기록되며, 반복 스케줄 수정으로 새 버전 row가 생겨도(아래 "루틴 시간버전" 참고) 새 row에는 **복사되지 않는다** — 복사하면 닫힌 옛 row와 unique가 충돌해 스케줄 수정 자체가 실패하고, 복사하지 않아도 옛 row가 unique를 점유한 채 남아 재임포트 차단은 그대로 유지된다. 대신 응답의 `externalSource`·`externalId`는 **계보 원본(`originRoutineId`) row의 값을 그대로 보여준다** — 스케줄을 바꿔 `id`가 바뀌어도 "캘린더에서 온 루틴" 표시가 유지된다. 제목·카테고리·시각 등 제자리 수정에서는 당연히 값이 유지된다.
+> - 응답(`GET` 목록·단건, `POST`, `PUT` 공통)에 `externalSource`·`externalId`를 노출한다 — 일반 루틴은 둘 다 null. `PUT /routines/{id}`는 이 두 필드를 받지 않는다(보내도 무시, 생성 후 불변). 오늘 현황·캘린더(`/today`, `/calendar`) 응답의 루틴 항목에는 노출하지 않는다(목록·단건만).
 > - 임포트된 루틴도 그 뒤로 **일반 루틴과 완전히 동일**하다. 완료 시 코인·스트릭·주간 회고·집 미션 기여에 그대로 반영된다 — 회의 같은 의무가 습관 통계에 섞이는 건 인지된 트레이드오프다(모바일 #844 논의). 원본 일정이 바뀌거나 지워져도 서버는 이 루틴을 건드리지 않는다.
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 일일 상한 **50코인**의 잔여가 정가보다 적으면 잔여만큼만 지급한다(`rewardAmount = min(10, 50 − 오늘 누적 지급액)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
@@ -97,7 +101,7 @@
 | --- | --- | --- | --- |
 | `POST /api/v1/routines/similarity` | 날짜·제목 목록마다 그 날짜의 내 루틴·투두 중 제목이 유사한 것을 찾는다(캘린더 임포트 미리보기 힌트, 저장 없음) | `items[]`(1~200개): `date`(필수, `YYYY-MM-DD`), `title`(trim 후 1~160자) | `embeddingApplied`, `items[]`(요청 순서 유지): `date`, `title`(trim 적용), `hasSimilar`, `similar[]`(score 내림차순 최대 3개, 없으면 빈 배열): `kind`(`ROUTINE`/`TODO`), `id`, `title`, `score`(0~1), `matchType`(`EXACT`/`EMBEDDING`) |
 
-> 기기 캘린더 임포트(모바일 #844) 미리보기에서 "비슷한 게 이미 있어요"를 보여주기 위한 **읽기 전용 힌트 API**다. 아무것도 저장하지 않으며, 중복 임포트를 막는 정본은 투두 `externalId` unique(위 임포트 블록)이고 이 결과는 안내에만 쓴다. 인증된 사용자 본인의 루틴·투두만 후보로 본다.
+> 기기 캘린더 임포트(모바일 #844) 미리보기에서 "비슷한 게 이미 있어요"를 보여주기 위한 **읽기 전용 힌트 API**다. 아무것도 저장하지 않으며, 중복 임포트를 막는 정본은 루틴·투두 `externalId` unique(위 임포트 블록)이고 이 결과는 안내에만 쓴다. 인증된 사용자 본인의 루틴·투두만 후보로 본다.
 > - **후보(날짜별, live 소싱)**: 그 날짜에 반복 대상인 `ACTIVE`·미삭제 루틴 + 그 날짜가 마감(`dueDate`)인 미삭제 투두(`status` 무관 — 완료 투두도 포함). 과거 날짜도 같은 규칙으로 **현재 활성 항목 기준**이며 `routine_logs`로 그날을 재구성하지 않는다(캘린더 조회의 과거 3갈래 소싱과 다르다 — 임포트 힌트라 "지금 있는 것"이 기준). 마감일 없는 투두는 후보가 아니다.
 > - **판정**: 1차 `EXACT` — 요청 제목과 후보 제목의 정규화 결과가 같으면 `score` 1.0. 정규화는 NFKC(전각→반각) → 소문자 → 공백 전부 제거이며 구두점·이모지는 남긴다("물 마시기" = "물마시기", "PT!" ≠ "PT"). 2차 `EMBEDDING` — EXACT가 아닌 쌍만 임베딩(text-embedding-3-large, 1024차원) 코사인 유사도로 보고 **임계값 이상만** 채택한다. 임계값은 서버 설정 `routine.similarity.threshold`(env `ROUTINE_SIMILARITY_THRESHOLD`, 기본 **0.50** — 한글 제목 쌍 30개 실측값: 무관 쌍 최고 0.44, 유사 쌍은 0.57 이상에 몰림. 약어·동의어 "헬스/PT"·"러닝/조깅"류는 어떤 임계값으로도 못 잡는다 → [open-questions.md](../../open-questions.md)). 후보가 없거나 전부 EXACT면 임베딩을 호출하지 않는다.
 > - **정렬·개수**: `similar`는 `score` 내림차순, 동점이면 `ROUTINE` → `TODO`, 그다음 `id` 오름차순으로 최대 3개. `hasSimilar`는 `similar`가 비어 있지 않은지와 같다.
