@@ -137,6 +137,19 @@
 > 과거 노출 루틴의 `title`·`categoryId`·`scheduledTime`은 스냅숏이 아니라 **로그가 가리키는 버전 row**에서 읽는다(루틴은 soft delete라 버전 row가 남는다). 어제(D-1) 재계산으로 로그 없이 노출되는 루틴은 그날 유효했던 버전 row에서 읽는다(배치가 기록할 로그가 가리키게 될 버전과 동일). 스케줄을 바꾸지 않는 수정(제목·카테고리·시각·인증 변경, 또는 오늘 생성분)은 제자리 수정이라 과거 조회에도 최신값이 반영되지만, 스케줄 변경으로 버전이 분기된 뒤에는 그 이전 날짜가 옛 버전 값으로 동결된다. 로그가 이후 삭제(soft-delete)된 루틴·카테고리를 가리킬 수 있다. 응답은 `categoryId`만 담고, 삭제된 카테고리 라벨은 프론트가 `includeDeleted`로 resolve한다.
 > 과거 응답의 루틴 `id`는 그날의 버전 id다(로그가 가리키는 버전, D-1 재계산분은 그날 유효했던 버전) — 버전 분기 전 날짜에는 닫힌 옛 버전 id가 내려간다. 이 id로 그 날짜의 완료·취소를 그대로 호출할 수 있다(루틴 완료/취소의 닫힌 버전 id 허용 규칙 참고).
 
+## AI 조정 추천 (`routine_recommendations`)
+
+| method · path | 목적 | 요청 핵심 | 응답 핵심 |
+| --- | --- | --- | --- |
+| `GET /api/v1/recommendations` | 내 활성 조정 추천 목록 | — | `items[]`: `recommendationId`, `type`(`ADJUST_DAYS`), `message`, `routineId`(계보의 현재 ACTIVE 버전 id), `originRoutineId`, `routineTitle`, `proposal`(`repeatType`, `repeatDays` — 루틴 등록의 `repeatDays`와 같은 형식), `createdAt`, `expiresAt` |
+| `POST /api/v1/recommendations/{recommendationId}/accept` | 추천 수락(제안 스케줄 적용) | — | 적용된 routine(루틴 수정 응답과 동일 필드 — 스케줄 변경이라 버전 분기로 `id`가 바뀜) |
+| `POST /api/v1/recommendations/{recommendationId}/dismiss` | 추천 무시 | — | 204 |
+
+> 목록은 본인 소유의 `ACTIVE`·미만료 추천만 최신 생성순으로 담는다. 계보의 현재 ACTIVE 버전이 없거나(루틴 삭제) 생성 시점 대상 버전과 다르면(사용자가 먼저 스케줄을 수정해 근거 무효) 그 추천은 목록에서 제외한다(상태 전이 없는 lazy 판정 — 만료와 동일하게 지표에서 무반응 종결로 집계).
+> 수락 검증(순서대로): 본인 소유가 아니거나 없으면 404 `RECOMMENDATION_NOT_FOUND`(타인 것 존재 여부 비노출), 이미 수락/무시됐으면 409 `RECOMMENDATION_ALREADY_HANDLED`, `expiresAt` 경과면 409 `RECOMMENDATION_EXPIRED`, 계보에 ACTIVE 버전이 없으면 409 `RECOMMENDATION_ROUTINE_DELETED`, 현재 버전이 생성 시점 대상 버전(`routine_id`)과 다르면 409 `RECOMMENDATION_STALE`.
+> 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`repeatDays`만 바꾸는 스케줄 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다(이미 종결된 추천이면 409 `RECOMMENDATION_ALREADY_HANDLED`).
+> 생성 룰·정책(주 1회 배치, 계보당 1건·사용자당 3건, 쿨다운 14일, 만료 7일)은 [features.md](features.md) "AI 조정 추천" 참고. 생성 시 푸시 알림은 보내지 않는다(MVP — 주간 회고 push와의 중복 소음 회피). 앱 내 노출 위치·UX는 프론트 협의(open-questions).
+
 ## 확정된 허용값
 
 - `repeatType`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`. `repeatDays`는 `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":["MON",...]}`, `MONTHLY`일 때 `{"dayOfMonth":15}`, `YEARLY`일 때 `{"month":7,"day":12}`. `BIWEEKLY`는 `startsOn`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격으로 반복하므로 `startsOn`이 필수다. `MONTHLY`/`YEARLY`는 지정한 날짜가 해당 월/해에 없으면(31일 지정인 2월, 2/29 지정인 평년) 그 기간엔 자연히 제외된다.
@@ -145,6 +158,7 @@
 - `authType`: `CHECK`/`PHOTO`
 - `todo.status`: `PENDING`/`COMPLETED`
 - 유사 비교(`POST /routines/similarity`) `similar[].kind`: `ROUTINE`/`TODO`, `similar[].matchType`: `EXACT`(정규화 제목 일치, `score` 1.0)/`EMBEDDING`(임베딩 코사인 ≥ 임계값)
+- 조정 추천 `type`(`rec_type`): `ADJUST_DAYS`(MVP — `ADJUST_TIME`은 후속 예약), `status`: `ACTIVE`/`ACCEPTED`/`DISMISSED`(만료는 상태값이 아니라 `expiresAt` 경과로 판정)
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개)
 - 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 10 정가. 일일 지급 상한은 루틴+투두 합산 50코인이며, 잔여가 정가보다 적으면 잔여만큼만 지급(`rewardAmount`에 실지급액 기록, 취소 환불도 그 금액)
 - 완료 허용 범위: 과거 허용·미래 거부(루틴 `routineDate`, 투두 `dueDate` 기준). 코인·스트릭은 당일 완료에만 반영(과거 완료는 `rewardAmount=0`)
