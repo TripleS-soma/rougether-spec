@@ -141,13 +141,13 @@
 
 | method · path | 목적 | 요청 핵심 | 응답 핵심 |
 | --- | --- | --- | --- |
-| `GET /api/v1/recommendations` | 내 활성 조정 추천 목록 | — | `items[]`: `recommendationId`, `type`(`ADJUST_DAYS`), `message`, `routineId`(계보의 현재 ACTIVE 버전 id), `originRoutineId`, `routineTitle`, `proposal`(`repeatType`, `repeatDays` — 루틴 등록의 `repeatDays`와 같은 형식), `createdAt`, `expiresAt` |
+| `GET /api/v1/recommendations` | 내 활성 조정 추천 목록 | — | `items[]`: `recommendationId`, `type`(`ADJUST_DAYS`), `message`, `routineId`(계보의 현재 ACTIVE 버전 id), `originRoutineId`, `routineTitle`, `proposal`(`repeatType`, `daysOfWeek` — 루틴 등록 `repeatDays.daysOfWeek`와 같은 요일 토큰), `createdAt`, `expiresAt` |
 | `POST /api/v1/recommendations/{recommendationId}/accept` | 추천 수락(제안 스케줄 적용) | — | 적용된 routine(루틴 수정 응답과 동일 필드 — 스케줄 변경이라 버전 분기로 `id`가 바뀜) |
 | `POST /api/v1/recommendations/{recommendationId}/dismiss` | 추천 무시 | — | 204 |
 
 > 목록은 본인 소유의 `ACTIVE`·미만료 추천만 최신 생성순으로 담는다. 계보의 현재 ACTIVE 버전이 없거나(루틴 삭제) 생성 시점 대상 버전과 다르면(사용자가 먼저 스케줄을 수정해 근거 무효) 그 추천은 목록에서 제외한다(상태 전이 없는 lazy 판정 — 만료와 동일하게 지표에서 무반응 종결로 집계).
 > 수락 검증(순서대로): 본인 소유가 아니거나 없으면 404 `RECOMMENDATION_NOT_FOUND`(타인 것 존재 여부 비노출), 이미 수락/무시됐으면 409 `RECOMMENDATION_ALREADY_HANDLED`, `expiresAt` 경과면 409 `RECOMMENDATION_EXPIRED`, 계보에 ACTIVE 버전이 없으면 409 `RECOMMENDATION_ROUTINE_DELETED`, 현재 버전이 생성 시점 대상 버전(`routine_id`)과 다르면 409 `RECOMMENDATION_STALE`.
-> 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`repeatDays`만 바꾸는 스케줄 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다(이미 종결된 추천이면 409 `RECOMMENDATION_ALREADY_HANDLED`).
+> 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`daysOfWeek`만 반복 스케줄에 적용하는 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다(이미 종결된 추천이면 409 `RECOMMENDATION_ALREADY_HANDLED`).
 > 생성 룰·정책(주 1회 배치, 계보당 1건·사용자당 3건, 쿨다운 14일, 만료 7일)은 [features.md](features.md) "AI 조정 추천" 참고. 생성 시 푸시 알림은 보내지 않는다(MVP — 주간 회고 push와의 중복 소음 회피). 앱 내 노출 위치·UX는 프론트 협의(open-questions).
 
 ## 확정된 허용값
