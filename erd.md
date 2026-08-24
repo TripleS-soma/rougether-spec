@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **38 table**(`attendance_events`·`attendance_check_ins`·`routine_recommendations` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **49 table**(`attendance_events`·`attendance_check_ins`·`routine_recommendations`·`weekly_reports` 포함 — ERDCloud 정본 반영 필요).
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -70,6 +70,10 @@
 - **routine_recommendations**: id* | user_id→users | origin_routine_id→routines | routine_id→routines | rec_type VARCHAR(30) | source VARCHAR(30) | proposal JSON | message VARCHAR(300) | status VARCHAR(20) | expires_at TIMESTAMP | acted_at TIMESTAMP? | applied_routine_id→routines? | created_at | index (user_id, status, expires_at) | index (origin_routine_id, created_at)
   - AI 조정 추천(룰 기반, MVP — LLM 미사용). 실패 패턴에서 반복 스케줄 조정을 제안하고 **사용자 수락으로만** 적용한다. `rec_type`: `ADJUST_DAYS`(MVP)/`ADJUST_TIME`(후속 예약). `source`: `RULE`(MVP)/`WEEKLY_LLM`(주간 회고 LLM 연계 시 후속 예약). `proposal`(JSON)은 제안 스케줄 **절대값** `{"repeatType":"WEEKLY","daysOfWeek":[...]}`(루틴 `repeat_days` 형식과 동일).
   - `origin_routine_id`는 대상 루틴의 계보 루트, `routine_id`는 생성 시점의 대상 버전(수락 시 계보 현재 버전과 불일치하면 stale 거부 — 사용자가 먼저 수정한 스케줄을 덮어쓰지 않는다), `applied_routine_id`는 수락 적용으로 분기된 새 버전(효과 측정 조인 키). `status`: `ACTIVE`/`ACCEPTED`/`DISMISSED` — 만료는 상태 전이 배치 없이 `expires_at` 경과로 lazy 판정. 생성 룰·상한·쿨다운·만료 정책은 [routine-todo/features.md](domains/routine-todo/features.md) "AI 조정 추천" 참고.
+- **weekly_reports**: id* | user_id→users | week_start_date DATE | week_end_date DATE | status VARCHAR(30) | model VARCHAR(100)? | stats_json JSON | summary VARCHAR(600) | sections_json JSON | generated_at TIMESTAMP | viewed_at TIMESTAMP? | created_at | unique (user_id, week_start_date)
+  - AI 주간 회고. 배치가 매주 일요일 00:30 KST에 직전 일~토 주(`week_start_date` = 일요일, `week_end_date` = 토요일, KST)를 집계해 저장한다 — unique(user_id, week_start_date)가 **사용자·주당 1건**의 방어선. 대상은 그 주에 `routine_logs`(`COMPLETED`/`FAILED`)가 있는 사용자만이고, 생성·재생성 API 없이 조회 전용이다 → [routine-todo/api.md](domains/routine-todo/api.md) "AI 주간 회고".
+  - `status`: `GENERATED`(LLM 섹션 포함)/`FALLBACK`(LLM 실패 — 통계·고정 문구만). `model`은 생성에 쓴 LLM 모델 id(`FALLBACK`이면 null). `stats_json`은 요일별·루틴별(계보 기준 `lineageId`)·스트릭 통계, `sections_json`은 `{"highlights":[],"failurePatterns":[],"suggestions":[]}`.
+  - `viewed_at`: 상세 최초 조회 시각(null = 미열람). 상세 조회 API가 최초 열람에만 기록하고 재조회는 덮어쓰지 않는다 — admin 관측의 열람 건수·열람률 분자.
 
 ### 방 (개인)
 - **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
@@ -112,7 +116,7 @@
   - 알림 내역. `type`(`NotificationType`): `HOUSE_KICK`/`ROUTINE_REMINDER`/`TODO_REMINDER`/`FRIEND_CHEER`/`HOUSE_MISSION_ACHIEVED`/`HOUSE_MEMBER_JOINED`/`HOUSE_MEMBER_LEFT`. `ROUTINE_REMINDER`·`TODO_REMINDER` 발송은 공용 batch worker(`reminderJob`)로 구현됨(5분 주기 트리거, 루틴 적재 → 투두 적재 → 발송 순, 같은 분 재실행·당일 기발송 건은 중복 발송 방지로 스킵), `FRIEND_CHEER`는 응원 API가 진입점을 같은 트랜잭션에서 직접 호출, `HOUSE_MISSION_ACHIEVED`는 미션 기여 공용부(`HouseMissionService.recordContribution` — 기여 API·연동 루틴 자동 기여 양쪽)가 미션 행 락 트랜잭션 안에서 진입점을 직접 호출한다(WEEKLY 한정, 합산이 처음 목표치 도달하는 순간 1회, 집 활성 멤버 전원 대상, `ref_id` = missionId), `HOUSE_MEMBER_JOINED`/`HOUSE_MEMBER_LEFT`는 가입 확정·탈퇴 트랜잭션이 나머지 ACTIVE 멤버 전원에게 발송한다(`ref_id` = membershipId) — `HOUSE_KICK` 발송 트리거는 후속. `ref_id`는 발송 원인 리소스 ID(예: 루틴 리마인드면 routineId, 투두 리마인드면 todoId, 입주·퇴거면 membershipId)로 중복 발송 판정에 쓰이며 nullable. `push_status`(`PushStatus`: `PENDING`/`SENT`/`BLOCKED`/`FAILED`)는 FCM push 발송 결과를 추적한다 — 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 사용자가 `notification_setting`으로 해당 알림을 꺼서 발송하지 않으면 `BLOCKED`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`로 갱신한다. `BLOCKED`는 설정에 따른 정상 종결이라 발송 실패(`FAILED`)와 구분한다. `FAILED` 재시도는 없다. 목록 API 응답에는 노출하지 않는다. 발송은 공용 진입점 `NotificationService.send(userId, content[, refId])`(`content` = `NotificationContent`(type·title·body) 레코드, 문구는 `NotificationMessages` 팩토리 소유)가 담당하고, 알림 내역 저장(동기)과 FCM push(비동기, best-effort — 실패해도 내역은 남음)를 분리한다. FCM은 사용자 토큰 전체로 멀티캐스트 발송하고 `UNREGISTERED`/`INVALID_ARGUMENT` 응답 token은 `user_device_token`에서 삭제한다. firebase 서비스 계정 JSON은 환경변수/외부 경로로 주입(커밋 금지). 신규 엔드포인트 없음(내부 인프라).
 
 - `ROOM_COBWEB_CLEANED`는 같은 집 구성원이 거미줄을 청소했을 때 방 주인에게 저장·push하며 `ref_id`는 방 주인 user id다.
-- `WEEKLY_REPORT`는 AI 주간 회고 도착 알림 — 주간 배치(`weeklyReportPushJob`)가 회고 생성 배치(일요일 00:30 KST)와 **분리된 발송 시각**(일요일 20:00 KST) 이후 저장·push하며, `ref_id`는 주간 회고(`weekly_reports` — 서버 구현 완료, spec 문서화는 후속) id로 중복 발송을 막는다. 대상은 항상 가장 최근 끝난 주뿐(뒤늦은 지난 주 push 없음). 설정 그룹은 `REMINDER`.
+- `WEEKLY_REPORT`는 AI 주간 회고 도착 알림 — 주간 배치(`weeklyReportPushJob`)가 회고 생성 배치(일요일 00:30 KST)와 **분리된 발송 시각**(일요일 20:00 KST) 이후 저장·push하며, `ref_id`는 주간 회고(`weekly_reports` — 위 "루틴 / 투두" 참고) id로 중복 발송을 막는다. 대상은 항상 가장 최근 끝난 주뿐(뒤늦은 지난 주 push 없음). 설정 그룹은 `REMINDER`.
 - **notification_setting**: id* | user_id→users | type VARCHAR(30) | enabled BOOLEAN | created_at | updated_at
   - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`. **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
 
@@ -170,6 +174,7 @@ erDiagram
     routine_logs ||--o{ photo_verifications : verified_by
     users ||--o{ routine_recommendations : receives
     routines ||--o{ routine_recommendations : targets
+    users ||--o{ weekly_reports : receives
 
     personal_rooms ||--o{ room_surface_slots : has
     user_items ||--o{ room_surface_slots : placed_as

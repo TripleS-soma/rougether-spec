@@ -150,6 +150,22 @@
 > 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`daysOfWeek`만 반복 스케줄에 적용하는 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다(이미 종결된 추천이면 409 `RECOMMENDATION_ALREADY_HANDLED`).
 > 생성 룰·정책(주 1회 배치, 계보당 1건·사용자당 3건, 쿨다운 14일, 만료 7일)은 [features.md](features.md) "AI 조정 추천" 참고. 생성 시 푸시 알림은 보내지 않는다(MVP — 주간 회고 push와의 중복 소음 회피). 앱 내 노출 위치·UX는 프론트 협의(open-questions).
 
+## AI 주간 회고 (`weekly_reports`)
+
+내 주간 회고 조회. 회고는 배치가 만들고 API는 읽기 전용이다 — **생성·재생성 API 없음**. 배치는 매주 일요일 00:30(KST)에 직전 일~토 주를 집계해, 그 주 `routine_logs`(`COMPLETED`/`FAILED`)가 있는 사용자만 사용자·주당 1건 생성한다(기록이 없던 주는 회고 자체가 없음). 생성 정책·열람 추적은 [features.md](features.md) "AI 주간 회고", 데이터는 [erd.md](../../erd.md) `weekly_reports`, 도착 push(`WEEKLY_REPORT`)는 notification 도메인 참고.
+
+### GET /api/v1/reports/weekly
+내 회고 목록. `weekStartDate` 내림차순(최신 주 먼저), 회고가 없으면 빈 `items`.
+- res `items[]`: `reportId`, `weekStartDate`(일요일)·`weekEndDate`(토요일, KST), `status`(`GENERATED`/`FALLBACK`), `completionRate`(0~1), `completedCount`, `scheduledCount`, `summary`, `generatedAt`, `viewedAt`(최초 열람 시각 — 아직 상세를 연 적 없으면 null, 안읽음 배지 판단용)
+- table: `weekly_reports`
+
+### GET /api/v1/reports/weekly/{reportId}
+회고 상세 = 목록 항목 + 전체 통계 + AI 섹션.
+- res: 목록 항목 필드 전부 + `stats`(요일별·루틴별·스트릭 — 루틴은 계보 기준 `lineageId`로 수정 버전을 하나로 합침) + `highlights[]`·`failurePatterns[]`·`suggestions[]`. `status`가 `FALLBACK`(LLM 생성 실패)이면 세 배열은 모두 비어 있고 통계·고정 `summary`만 있다.
+- 본인 것만 조회 가능 — 없거나 타인 소유 모두 404 `WEEKLY_REPORT_NOT_FOUND`(존재 여부 비노출).
+- **이 조회가 최초 열람이면 `viewed_at`을 기록**하고 응답 `viewedAt`에 그 시각이 내려간다. 재조회는 첫 열람 시각을 유지한다(덮어쓰지 않음).
+- table: `weekly_reports`
+
 ## 확정된 허용값
 
 - `repeatType`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`. `repeatDays`는 `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":["MON",...]}`, `MONTHLY`일 때 `{"dayOfMonth":15}`, `YEARLY`일 때 `{"month":7,"day":12}`. `BIWEEKLY`는 `startsOn`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격으로 반복하므로 `startsOn`이 필수다. `MONTHLY`/`YEARLY`는 지정한 날짜가 해당 월/해에 없으면(31일 지정인 2월, 2/29 지정인 평년) 그 기간엔 자연히 제외된다.
@@ -159,6 +175,7 @@
 - `todo.status`: `PENDING`/`COMPLETED`
 - 유사 비교(`POST /routines/similarity`) `similar[].kind`: `ROUTINE`/`TODO`, `similar[].matchType`: `EXACT`(정규화 제목 일치, `score` 1.0)/`EMBEDDING`(임베딩 코사인 ≥ 임계값)
 - 조정 추천 `type`(`rec_type`): `ADJUST_DAYS`(MVP — `ADJUST_TIME`은 후속 예약), `status`: `ACTIVE`/`ACCEPTED`/`DISMISSED`(만료는 상태값이 아니라 `expiresAt` 경과로 판정)
+- 주간 회고 `status`: `GENERATED`(LLM 섹션 포함)/`FALLBACK`(LLM 생성 실패 — 통계·고정 요약 문구만, AI 섹션 배열은 빈 배열)
 - `visibility`(카테고리)·`privacyScope`(사진): `PRIVATE`(비공개)/`FRIENDS`(친한친구)/`HOUSE`(집)/`PUBLIC`(공개)
 - 완료/취소 타임존: KST(`Asia/Seoul`), 코인 보상: 루틴 10 / 투두 10 정가. 일일 지급 상한은 루틴+투두 합산 50코인이며, 잔여가 정가보다 적으면 잔여만큼만 지급(`rewardAmount`에 실지급액 기록, 취소 환불도 그 금액)
 - 완료 허용 범위: 과거 허용·미래 거부(루틴 `routineDate`, 투두 `dueDate` 기준). 코인·스트릭은 당일 완료에만 반영(과거 완료는 `rewardAmount=0`)
