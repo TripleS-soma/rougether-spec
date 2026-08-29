@@ -21,7 +21,7 @@
 
 - 루틴 삭제 시 수행 기록 **숨김 처리**의 통계 보존 정책 범위? (과거 캘린더가 로그 단독 소싱으로 바뀌어 삭제 루틴의 `FAILED` 로그 포함 여부도 이 논의에서 함께 결정)
 - **탈퇴 회원 알림 사본**: 타 회원의 알림 내역(`notification.title`/`body`)에 탈퇴자 닉네임이 발송 시점 텍스트 사본으로 남는다 — 탈퇴 시 익명화가 소급되지 않는데, 이대로 수용할지 파기(치환)할지 미정.
-- **알림 문구의 닉네임 null 폴백**: 응원(`FRIEND_CHEER`)·입주/퇴거 알림 본문이 닉네임을 그대로 연결해, 닉네임이 null(온보딩 전·탈퇴 익명화)이면 "null님"으로 표시된다. 폴백 문구("집 친구" 등) 도입 여부 미정. (서버)
+- **알림 문구의 닉네임 null 폴백**: (일부 결정됨) 입주 신청 도착(`HOUSE_JOIN_REQUEST_CREATED`)은 "이웃", 거미줄 청소(`ROOM_COBWEB_CLEANED`)는 "집 친구" 폴백을 쓴다. 잔여 미결: 응원(`FRIEND_CHEER`)·입주/퇴거(`HOUSE_MEMBER_JOINED`/`LEFT`) 본문은 여전히 닉네임을 그대로 연결해 null 이면 "null님"으로 표시된다 — 기존 문구로의 폴백 확대와 문구 통일("이웃" vs "집 친구") 여부 미정. (서버)
 
 ## 루틴 / 투두
 
@@ -60,6 +60,7 @@
 ## 집
 
 - (착수 전 미결정 없음 — 세부 밸런스는 운영 단계에서)
+- **입주 신청 반복 제한**: 신청→철회(행 삭제)→재신청, 거절→재신청(reopen)을 무한 반복할 수 있다. 서버는 방장 알림만 같은 (수신자·타입·본문) 조합 1시간 억제로 push 증폭을 막고 있고, **신청 행위 자체의 반복 제한**(횟수 상한·쿨다운, 예: 철회 후 재신청 대기시간)은 미정 — 도입 여부와 수치 정책 필요. (서버)
 - **기본 집 생성 시점**: (결정됨) 기본 집(`나의 집`)은 회원가입 트랜잭션에서 생성하고, 집 목표는 온보딩 목표 저장(`PUT /onboarding/goals`) 시 1회 채운다. 나간·해체된 뒤 재생성 없음, 기존 계정 백필 없음. 집 목표 변경 API는 없음 → [house/features.md](domains/house/features.md)·[member/api.md](domains/member/api.md) 반영.
 - **탈퇴 회원 처리**(회원 도메인 dependency): (일부 결정됨) 탈퇴 시 집 정리는 확정 — 모든 ACTIVE 멤버십 LEFT + 정원 감소 + pending 입주 신청 철회, 소유 집은 가입일 최선임 ACTIVE 멤버에게 자동 승계(동률 시 membership id 오름차순), 남은 멤버 없으면 집 해체(soft delete) → [member/api.md](domains/member/api.md)·[house/api.md](domains/house/api.md) 반영. 미확정 잔여: 단체미션 `house_mission_participants` 정산·분모 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등 — 프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
 - **탈퇴 회원의 집 완료 내역 노출**(회원 도메인 dependency): 탈퇴 시 카테고리가 연쇄 soft delete되므로, 카테고리 visibility 기반의 집 멤버 완료 내역 조회에서 탈퇴자 이력이 빈 결과가 된다(`routine_logs` 자체는 보존되지만 노출 경로가 끊김). 이대로 수용할지, 집 통계·표시에서 별도 처리가 필요할지 미정.

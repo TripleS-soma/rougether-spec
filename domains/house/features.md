@@ -7,8 +7,8 @@
 ## 집 탐색 / 참여
 
 - **집 탐색**: 집 목표 카테고리 기반으로 집 목록을 조회. 목표·인원·활동 수준 필터를 지원한다. (`house`, `house_goals`)
-- **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. (`house_join_requests`, `house_members`, `house`)
-- **초대코드 참여**: 코드/링크 입력 → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
+- **탐색 참여**: 탐색 결과에서 집 선택 → `house_join_requests.status=PENDING`으로 **입주 신청**. 신청만으로 구성원 수는 바뀌지 않으며, 방장(OWNER)이 수락해야 `house_members`가 ACTIVE로 생성·재활성화되고 `house.current_member_count`가 증가한다. 거절 후 재신청할 수 있다. 신청이 생성·재오픈되면 방장에게 신청 도착 알림이 간다(방장이 몰라 수락이 늦어지지 않게 — 반복 신청의 재발송 억제 규칙은 notification 도메인). (`house_join_requests`, `house_members`, `house`, `notification`)
+- **초대코드 참여**: 코드/링크 입력(앞뒤 공백·소문자는 서버가 정규화해 인식) → 집 정보·구성원 수 확인 후 참여. 코드 종류로 흐름이 갈린다 — 집 공용 코드(소유자 공유)는 **즉시가입**(role=member·status=active), 구성원 개인 코드(일반 구성원 공유)는 **방장 승인 대기**(`house_join_requests.PENDING` 생성, 방장 수락 시 입주 확정). 만료 코드(각 코드의 `invite_expires_at` 경과)·중복 참여(같은 집 active 구성원)·강퇴 이력·정원 초과 예외 처리. 탈퇴 이력 재가입은 기존 row 재활성화. 초대자가 탈퇴·강퇴하면 개인 코드는 즉시 무효, 초대자가 참여 시점에 owner 면 개인 코드도 즉시가입. (`house`, `house_members`, `house_join_requests`)
   - 즉시가입 시 같은 집의 대기 중인 입주 신청이 있으면 함께 ACCEPTED로 종결한다.
   - 다중 집 가입 허용: 다른 집에 이미 속해 있어도 새 집 참여 가능. 같은 집 중복만 차단.
 - **집 순서 변경**: 집 탭에서 내 집들이 보이는 순서를 사용자가 직접 정한다(모바일 #820). `house_members.sort_order`에 저장하는 **개인 설정**이라 같은 집의 다른 구성원에게는 영향이 없다. 정한 적 없으면 기존과 같은 가입순이고, 새로 가입한 집은 끝에 붙는다. 순서를 정하지 않은 사용자에게는 아무 변화도 없어야 한다. (`house_members`)
@@ -23,7 +23,7 @@
 
 ## 구성원 관리
 
-- **입주 신청 관리**: 소유자만 대기 중인 신청을 조회하고 수락·거절한다. 수락 시점에 집 정원을 다시 검사하고 구성원 등록·신청 종결·`current_member_count` 증가를 한 트랜잭션으로 처리한다. (`house_join_requests`, `house_members`, `house`)
+- **입주 신청 관리**: 소유자만 대기 중인 신청을 조회하고 수락·거절한다. 수락 시점에 집 정원을 다시 검사하고 구성원 등록·신청 종결·`current_member_count` 증가를 한 트랜잭션으로 처리한다. 수락·거절 결과는 신청자에게 알림으로 간다. (`house_join_requests`, `house_members`, `house`, `notification`)
 - **강퇴**: 소유자만 가능. 대상 `house_members.status`를 강퇴 상태로 전환(또는 `left_at` 기록), `current_member_count` 감소. 강퇴 구성원에게 알림(알림 발송은 의존 도메인). (`house_members`, `house`)
 - **집 탈퇴**: 본인 탈퇴. `house_members.left_at` 기록, 기여 기록(`house_mission_participants`)은 유지되며 집 활동·미션에는 더는 참여하지 못한다. **재가입은 허용**(기존 row 재활성화). `current_member_count` 감소. 마지막 1인 탈퇴 시 집 soft delete. (`house_members`, `house`)
 - **소유자 양도 후 탈퇴**: 소유자는 탈퇴 전 다른 구성원에게 소유권 양도 필요. 대상 구성원 `role=owner`로 변경 + `house.owner_user_id` 갱신 후 기존 소유자 탈퇴. (`house_members`, `house`)
