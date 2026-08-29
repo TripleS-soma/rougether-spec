@@ -35,25 +35,27 @@
 ### POST /api/v1/houses/{houseId}/join-requests
 탐색 결과에서 선택한 집에 **입주 신청**한다. 신청만으로 구성원이 되지 않으며 `house.current_member_count`도 바뀌지 않는다. 같은 집에서 거절된 신청은 동일 행을 `PENDING`으로 되돌려 재신청한다.
 - res(201): `requestId`, `houseId`, `userId`, `nickname`, `status=PENDING`, `requestedAt`
-- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 이미 구성원 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409)
-- table: `house_join_requests`
+- 신청 생성·재오픈과 같은 트랜잭션에서 **방장에게 `HOUSE_JOIN_REQUEST_CREATED` 알림 내역을 저장**한다(`refId` = requestId, push 는 커밋 후 비동기). 방장이 신청 도착을 몰라 수락이 늦어지지 않게 하는 계약이며, 반복 신청의 재발송 억제 규칙·문구는 [notification/api.md](../notification/api.md) 참고.
+- 탈퇴 계정 가드: 회원탈퇴 후 잔여 access token 의 신청은 401 `AUTH_INVALID_TOKEN`으로 차단한다 — 탈퇴 트랜잭션이 `REJECTED`로 철회한 신청을 재신청이 `PENDING`으로 되살리고 방장 알림까지 내보내는 것을 막는다(가입 확정 경로의 가드와 동일 기준).
+- 예외: 없는/삭제된 집 `HOUSE_NOT_FOUND`(404) · 정원 초과 `HOUSE_FULL`(409) · 이미 구성원 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409) · 탈퇴 계정 잔여 토큰 `AUTH_INVALID_TOKEN`(401)
+- table: `house_join_requests`, `notification`
 - 이전 앱의 `POST /api/v1/houses/{houseId}/join`도 이 API와 동일하게 **신청만 생성**하는 deprecated alias로 유지한다. 즉시가입 우회 경로로 사용하지 않는다.
 
 ### POST /api/v1/houses/join-by-code
 초대코드/링크로 참여. 코드 종류에 따라 두 흐름으로 갈린다.
 - 집 공용 코드(`house.invite_code`, 소유자 공유): **즉시가입** — role=member·status=active 로 바로 등록되고 `current_member_count` 가 증가한다. 같은 집에 `PENDING` 입주 신청이 있으면 함께 `ACCEPTED`로 종결한다.
-- 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다.
+- 구성원 개인 코드(`house_members.invite_code`, 일반 구성원 공유): **방장 승인 대기** — 탐색 신청과 같은 `house_join_requests` PENDING 을 만들고, 방장이 입주 신청 수락/거절 API로 처리해야 입주가 확정된다. 구성원 수는 수락 시점에만 증가한다. 거절 이력이 있으면 같은 신청 row 를 재오픈한다. 신청 생성·재오픈 시 방장에게 `HOUSE_JOIN_REQUEST_CREATED` 알림을 저장한다(탐색 신청과 동일 계약 — 위 join-requests 항목·[notification/api.md](../notification/api.md) 참고).
 - 코드 조회는 집 공용 코드 → 구성원 개인 코드 순. 두 네임스페이스는 발급 시점에 두 테이블을 함께 존재 검사해 겹치지 않게 한다(사전 검사 기반). 초대자가 참여 시점에 owner 면(소유권 양도 등) 개인 코드도 즉시가입으로 처리한다.
-- req: `inviteCode`
+- req: `inviteCode` — 서버가 **앞뒤 공백 제거 + 대문자 정규화** 후 조회한다(친구 초대 redeem 과 동일 규칙). 링크·수기 입력에 소문자·공백이 섞여도 유효 코드로 인식되며, DB collation 에 따라 코드 종류별로 성패가 갈리던 동작이 없어진다.
 - res: `membershipId`, `houseId`, `status`, `pendingApproval`, `joinRequestId` — 즉시가입이면 `pendingApproval=false`·`joinRequestId=null`, 승인 대기면 `pendingApproval=true`·`joinRequestId` 반환에 `membershipId`·`status`는 null
 - 재가입: 탈퇴(LEFT) 이력이 있으면 `(house_id, user_id)` unique 제약상 기존 row 를 재활성화(joined_at 갱신, left_at 해제)
 - 같은 집에 `PENDING` 입주 신청이 있으면 즉시가입과 함께 해당 신청을 `ACCEPTED`로 종결한다.
 - 예외: 없는 코드·초대자 탈퇴/강퇴 `INVITE_CODE_INVALID`(404) · 만료 코드 `INVITE_CODE_EXPIRED`(409) · 정원 초과 `HOUSE_FULL`(409) · 중복 참여 `HOUSE_ALREADY_MEMBER`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409) · 이미 신청 중 `HOUSE_JOIN_REQUEST_ALREADY_PENDING`(409, 구성원 개인 코드 경로) · 탈퇴 계정의 잔여 access token `AUTH_INVALID_TOKEN`(401)
-- 탈퇴 계정 가드: 회원탈퇴 후 잔여 access token(만료 전 최대 30분)의 참여 확정은 401 `AUTH_INVALID_TOKEN`으로 차단한다(가입 확정 공통 경로 — 탈퇴 트랜잭션의 멤버십 정리가 되돌아가지 않게 함, [member/api.md](../member/api.md) "회원탈퇴"). 해체(soft delete)된 집의 초대코드는 없는 코드와 동일하게 참여 불가.
-- table: `house`, `house_members`, `house_join_requests`
+- 탈퇴 계정 가드: 회원탈퇴 후 잔여 access token(만료 전 최대 30분)의 참여 확정은 401 `AUTH_INVALID_TOKEN`으로 차단한다(가입 확정 공통 경로 — 탈퇴 트랜잭션의 멤버십 정리가 되돌아가지 않게 함, [member/api.md](../member/api.md) "회원탈퇴"). 구성원 개인 코드 경로의 **신청 생성도 같은 가드**를 거친다(철회된 신청의 `PENDING` 부활 차단). 해체(soft delete)된 집의 초대코드는 없는 코드와 동일하게 참여 불가.
+- table: `house`, `house_members`, `house_join_requests`, `notification`
 
 ### GET /api/v1/houses/by-code/{inviteCode}
-참여 전 코드로 집 미리보기(이름·구성원 수·정원). 집 공용 코드와 구성원 개인 코드 모두 인식한다. 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용). 만료 판정은 코드 종류별 만료 시각 기준.
+참여 전 코드로 집 미리보기(이름·구성원 수·정원). 집 공용 코드와 구성원 개인 코드 모두 인식한다. 입력 코드는 참여 API 와 동일하게 **앞뒤 공백 제거 + 대문자 정규화** 후 조회한다. 만료 코드도 200 으로 응답하고 `inviteExpired` 로 표시한다(화면 만료 안내용). 만료 판정은 코드 종류별 만료 시각 기준.
 - res: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `inviteExpired`, `requiresApproval`
 - `requiresApproval` 는 참여 시 방장 승인 대기로 들어가는지 여부 — 집 공용 코드 false, 구성원 개인 코드 true(초대자가 owner 면 false)
 - table: `house`, `house_members`
@@ -120,17 +122,17 @@
 - table: `house_join_requests`, `users`
 
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/accept
-입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장한다(`refId` = 입주자 membershipId, 문구는 notification 도메인 참고).
+입주 신청 수락. **소유자만**. 집 행 락 아래 정원을 다시 확인하고 신청자를 MEMBER·ACTIVE 구성원으로 등록한다. 탈퇴 이력이 있으면 기존 `house_members` 행을 재활성화하며, 신청은 `ACCEPTED`로 종결하고 `current_member_count`를 1 증가시킨다. 가입 확정(초대코드·신청 수락 공통 경로) 시 같은 트랜잭션에서 기존 ACTIVE 멤버 전원에게 `HOUSE_MEMBER_JOINED` 알림 내역을 저장하고(`refId` = 입주자 membershipId), 신청자 본인에게는 `HOUSE_JOIN_REQUEST_ACCEPTED` 알림을 저장한다(`refId` = requestId, 문구는 notification 도메인 참고).
 - res: `membershipId`, `houseId`, `userId`, `role`, `status`, `joinedAt`
 - **신청자 탈퇴 가드**: 신청자가 이미 회원탈퇴한 신청을 수락하려 하면 신청을 `REJECTED`로 전환하고 409 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`을 응답한다(거절 전환은 에러 응답과 함께 확정됨 — 탈퇴 트랜잭션의 신청 철회와 엇갈리는 동시성 방어).
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409) · 신청자 탈퇴 `HOUSE_JOIN_REQUEST_APPLICANT_WITHDRAWN`(409) · 정원 초과 `HOUSE_FULL`(409) · 강퇴 이력 `HOUSE_KICKED_MEMBER`(409)
-- table: `house_join_requests`, `house_members`, `house`
+- table: `house_join_requests`, `house_members`, `house`, `notification`
 
 ### POST /api/v1/houses/{houseId}/join-requests/{requestId}/reject
-입주 신청 거절. **소유자만**. 신청을 `REJECTED`로 종결하며 구성원 수는 바뀌지 않는다.
+입주 신청 거절. **소유자만**. 신청을 `REJECTED`로 종결하며 구성원 수는 바뀌지 않는다. 같은 트랜잭션에서 신청자 본인에게 `HOUSE_JOIN_REQUEST_REJECTED` 알림을 저장한다(`refId` = requestId).
 - res: 204
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 대기 중인 신청 아님 `HOUSE_JOIN_REQUEST_NOT_PENDING`(409)
-- table: `house_join_requests`
+- table: `house_join_requests`, `notification`
 
 ### GET /api/v1/houses/{houseId}/members
 구성원 목록 조회. **ACTIVE 구성원만** 조회 가능, 목록에도 **active 구성원만** 노출(가입순 - 생성자가 첫 번째).
