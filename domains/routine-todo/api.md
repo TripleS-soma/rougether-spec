@@ -149,6 +149,15 @@
 > 수락 검증(순서대로): 본인 소유가 아니거나 없으면 404 `RECOMMENDATION_NOT_FOUND`(타인 것 존재 여부 비노출), 이미 수락/무시됐으면 409 `RECOMMENDATION_ALREADY_HANDLED`, `expiresAt` 경과면 409 `RECOMMENDATION_EXPIRED`, 계보에 ACTIVE 버전이 없으면 409 `RECOMMENDATION_ROUTINE_DELETED`, 현재 버전이 생성 시점 대상 버전(`routine_id`)과 다르면 409 `RECOMMENDATION_STALE`.
 > 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`daysOfWeek`만 반복 스케줄에 적용하는 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다(이미 종결된 추천이면 409 `RECOMMENDATION_ALREADY_HANDLED`).
 > 생성 룰·정책(주 1회 배치, 계보당 1건·사용자당 3건, 쿨다운 14일, 만료 7일)은 [features.md](features.md) "AI 조정 추천" 참고. 생성 시 푸시 알림은 보내지 않는다(MVP — 주간 회고 push와의 중복 소음 회피). 앱 내 노출 위치·UX는 프론트 협의(open-questions).
+> HOLDOUT(`#342`)은 사용자 API를 바꾸지 않는다. `CONTROL`은 추천 row를 만들지 않아 목록이 자연히 비며, `TREATMENT`만 기존 생성·목록·수락·무시 계약을 사용한다. 주간 회고 생성·조회·노출에는 HOLDOUT을 적용하지 않는다.
+
+### GET /admin/recommendations/metrics?weeks=N
+
+관리자 세션의 `ADMIN`/`SUPER_ADMIN` 전용 관측 API다. 기존 `weeks[]` 추천 퍼널 필드는 유지하며, HOLDOUT 비교를 additive `variantWeeks[]`로 반환한다.
+
+- `variantWeeks[]`: 사용자별 최초 적격 cohort의 `weekStartDate`(일요일)·`weekEndDate`(토요일, KST), `control`, `treatment`, `treatmentLiftPp`(양쪽 변화량을 모두 측정할 수 없으면 null)
+- `control`/`treatment`: `variant`, `targetUserCount`, `recommendationGeneratedUserCount`, `recommendationGenerationRate`, `recommendationAcceptedUserCount`, `recommendationAcceptanceRate`, `effectMeasuredUserCount`, `effectPendingUserCount`, `effectUnmeasurableUserCount`, `baselineCompletionRate`, `nextWeekCompletionRate`, `completionDeltaPp`
+- 대상 사용자는 동일한 활성 상한·룰·쿨다운 판정에서 추천이 1건 이상 나오는 적격 사용자다. 생성률은 `추천이 1건 이상 실제 저장된 사용자 / 대상 사용자`, 수락률은 `1건 이상 수락한 사용자 / 추천 생성 사용자`다. 완료율과 변화량의 KST 경계·측정 대기/불가 규칙은 [features.md](features.md) "AI 조정 추천" 측정 퍼널을 따른다.
 
 ## AI 주간 회고 (`weekly_reports`)
 
