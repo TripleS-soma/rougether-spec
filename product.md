@@ -73,7 +73,19 @@
 
 ## 성공 지표 (KPI)
 
-DAU · 루틴 완료율 · 7일 재방문율 · 집 참여율 · 단체 미션 참여율.
+### 북극성 지표
+
+**최근 7일 중 서로 다른 3일 이상 루틴을 실제 완료한 실사용자 수와 전체 실사용자 대비 비율**을 북극성 지표로 사용한다. 실제 완료일은 `routine_logs.completed_at`을 KST 날짜로 변환해 판정한다. 과거 날짜를 뒤늦게 완료해도 계획일(`routine_date`)이 아니라 실제 행동한 날에 귀속한다.
+
+### 보조 지표
+
+- 가입일 KST 코호트의 exact-day D1/D7/D30 Retention
+- 종료된 최근 30일의 루틴 완료율(`COMPLETED / (COMPLETED + FAILED)`)
+- 현재 평균 스트릭과 3일 이상 완료 공백 후 재완료한 재시작률
+- 개인군과 공동 참여군의 완료율·평균 스트릭·재시작률 비교
+- 집 참여율 · 단체 미션 참여율
+
+실사용자는 `users.deleted_at IS NULL AND users.is_bot = FALSE`인 계정이다. 지표의 상세 계산 계약은 [제품 지표 기능 명세](domains/analytics/features.md)를 따른다.
 
 ## 수익 모델
 
