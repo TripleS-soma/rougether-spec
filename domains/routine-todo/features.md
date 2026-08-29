@@ -40,6 +40,7 @@
 - **진행 요약**: 완료 수·남은 수·전체 진행률. 루틴 완료 여부는 당일 `routine_logs`(`routine_date` = 오늘)로 판정, 투두는 `status`/`completed_at`으로 판정.
 - **정렬**: 루틴은 `scheduled_time` 기준 시간순.
 - **스트릭 노출**: 현재 연속 성공일(`streaks.current_count`)을 함께 표시(스트릭 상세는 방 도메인의 표시 기능과 공유).
+- **저녁 미완료 다이제스트 의존성**: notification 도메인의 `DAILY_INCOMPLETE_DIGEST`는 이 "오늘 현황"의 루틴 반복 대상 판정과 투두 완료 판정을 재사용한다. 다만 다이제스트 스냅숏 대상은 카테고리 묶음이 아니라 사용자별 남은 항목이다 — 루틴은 같은 계보(`origin_routine_id`)에 오늘 `COMPLETED` 로그가 없는 항목을 `ROUTINE` target(계보 id)으로, 투두는 `due_date = 오늘`이고 `status = PENDING`인 항목을 `TODO` target(투두 id)으로 저장한다.
 
 ## 루틴 완료 처리 (`routine_logs`, `streaks`, → `user_wallets`)
 
