@@ -34,6 +34,7 @@
 - **유사 루틴·투두 비교의 약어·동의어 쌍**: `POST /routines/similarity`는 text-embedding-3-large/1024 + 임계값 0.50(한글 제목 쌍 30개 실측 — 놓침 2·오탐 0)으로 확정했으나, "헬스/PT"(0.29)·"러닝/조깅"(0.39)처럼 무관 쌍(최고 0.44)보다 낮은 약어·외래어 동의어는 어떤 임계값으로도 못 잡는다. 프론트가 이 케이스의 힌트 누락을 문제 삼으면 경계 구간 LLM 판정을, 지연·비용이 문제 되면 제목 임베딩 캐시를 후속으로 검토한다. 표본이 작아 운영 데이터(hasSimilar 비율·무시율)로 재검증 예정. (서버 #303)
 - **조정 추천(`routine_recommendations`) 노출 위치·UX**: 서버 계약(생성 룰·정책·목록/수락/무시 API)은 초안 확정 — [routine-todo/features.md](domains/routine-todo/features.md)·[routine-todo/api.md](domains/routine-todo/api.md). 앱 내 노출 위치(홈/오늘 카드, 주간 회고 화면 연계)와 수락 전 확인 다이얼로그 여부는 프론트 협의 필요. 생성 시 푸시는 MVP에서 보내지 않기로 함(주간 회고 push와 중복 소음 회피 — 재검토 여지).
 - **조정 추천 룰 수치 재검증**: 근거 창 3주 · 실패 요일 제외(나머지 요일 완료율 ≥ 50%) · 빈도 축소(2주 연속 < 40%, 상위 최대 3요일) · 활성 상한 3건 · 재추천 쿨다운 14일 · 만료 7일은 초안 기본값 — 운영 데이터(수락/무시/만료율, 수락 후 완료율 변화)로 조정한다. 측정 도구는 마련됨 — 주차별 생성→수락/무시/만료/대기 퍼널과 수락 효과(전후 주 완료율 델타)를 admin 관측으로 집계한다 → [routine-todo/features.md](domains/routine-todo/features.md) "AI 조정 추천" 측정 퍼널. `ADJUST_TIME`(수행 시각 조정) 룰은 완료 시각 데이터 기반 설계 후 후속. (서버)
+- **(결정됨, 서버 #342) 조정 추천 HOLDOUT**: 룰 기반 조정 추천만 `ROUTINE_ADJUSTMENT_V1` 사용자 단위 영구 배정(20% `CONTROL`, 80% `TREATMENT`)을 적용한다. 기존 사용자도 상한·룰·쿨다운을 통과해 실제 추천 후보가 생기는 최초 적격 진입 때 배정하며, `CONTROL`은 같은 판정을 수행한 뒤 적격성만 기록하고 추천을 저장하지 않는다. 주간 회고는 실험 대상이 아니다. 효과는 cohort 주를 제외한 직전 주 대비 다음 주 완료율 변화와 두 variant 변화량 차이로 본다 → [routine-todo/features.md](domains/routine-todo/features.md) "AI 조정 추천" HOLDOUT 실험 배정·측정 퍼널.
 
 ## 방 / 상점
 
