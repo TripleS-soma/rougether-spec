@@ -27,6 +27,7 @@
 | 알림 | [domains/notification/api.md](domains/notification/api.md) |
 | 운영 지원 (버그 제보) | [domains/support/api.md](domains/support/api.md) |
 | 연속 출석 이벤트 | [domains/attendance/api.md](domains/attendance/api.md) |
+| 제품 지표 | [domains/analytics/api.md](domains/analytics/api.md) |
 
 ## 에러 응답
 
