@@ -11,6 +11,7 @@
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
+- **`currentMemberCount`는 실사용자 수(동거 봇 제외)다** — 봇은 사람이 참여하면 자리를 비켜주므로(서버 #309 yieldSeat) 정원 표기에 넣으면 실제 가용 자리와 어긋난다(#352). 이 규칙은 사용자향 응답 공통(집 탐색·내 집 목록·집 상세·집 미리보기·초대코드 미리보기)이며, 내부 좌석 카운터(`house.current_member_count`)와 정원 판정·봇 밀어내기 로직은 봇 포함 그대로다. 구성원 목록(`GET /api/v1/houses/{houseId}/members`)은 기존대로 봇을 `bot` 플래그와 함께 노출한다
 - **비공개 집(`is_public=false`)은 제외**한다 — 비구성원 미리보기·탐색형 입주 신청도 동일하게 공개 집만 허용하고, 초대코드 조회·참여는 공개 여부와 무관하다. 가입 시 지급되는 기본 집은 비공개로 시작하며(서버 2026-08-20), 소유자가 설정(`PUT /api/v1/houses/{houseId}`의 `isPublic`)에서 공개로 전환하면 노출된다(#350)
 - `goals[]`는 빈 배열일 수 있다(가입 시 만들어진 기본 집은 온보딩 목표 저장 전까지 집 목표가 없음). 목표 없는 집은 `goalCode` 필터에 매칭되지 않는다.
 - table: `house`, `house_goals`
