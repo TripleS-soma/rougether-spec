@@ -11,6 +11,7 @@
 - query: `page`(기본 0), `size`(기본 20), `goalCode?`(목표 필터 - 1차 지원. `hasSlot`/`activityLevel` 등은 후속), `excludeJoined?`(기본 false — true 면 본인이 가입(ACTIVE) 중인 집을 제외. 본인이 OWNER 인 집도 가입 중이므로 함께 제외되고, 탈퇴(LEFT)·강퇴(KICKED) 이력만 있는 집은 포함. `goalCode`와 조합 가능. 추가 2026-07-29, server PR #234)
 - res: `{ items, page, size, totalElements }` / items[]: `houseId`, `name`, `coverImageKey`, `currentMemberCount`, `maxMembers`, `level`, `goals[]`(`goalId`, `code`, `name`), `myJoinRequestStatus?`(`PENDING`/`REJECTED`, 신청 이력 없으면 null)
 - 삭제된 집(`deleted_at`)은 제외
+- **비공개 집(`is_public=false`)은 제외**한다 — 비구성원 미리보기·탐색형 입주 신청도 동일하게 공개 집만 허용하고, 초대코드 조회·참여는 공개 여부와 무관하다. 가입 시 지급되는 기본 집은 비공개로 시작하며(서버 2026-08-20), 소유자가 설정(`PUT /api/v1/houses/{houseId}`의 `isPublic`)에서 공개로 전환하면 노출된다(#350)
 - `goals[]`는 빈 배열일 수 있다(가입 시 만들어진 기본 집은 온보딩 목표 저장 전까지 집 목표가 없음). 목표 없는 집은 `goalCode` 필터에 매칭되지 않는다.
 - table: `house`, `house_goals`
 
@@ -101,9 +102,10 @@
 - table: `house`, `house_members`, `house_goals`
 
 ### PUT /api/v1/houses/{houseId}
-설정 수정(이름·소개글·대표 이미지·최대 인원). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
-- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가)
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`
+설정 수정(이름·소개글·대표 이미지·최대 인원·공개 여부). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
+- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가), `isPublic?`(공개 전환 토글, #350)
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `isPublic`
+- `isPublic=false`로 바꾸면 탐색·비구성원 미리보기·탐색형 입주 신청에서 즉시 제외되고 초대코드로만 참여할 수 있다. 이미 접수된 입주 신청은 그대로 남아 방장이 수락·거절할 수 있다. 비공개로 시작하는 기본 집의 공개 전환도 이 API가 담당한다
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 목록에 없는 `coverImageKey` `HOUSE_COVER_IMAGE_INVALID`(400) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
 - table: `house`
 

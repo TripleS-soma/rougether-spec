@@ -80,7 +80,7 @@
 | `PUT /api/v1/me/profile-image` | 내 프로필 사진 등록·교체 (multipart 서버 직접 업로드) | req: multipart `file` / res: `profileImageKey` | `users` |
 | `DELETE /api/v1/me/profile-image` | 내 프로필 사진 삭제 | res: 204 — `profile_image_key`를 null로 되돌림 | `users` |
 
-- `PUT /api/v1/me`는 `nickname`이 항상 필수다(bio만 단독 수정 불가). `bio`는 null이면 **변경 없음**으로 처리해 bio를 null로 비울 수단이 없다 — 비우려면 빈 문자열을 보낸다. 닉네임·소개글은 금칙어 검사를 거친다 — 위반 시 각각 400 `MEMBER_NICKNAME_BANNED` / `MEMBER_BIO_BANNED`.
+- `PUT /api/v1/me`는 `nickname`이 항상 필수다(bio만 단독 수정 불가). 닉네임 저장 시 이름이 아직 기본값 `나의 집`인 소유 집을 `{닉네임}의 집`으로 함께 개명한다(같은 트랜잭션, [house/features.md](../house/features.md) 회원가입 기본 집 참고, #350). `bio`는 null이면 **변경 없음**으로 처리해 bio를 null로 비울 수단이 없다 — 비우려면 빈 문자열을 보낸다. 닉네임·소개글은 금칙어 검사를 거친다 — 위반 시 각각 400 `MEMBER_NICKNAME_BANNED` / `MEMBER_BIO_BANNED`.
 - 프로필 사진은 **서버 직접 업로드** — 클라이언트가 multipart `file`로 보내면 서버가 S3에 저장하고 asset key를 발급한다. key 규칙은 `profile/{uuid}.{ext}`(`image/jpeg`는 `.jpg`로 고정 매핑)이며, DB에는 전체 URL이 아닌 key(`users.profile_image_key`)만 저장한다. 클라이언트는 key를 유추하지 않고 응답 필드를 CDN base URL과 조합해 이미지 URL로 사용한다.
 - 허용 포맷 `image/png|jpeg|webp`, 최대 10MB. 위반 시 `MEMBER_PROFILE_IMAGE_INVALID`(400). 단 multipart 자체 상한(12MB)을 넘는 요청은 컨트롤러 진입 전에 400 `FILE_TOO_LARGE`로 거부된다 — 10MB 초과~12MB 이하만 `MEMBER_PROFILE_IMAGE_INVALID`.
 - `profileImageKey`가 null이면 프론트가 기본 이미지를 표시한다(미등록·삭제 후 상태).
