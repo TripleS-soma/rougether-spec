@@ -150,6 +150,15 @@
 > 수락 적용은 루틴 수정(`PUT /api/v1/routines/{id}`)과 같은 서버 내부 경로를 재사용한다 — `proposal`의 `repeatType`/`daysOfWeek`만 반복 스케줄에 적용하는 변경이라 시간버전 분기 규칙이 그대로 적용되고, 추천 상태 갱신(`ACCEPTED`·`acted_at`·`applied_routine_id`)과 한 트랜잭션이다. dismiss는 상태만 `DISMISSED`로 바꾼다 — 검증은 수락의 앞 단계와 대칭(순서대로): 404 `RECOMMENDATION_NOT_FOUND`, 이미 종결이면 409 `RECOMMENDATION_ALREADY_HANDLED`, `expiresAt` 경과면 409 `RECOMMENDATION_EXPIRED`(서버 #355 — 만료는 상태 전이 없는 lazy 판정이라 무시로 `DISMISSED`를 덮으면 admin 퍼널의 만료 집계와 어긋남). 계보 삭제·선행 수정(무효)은 무시를 막지 않는다(적용할 것이 없어 무해).
 > **클라이언트(카드) 계약**: 수락·무시의 409는 전부 "그 카드가 더 이상 유효하지 않다"는 신호로 같은 동작으로 수렴한다 — 카드 제거 + 목록 재조회. `ALREADY_HANDLED`(다른 기기·중복 탭), `EXPIRED`(표시 후 기한 경과), `ROUTINE_DELETED`, `STALE`(사용자가 먼저 스케줄 수정) 모두 동일하며, 목록 조회가 만료·삭제·stale 추천을 lazy 필터로 걸러 주므로 별도 복구 UI는 필요 없다.
 > 생성 룰·정책(주 1회 배치, 계보당 1건·사용자당 3건, 쿨다운 14일, 만료 7일)은 [features.md](features.md) "AI 조정 추천" 참고. 생성 시 푸시 알림은 보내지 않는다(MVP — 주간 회고 push와의 중복 소음 회피). 앱 내 노출 위치·UX는 프론트 협의(open-questions).
+> HOLDOUT(`#342`)은 사용자 API를 바꾸지 않는다. `CONTROL`은 추천 row를 만들지 않아 목록이 자연히 비며, `TREATMENT`만 기존 생성·목록·수락·무시 계약을 사용한다. 주간 회고 생성·조회·노출에는 HOLDOUT을 적용하지 않는다.
+
+### GET /admin/recommendations/metrics?weeks=N
+
+관리자 세션의 `ADMIN`/`SUPER_ADMIN` 전용 관측 API다. 기존 `weeks[]` 추천 퍼널 필드는 유지하며, HOLDOUT 비교를 additive `variantWeeks[]`로 반환한다.
+
+- `variantWeeks[]`: 사용자별 최초 적격 cohort의 `weekStartDate`(일요일)·`weekEndDate`(토요일, KST), `control`, `treatment`, `treatmentLiftPp`(양쪽 변화량을 모두 측정할 수 없으면 null)
+- `control`/`treatment`: `variant`, `targetUserCount`, `recommendationGeneratedUserCount`, `recommendationGenerationRate`, `recommendationAcceptedUserCount`, `recommendationAcceptanceRate`, `effectMeasuredUserCount`, `effectPendingUserCount`, `effectUnmeasurableUserCount`, `baselineCompletionRate`, `nextWeekCompletionRate`, `completionDeltaPp`
+- 대상 사용자는 동일한 활성 상한·룰·쿨다운 판정에서 추천이 1건 이상 나오는 적격 사용자다. 생성률은 `추천이 1건 이상 실제 저장된 사용자 / 대상 사용자`, 수락률은 `1건 이상 수락한 사용자 / 추천 생성 사용자`다. 완료율과 변화량의 KST 경계·측정 대기/불가 규칙은 [features.md](features.md) "AI 조정 추천" 측정 퍼널을 따른다.
 
 ## AI 주간 회고 (`weekly_reports`)
 
