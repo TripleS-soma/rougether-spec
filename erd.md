@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **49 table**(`attendance_events`·`attendance_check_ins`·`routine_recommendations`·`weekly_reports` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi). 서버 Flyway에서 확정된 최신 운영·관측 table을 함께 기록하며 ERDCloud 정본 반영이 필요한 항목은 설명에 남긴다.
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -9,11 +9,14 @@
 ## 도메인별 table
 
 ### 회원 / 재화 / 인증
-- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | is_bot BOOLEAN | bot_key VARCHAR(40)? | created_at | updated_at | deleted_at?
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
   - `bio`는 프로필 소개글(최대 100자, nullable).
   - `profile_image_key`는 프로필 사진 S3 object key(`profile/{uuid}.{ext}`). 전체 URL이 아닌 key만 저장하며, null이면 기본 이미지를 표시한다.
   - 회원탈퇴 시 `email`·`nickname`·`bio`·`profile_image_key`는 탈퇴 트랜잭션에서 즉시 null 처리(익명화)하고, 프로필 S3 원본은 커밋 후 best-effort로 삭제한다 → [member/api.md](domains/member/api.md) "회원탈퇴".
+  - `is_bot=true`는 서버가 시드한 로그인 불가 동거 봇이다. 제품 KPI의 실사용자, 보상·알림·회고 대상에서 제외한다. `bot_key`는 봇 프로필의 멱등 식별자다.
+- **user_daily_activity**: id* | user_id→users | activity_date DATE | created_at | unique (user_id, activity_date) | index (activity_date, user_id)
+  - 유효한 사용자 JWT가 있는 user-api 요청의 그날 최초 활동을 KST 날짜로 저장한다. 쓰기 SQL에서 탈퇴 계정과 동거 봇을 제외하고 unique 제약으로 다중 인스턴스·동시 요청의 하루 1행을 보장한다.
 - **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | apple_refresh_token_encrypted VARCHAR(1000)? | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
   - `apple_refresh_token_encrypted`는 provider=apple일 때만 사용 — 로그인 시 `authorizationCode`를 교환해 받은 애플 refresh token을 암호화 저장(재로그인 시 갱신), 회원탈퇴 시 revoke 호출에 사용. 탈퇴 시 row 자체를 삭제한다(재가입 = 신규 가입).
