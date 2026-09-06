@@ -23,6 +23,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 | 뽑기 | [domains/gacha/](domains/gacha/) | 벽지·바닥·가구 뽑기, 보상 풀, 기존 머신 호환 |
 | 공동 집 | [domains/house/](domains/house/) | 집 참여·관리·단체 미션·레벨 |
 | 연속 출석 이벤트 | [domains/attendance/](domains/attendance/) | KST 일일 출석, 일차별 코인, 10일차 가구 보상 |
+| 고양이 앱 아이콘 | [domains/app-icon/](domains/app-icon/) | 실제 앱 활동, 6가지 표정, 미접속 FCM 알림 |
 
 ## 도메인 (MVP)
 

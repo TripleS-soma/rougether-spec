@@ -13,3 +13,4 @@
 | 뽑기 | 벽지·바닥·가구 3종 목록, 뽑기, 공통 결과 연출 | [domains/gacha/features.md](domains/gacha/features.md) |
 | 공동 집 | 탐색/참여, 집 관리, 구성원 관리, 방 방문, 단체 미션, 집 레벨 | [domains/house/features.md](domains/house/features.md) |
 | 연속 출석 이벤트 | 이벤트 생성, 오늘 출석, 일차별 코인, 10일차 가구 지급 | [domains/attendance/features.md](domains/attendance/features.md) |
+| 고양이 앱 아이콘 | foreground 기록, 성공·스트릭·미접속 상태, 2·4·7일 FCM | [domains/app-icon/features.md](domains/app-icon/features.md) |
