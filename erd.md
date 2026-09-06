@@ -107,10 +107,12 @@
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
-  - `theme_id`는 **NULL 허용**: 아이템 뽑기는 테마별, **캐릭터 뽑기는 테마 무관(NULL)**.
+  - `theme_id`는 **NULL 허용**: 신규 벽지·바닥·가구 3종과 캐릭터 뽑기는 테마 무관(NULL)이다. 기존 테마별 머신의 FK는 이행 기간 동안 유지한다.
+  - 신규 꾸미기 정식 `code`는 `wallpaper_gacha`·`floor_gacha`·`furniture_gacha`다. API의 `category`(`WALLPAPER`/`FLOOR`/`FURNITURE`, 기존 머신은 `null`)는 코드에서 도출하므로 별도 DB 컬럼이 아니다. `theme_id=NULL`만으로 캐릭터 머신을 식별하지 않는다.
 - **gacha_pool_entries**: id* | gacha_id→gacha | reward_type VARCHAR(30) | item_id→items? | character_id→characters? | currency_type VARCHAR(30)? | reward_amount INT? | rarity VARCHAR(30)? | weight INT | is_active BOOLEAN
   - `rarity`는 한글 `일반`/`희귀`/`전설` 3종(추첨은 티어 롤 70/25/5 — gacha 도메인 참고). `weight`·`currency_type`·`reward_amount`는 잔존 컬럼으로 런타임 미사용(`CURRENCY` 엔트리는 풀에서 제외됨).
   - `reward_type`로 아이템(`ITEM`) / 캐릭터(`CHARACTER`) / 재화(`CURRENCY`) 보상을 구분. 중복 아이템은 다이아로 전환, **중복 캐릭터는 코인 100 환급**.
+  - 신규 3종은 실제 아이템 배치 유형에 맞는 `ITEM`만 허용한다(벽지·바닥은 해당 `surface_slot`, 가구는 `positioned`이며 `surface_slot_type=NULL`). 캐릭터·악세사리·배경은 제외하고, 미리보기와 draw에서 같은 적격성 검사를 적용한다. 기존 풀에서 상시 적격 등록을 중복 없이 복사하되 기존 머신·풀·보유 이력은 유지한다. 상세 이행 규칙은 [뽑기 기능 명세](domains/gacha/features.md#풀-등록--기존-머신-이행)를 따른다.
 
 ### 알림
 - **user_device_token**: id* | user_id→users | token VARCHAR(255) UNIQUE | platform VARCHAR(20) | created_at | updated_at
