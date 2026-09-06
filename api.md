@@ -54,9 +54,17 @@ validation 실패(400)는 `fieldErrors`를 포함한다:
   "fieldErrors": [ { "field": "maxMembers", "reason": "1 이상이어야 합니다." } ] }
 ```
 
+`code`·`message`만으로 클라이언트가 분기할 수 없을 때는 `details`(구조화 부가정보)를 포함한다. 대부분의 에러는 `null`이다:
+
+```json
+{ "code": "AUTH_EMAIL_LINKED_TO_OTHER_PROVIDER", "message": "이 이메일은 애플 로그인으로 가입되어 있어요.",
+  "details": { "providers": ["APPLE"] } }
+```
+
 - `code`: 프론트 분기용 기계 식별자. `도메인_사유` 대문자 스네이크 (`HOUSE_FULL`, `INVITE_CODE_EXPIRED`).
 - `message`: 사람이 읽는 설명.
 - `fieldErrors`: validation 실패 시에만 (`field` + `reason`).
+- `details`: `code`·`message`만으로 분기할 수 없을 때만 싣는 구조화 부가정보(object). 키·값 구조는 `code`별로 해당 도메인 문서가 정한다(예: 409 `AUTH_EMAIL_LINKED_TO_OTHER_PROVIDER`의 `providers` → [member/api.md](domains/member/api.md) "인증 / 로그인"). 평소에는 `null`. 기존 `{ code, message, fieldErrors }`에 덧붙는 하위호환 추가.
 - 도메인별 `code` 목록은 각 도메인 구현 시 채운다.
 
 ## 응답 형태 / 페이지네이션
