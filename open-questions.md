@@ -45,14 +45,17 @@
 
 - ~~중복 **아이템** → 다이아 전환 비율?~~ → **확정: 다이아 3** (캐릭터 중복은 코인 100 환급). 환급값은 뽑기 단가에 연동한다 — 단가만 낮추면 중복 전환이 소모 비용을 넘어서 뽑기가 재화 환전 수단이 된다.
 - ~~`gacha_pool_entries.weight` 합/확률 계산 방식, `rarity` 값 집합?~~ → **확정(서버 구현)**: `weight` 미사용(잔존 컬럼). 아이템 뽑기는 rarity 티어 롤 — `일반` 70% / `희귀` 25% / `전설` 5%, 티어 내 균등. `rarity`는 한글 3종. → [gacha/api.md](domains/gacha/api.md) 반영.
-- 코인↔다이아 환전 또는 아이템 뽑기 비용 통화(`cost_currency_type`) 기준? (캐릭터 뽑기는 코인 500으로 확정)
+- 코인↔다이아 직접 환전 또는 향후 코인 외 뽑기 비용 통화(`cost_currency_type`) 허용 여부? (현재 꾸미기 3종은 코인 25, 캐릭터는 코인 500으로 확정)
 - **admin 재화 지급의 원장 미기록**: 어드민 재화 지급 경로는 `wallet_histories`에 기록되지 않는다. 원장에 기록할지, 기록한다면 별도 `reason` 값을 추가할지? (재화 도메인)
 - ~~**뽑기 운영 기간 검증 도입**~~ → **구현됨**: 목록 필터·보상 목록·draw에서 `starts_at`/`ends_at`을 검사한다(기간 밖 `GACHA_INACTIVE`). 상세(GET /{id}) 응답의 기간 노출은 여전히 없음 — 노출 여부만 미정. (서버)
 - ~~**회수 캐릭터 배출 차단**~~ → **구현됨(코드 차단)**: 풀 필터가 엔트리 활성에 더해 보상 참조 활성(`characters.is_active`, `items.is_active`+`themes.is_active`)을 검사한다. admin 카탈로그 사용/미사용 토글로 회수하면 엔트리 조작 없이 추첨·미리보기에서 즉시 빠진다. → [gacha/api.md](domains/gacha/api.md) · [gacha/features.md](domains/gacha/features.md) · [shop/api.md](domains/shop/api.md) 반영.
 - **등급 공백 시 뽑기 확률 처리**: 아이템 비활성화(또는 미등록)로 특정 rarity 등급이 통째로 비면 현재는 전체 활성 풀 균등 fallback으로 추첨한다 — 잔여 등급의 실효 배출률이 공시 확률(70/25/5)과 달라질 수 있다. 잔여 등급으로 재정규화/재롤할지, fallback을 유지할지 미정. (서버)
+- **기존 테마 머신 지원 종료 시점**: 신규 앱은 `catalog=category`로 3종을 조회하고, 쿼리 생략 시 기존 목록을 유지한다. 기존 머신·풀 비활성화와 구버전 앱 지원 종료 시점은 별도 결정한다. 이번 통합에 자동 종료를 포함하지 않는다.
 
 ### 확정됨
 
+- **꾸미기 뽑기 3종 통합 (2026-09-06)**: 신규 화면은 테마 공통 **벽지·바닥·가구** 3개 상자로 운영한다. 정식 코드는 `wallpaper_gacha`·`floor_gacha`·`furniture_gacha`, 응답 `category`는 각각 `WALLPAPER`·`FLOOR`·`FURNITURE`이며 `themeId=null`이다. 벽지·바닥 surface와 positioned 가구(러그 포함)를 실제 배치 유형으로 구분하고, 배경·캐릭터 악세사리는 제외한다. 코인 25 단챠·코인 125 5+1회·중복 다이아 3·등급 추첨 정책을 유지한다. 최초 풀 통합은 기존에 등록된 상시 적격 소스만 복사하며 상점 전용 전체 카탈로그를 자동 편입하지 않는다. → [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) · [erd.md](erd.md) 반영.
+- **범용 뽑기 연출 (2026-09-06)**: 등급별 공통 배경 영상(일반 2.4초·희귀 2.7초·전설 2.9초)에 결과 아이템의 투명 배경 이미지를 합성한다. 높은 등급은 모션·소리·진동으로 차별화하고, 건너뛰기·모션 줄이기·안전 영역을 함께 지원한다. 아이템별 영상을 만들거나 서버에 별도 연출 완료 API를 추가하지 않는다. 새 네이티브 앱 빌드와 실물 기기 검증은 출시 조건이다. → [gacha/features.md](domains/gacha/features.md#공통-결과-연출) 반영.
 - **초기 재화**: 가입 시 지갑 발급 잔액 **코인 100·다이아 0**. 온보딩(튜토리얼)에서 가구 뽑기 단챠(코인 25) 1회를 소모시키고 75(단챠 3회분)를 남기는 값(멘토링 피드백 "처음 기본 재화 제공" 반영). → [shop/api.md](domains/shop/api.md) · [member/api.md](domains/member/api.md) 반영.
 - **캐릭터 추가 획득 경로**: 온보딩 기본 1개 무료 선택 외 나머지 캐릭터는 **캐릭터 뽑기로 확정**. 테마 무관 전용 머신, 비용 **코인 500**, 8개 **전체 균등** 추첨, 이미 보유한 캐릭터가 나오면 **코인 100 환급**. 스키마는 `gacha_pool_entries.character_id`(FK `characters`) + `reward_type = CHARACTER`, `gacha.theme_id` NULL 허용. → [erd.md](erd.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
 - **캐릭터 악세사리 뽑기**: `items.placement_type = character`, 직접 구매 불가, 풀 엔트리 `reward_type = ITEM`·`rarity = NULL`·`weight = 1`로 전체 균등 추첨. 중복은 다른 아이템과 동일하게 **다이아 3 환급**. → [shop/features.md](domains/shop/features.md) · [gacha/features.md](domains/gacha/features.md) · [gacha/api.md](domains/gacha/api.md) 반영.
