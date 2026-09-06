@@ -36,3 +36,7 @@ POST 요청 본문은 없다. `userId`, `lastForegroundAt` 등의 입력을 받�
 - 인증 없음·만료/잘못된 토큰: 기존 인증 계약의 401.
 - 사용자 없음·탈퇴 사용자·봇: 404 `USER_NOT_FOUND`.
 - FCM 발송을 요청하는 클라이언트 API는 없다. 배치가 [미접속 정책](features.md)에 따라 발송한다. 알림 목록·설정은 [기존 알림 API](../notification/api.md)를 사용하며 `type = APP_INACTIVITY_REMINDER`, `refId`는 내부적으로 수신 사용자 ID이다.
+
+## 푸시 데이터
+
+미접속 FCM 알림은 제목·본문 외에 문자열 `data` 필드 `type=APP_INACTIVITY_REMINDER`, `screen=myRoom`, `notificationId`를 포함한다. 모바일은 `type`을 확인해 알림 탭 시 내 방으로 이동한다.
