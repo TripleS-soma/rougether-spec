@@ -1,139 +1,95 @@
 # 연속 출석 이벤트 API
 
-인증된 사용자 API는 JWT, 운영 API는 별도 관리자 세션 인증을 사용한다. 날짜·하루 경계는 모두 `Asia/Seoul` 기준이다.
+사용자 API는 JWT, 운영 API는 관리자 세션 인증이다. 날짜와 하루 경계는 `Asia/Seoul`이다.
 
-## 사용자 API
+## 이벤트 생성
 
-### `GET /api/v1/events/attendance`
-
-KST 오늘 진행 중인 출석 이벤트와 로그인 사용자의 상태를 반환한다.
+`POST /admin/attendance-events`
 
 ```json
 {
-  "eventId": 7,
-  "code": "ATTENDANCE_10D_2026",
-  "title": "10일 연속 출석",
-  "startsOn": "2026-08-16",
-  "endsOn": "2026-09-14",
-  "targetDays": 10,
-  "currentStreak": 3,
-  "checkedInToday": true,
-  "completed": false,
-  "checkInDates": ["2026-08-16", "2026-08-17", "2026-08-18"],
-  "dailyRewards": [
-    {"day": 1, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-    {"day": 2, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-    {"day": 3, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-    {"day": 4, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-    {"day": 5, "coinAmount": 50, "furnitureReward": false, "claimed": false},
-    {"day": 6, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-    {"day": 7, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-    {"day": 8, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-    {"day": 9, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-    {"day": 10, "coinAmount": 30, "furnitureReward": true, "claimed": false}
-  ],
-  "reward": {
-    "itemId": 42,
-    "name": "10일 출석 기념 트로피",
-    "assetKey": "items/events/attendance-10-day-trophy.png",
-    "userItemId": null,
-    "received": false
-  }
-}
-```
-
-### `POST /api/v1/events/attendance/check-ins`
-
-요청 body 없이 KST 오늘 출석을 기록한다. 같은 날 재호출과 완료 후 재호출은 멱등 성공한다.
-
-```json
-{
-  "newCheckIn": true,
-  "coinRewardAmount": 30,
-  "coinBalance": 190,
-  "rewardGrantedNow": false,
-  "status": {
-    "eventId": 7,
-    "code": "ATTENDANCE_10D_2026",
-    "title": "10일 연속 출석",
-    "startsOn": "2026-08-16",
-    "endsOn": "2026-09-14",
-    "targetDays": 10,
-    "currentStreak": 3,
-    "checkedInToday": true,
-    "completed": false,
-    "checkInDates": ["2026-08-16", "2026-08-17", "2026-08-18"],
-    "dailyRewards": [
-      {"day": 1, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-      {"day": 2, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-      {"day": 3, "coinAmount": 30, "furnitureReward": false, "claimed": true},
-      {"day": 4, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-      {"day": 5, "coinAmount": 50, "furnitureReward": false, "claimed": false},
-      {"day": 6, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-      {"day": 7, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-      {"day": 8, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-      {"day": 9, "coinAmount": 30, "furnitureReward": false, "claimed": false},
-      {"day": 10, "coinAmount": 30, "furnitureReward": true, "claimed": false}
-    ],
-    "reward": {
-      "itemId": 42,
-      "name": "10일 출석 기념 트로피",
-      "assetKey": "items/events/attendance-10-day-trophy.png",
-      "userItemId": null,
-      "received": false
-    }
-  }
-}
-```
-
-- `newCheckIn`: 이번 호출에서 오늘 출석 row를 새로 만들었는지.
-- `coinRewardAmount`: 이번 호출에서 실제 적립한 코인. 멱등 재호출과 완료 후 호출은 0이다.
-- `coinBalance`: 처리 후 현재 코인 잔액.
-- `rewardGrantedNow`: 이번 호출에서 새 `user_items` row를 지급했는지. 10일차라도 이미 가구를 보유했다면 false다.
-- `status.reward.received`: 목표 완료와 보상 처리가 끝났는지. 기존 가구로 완료한 경우도 true다.
-
-## 운영 API
-
-### `POST /admin/attendance-events`
-
-관리자 세션 인증이 필요하다. 운영 스크립트 호출 경로라 CSRF 검사는 제외하지만 origin 검증과 인증은 유지한다.
-
-```json
-{
-  "code": "ATTENDANCE_10D_2026",
-  "title": "10일 연속 출석",
-  "startsOn": "2026-08-16",
-  "endsOn": "2026-09-14",
-  "targetDays": 10,
+  "code": "ATTENDANCE_AI_7D_2026",
+  "title": "7일 출석 · 나만의 가구",
+  "startsOn": "2026-09-10",
+  "endsOn": "2026-10-09",
+  "targetDays": 7,
   "dailyCoinAmount": 30,
   "bonusDay": 5,
   "bonusCoinAmount": 50,
-  "rewardItemId": 42
+  "rewardItemId": null
 }
 ```
 
-성공 시 201과 생성된 `id`를 포함해 요청 설정을 그대로 반환한다.
+날짜는 예시이며 운영 확정값이 아니다. `rewardItemId`를 생략하거나 null로 보내면 생성권 1회 보상이다. 생성권 이벤트는 `targetDays=7`만 허용하며 다른 값은 400 `ATTENDANCE_GENERATION_TARGET_INVALID`다. 성공 201 응답은 `id`, 요청 설정, `generationCreditAmount=1`을 포함한다.
 
-validation:
+기존 가구 이벤트 요청도 지원한다. `rewardItemId`가 있으면 가구 보상이고 `generationCreditAmount=0`이다. `rewardItemId`는 양수이며 존재하는 활성 `positioned` 가구여야 한다.
 
-- `code`: 대문자 영문·숫자·밑줄, 1~50자, 전체 이벤트에서 unique.
-- `title`: 1~120자.
-- `targetDays`: 2~365. 첫 이벤트는 10.
-- `dailyCoinAmount`, `bonusCoinAmount`: 0~1,000,000. `bonusCoinAmount`는 추가분이 아니라 해당 일차 총 지급량.
-- `bonusDay`: 1~`targetDays`. 첫 이벤트는 5.
-- 이벤트 기간: `startsOn`부터 `endsOn`까지가 `targetDays` 이상.
-- `rewardItemId`: 존재하고 활성 상태인 `placementType=positioned` 아이템.
-- 활성 이벤트 기간 중첩 불가.
+기존 검증은 유지한다: 코드 `[A-Z0-9_]{1,50}`, 제목 1~120자, 목표 2~365일, 코인 0~1,000,000, 보너스 일차 1~목표일, 기간 최소 목표일. 기간 중첩·코드 중복은 409다.
 
-## 에러 코드
+## 출석 상태
 
-| status | code | 상황 |
+`GET /api/v1/events/attendance`
+
+```json
+{
+  "eventId": 8,
+  "code": "ATTENDANCE_AI_7D_2026",
+  "title": "7일 출석 · 나만의 가구",
+  "startsOn": "2026-09-10",
+  "endsOn": "2026-10-09",
+  "targetDays": 7,
+  "currentStreak": 0,
+  "checkedInToday": false,
+  "completed": false,
+  "checkInDates": [],
+  "dailyRewards": [
+    {"day":1,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":2,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":3,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":4,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":5,"coinAmount":50,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":6,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":0},
+    {"day":7,"coinAmount":30,"furnitureReward":false,"claimed":false,"generationCreditAmount":1}
+  ],
+  "reward": {
+    "type":"GENERATION_CREDIT",
+    "generationCreditAmount":1,
+    "itemId":null,
+    "name":"AI 가구 생성권",
+    "assetKey":null,
+    "userItemId":null,
+    "received":false
+  }
+}
+```
+
+가구 이벤트는 `reward.type=FURNITURE`, `generationCreditAmount=0`이며 기존 item 필드를 유지한다. 생성권 보상에서 item 필드는 null이므로 앱은 보상 타입을 구분해야 한다.
+
+## 오늘 출석
+
+`POST /api/v1/events/attendance/check-ins` — body 없음.
+
+응답 필드는 `newCheckIn`, `coinRewardAmount`, `coinBalance`, `rewardGrantedNow`, `status`다. `status`는 위 상태 응답이다. `rewardGrantedNow`는 이번 요청에서 **완료 보상(가구 또는 생성권)**을 새로 지급했는지 뜻한다. 중복 호출·완료 후 호출에서는 false이고 코인 지급량은 0이다.
+
+## 생성권 및 가구 생성
+
+- `GET /api/v1/me/furniture-credits`: `available`, `reserved`, `purchaseAdjustmentPending`, `accountToken`. 사진 생성 UI는 잔액 두 필드를 사용한다.
+- `POST /api/v1/me/furniture-generations`: multipart의 `requestId`(UUID), `photo`(JPEG/PNG, 10MB 이하), 선택 `targetHint`(120자 이하). 202와 작업 상태를 반환한다.
+- `GET /api/v1/me/furniture-generations`: `{ "items": [...] }`, 본인 최근 작업 20개.
+- `GET /api/v1/me/furniture-generations/{id}`: 본인 작업 상세.
+- 작업 상태는 `UPLOADING`, `QUEUED`, `PROCESSING`, `SUCCEEDED`, `FAILED`. 공개 필드에는 `id`, `assetKey`, `userItemId`, `failureCode`가 포함된다. 검수 전 이미지와 원본 key는 노출하지 않는다.
+- 생성권 부족은 `FURNITURE_CREDITS_REQUIRED`, 진행 중 작업은 `FURNITURE_JOB_IN_PROGRESS`, 일일 한도는 `FURNITURE_DAILY_LIMIT`, 사용 불가는 `FURNITURE_GENERATION_UNAVAILABLE`다.
+
+## 출석 에러
+
+| status | code | 의미 |
 | --- | --- | --- |
-| 404 | `ATTENDANCE_EVENT_NOT_FOUND` | KST 오늘 진행 중인 이벤트 없음 |
-| 500 | `ATTENDANCE_EVENT_CONFIGURATION_INVALID` | 활성 이벤트가 같은 날짜에 2개 이상 존재 |
-| 400 | `ATTENDANCE_EVENT_PERIOD_TOO_SHORT` | 운영 생성 기간이 목표 일수보다 짧음 |
-| 400 | `ATTENDANCE_EVENT_BONUS_DAY_INVALID` | 보너스 일차가 목표 일차보다 큼 |
-| 409 | `ATTENDANCE_EVENT_CODE_DUPLICATED` | 이벤트 코드 중복 |
-| 409 | `ATTENDANCE_EVENT_PERIOD_OVERLAPPED` | 활성 이벤트 기간 중첩 |
-| 404 | `ATTENDANCE_REWARD_ITEM_NOT_FOUND` | 보상 아이템 없음 |
-| 400 | `ATTENDANCE_REWARD_ITEM_INVALID` | 보상 아이템이 비활성이거나 배치형 가구가 아님 |
+| 404 | ATTENDANCE_EVENT_NOT_FOUND | 오늘 유효한 이벤트 없음 |
+| 500 | ATTENDANCE_EVENT_CONFIGURATION_INVALID | 활성 이벤트 중복 |
+| 400 | ATTENDANCE_EVENT_PERIOD_TOO_SHORT | 기간 부족 |
+| 400 | ATTENDANCE_EVENT_BONUS_DAY_INVALID | 보너스 일차 초과 |
+| 400 | ATTENDANCE_GENERATION_TARGET_INVALID | 생성권 이벤트 목표가 7일이 아님 |
+| 409 | ATTENDANCE_EVENT_CODE_DUPLICATED | 코드 중복 |
+| 409 | ATTENDANCE_EVENT_PERIOD_OVERLAPPED | 활성 기간 중첩 |
+| 404 | ATTENDANCE_REWARD_ITEM_NOT_FOUND | 기존 방식 보상 아이템 없음 |
+| 400 | ATTENDANCE_REWARD_ITEM_INVALID | 기존 방식 보상 가구가 비활성 또는 배치 불가 |
