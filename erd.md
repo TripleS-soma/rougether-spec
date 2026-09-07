@@ -100,10 +100,10 @@
   - 캐릭터 원본 캔버스 위에 단품 악세사리를 합성하기 위한 카탈로그 메타데이터. 캔버스·단품 이미지 크기는 양수이고, 좌표는 중심점 기준 정규화 값이다. `default` 상태가 있으면 해당 아이템을 해당 캐릭터에 착용할 수 있으며, 포즈별 상태는 동일한 `(item, character)`의 `default` 값을 선택적으로 대체한다.
 
 ### 연속 출석 이벤트
-- **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
-  - 첫 이벤트는 `target_days=10`, `daily_coin_amount=30`, `bonus_day=5`, `bonus_coin_amount=50`이다. `bonus_coin_amount`는 추가분이 아니라 해당 일차의 총 지급량이다.
-- **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | reward_processed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
-  - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전에는 가구 보상 3개 컬럼이 모두 null이고, 완료 row에서는 모두 값이 있다.
+- **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items? | generation_credit_amount INT | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
+  - 새 생성권 이벤트는 `target_days=7`, `generation_credit_amount=1`, `reward_item_id=null`이다. 기본 코인 설정은 `daily_coin_amount=30`, `bonus_day=5`, `bonus_coin_amount=50`이다. 기존 가구 이벤트는 `generation_credit_amount=0`을 유지한다. `bonus_coin_amount`는 추가분이 아니라 해당 일차의 총 지급량이다.
+- **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | generation_credit_amount INT | reward_processed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
+  - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전 보상 상태는 null, 생성권 지급량은 0이다. 가구 완료 row는 기존 보상 3개 컬럼에 값이 있다. 생성권 완료 row는 가구 참조 없이 지급량 1과 보상 처리 시각을 기록한다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
@@ -234,3 +234,11 @@ erDiagram
 - **캐릭터 악세사리 획득**: `items.placement_type = character`인 아이템은 직접 구매하지 않고 테마별 뽑기에서 `reward_type = ITEM`으로 획득한다. 풀 엔트리는 `rarity = NULL`, `weight = 1`로 균등 추첨하며 중복 시 다른 아이템과 동일하게 다이아 3을 환급한다.
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.
+
+### AI 가구 생성권
+
+- **furniture_credit_accounts**: user_id→users (PK) | account_token VARCHAR(36) unique | balance BIGINT | reserved BIGINT | last_verification_at TIMESTAMP?
+- **furniture_credit_entries**: id* | user_id→users | reference_id VARCHAR(36) | reason VARCHAR(30) | amount BIGINT | balance_after BIGINT | created_at TIMESTAMP
+  - 출석은 `reason=ATTENDANCE_REWARD`, `reference_id=attendance:{eventId}`, `amount=1`이다. 사용자 행 잠금 안에서 원장 중복과 출석 완료를 검사한다.
+- **furniture_credit_reservations**: job_id→furniture_generation_jobs (PK) | user_id→users | status VARCHAR(20) | created_at TIMESTAMP | updated_at TIMESTAMP
+  - `RESERVED` → `SPENT` 또는 `RELEASED`. 실패 시 예약량을 잔액으로 반환한다.
