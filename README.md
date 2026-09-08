@@ -9,6 +9,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 - **API 공통 규약** → [api.md](api.md)
 - **전체 기능 인덱스** → [features.md](features.md) · 출처 [Notion](https://www.notion.so/MVP-3782b260870e80988962cc129f651b6f)
 - **미결정 사항** → [open-questions.md](open-questions.md)
+- **실행 가능한 계약 예제**(날짜 경계 fixture 등) → [contracts/](contracts/)
 
 ## 도메인
 

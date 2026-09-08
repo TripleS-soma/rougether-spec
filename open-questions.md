@@ -9,7 +9,7 @@
 - **애플 로그인 authorizationCode 교환 실패 처리**: 애플 토큰 엔드포인트 교환이 실패했을 때 로그인 자체를 실패시킬지(fail-closed) 로그인은 허용하고 refresh token 저장만 포기할지(fail-open) 미정. (시크릿 미설정 환경은 fail-closed로 결정됨)
 - **가입 코인 중복 수령**: 소셜 provider가 카카오·구글·애플 3개가 되면서, 동일인이 provider를 바꿔 가입하면 가입 코인(100)을 provider 수만큼 받을 수 있다(친구 초대 redeem과 조합하면 더 커짐). 회원 식별은 (provider, provider_user_id) 기준이고 이메일 기반 계정 병합이 없기 때문. 허용할지, 계정 병합·기기 식별 등으로 막을지 정책 필요. (재화 도메인)
 - **dev-login 운영 차단**: `POST /api/v1/auth/dev-login`이 프로파일 가드 없이 모든 환경에서 열려 있다(임의 userId로 토큰 발급 가능). 운영 배포 전 프로파일 가드·설정 스위치 도입 필요. (서버)
-- **시각 직렬화 타임존**: 공통 규약은 "ISO-8601 + offset, Asia/Seoul 기준"인데 서버는 `Instant`를 UTC `Z`로 직렬화한다(`lastAccessedAt` 등). 규약을 UTC로 바꿀지 서버에 jackson 타임존을 넣을지 미정.
+- **시각 직렬화 타임존**: 공통 규약은 "ISO-8601 + offset, Asia/Seoul 기준"인데 서버는 `Instant`를 UTC `Z`로 직렬화한다(`lastAccessedAt` 등). 규약을 UTC로 바꿀지 서버에 jackson 타임존을 넣을지 미정. (결정됨) **날짜 필드**(`YYYY-MM-DD`)는 이 논의와 무관하게 Asia/Seoul 달력 날짜로 확정 — [api.md](api.md) "날짜와 시각" 규칙, 경계 예제 [contracts/date-boundary-cases.json](contracts/date-boundary-cases.json). 남은 미결은 시각(`Instant`) 표기뿐이다.
 
 ## 프로덕트 (PRD / 멘토 피드백)
 
