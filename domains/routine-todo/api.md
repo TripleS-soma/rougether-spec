@@ -116,6 +116,8 @@
 | `GET /api/v1/calendar` | 캘린더에서 특정 날짜의 루틴·투두·진행률 | `date`(필수) | `date`, 카테고리별 routine/todo 목록, `summary`(`completedCount`·`remainingCount`·`progressRate`) |
 | `GET /api/v1/calendar/month` | 달력 월 뷰의 날짜별 루틴·투두 개수 표시 | `yearMonth`(필수, `YYYY-MM`) | `yearMonth`(에코), `days[]`: `date`, `routineCount`, `todoCount` — 그 달 1일~말일 전부 |
 
+> **서버 요청 (mobile #1218, 2026-09-08 — 일관성용, 필수 아님)**: `/today`·`/calendar`의 카테고리 그룹 순서를 `categories.sortOrder`(사용자 정렬) 기준으로 내려주면 좋겠다. 지금은 `categoryId` 오름차순이라 앱이 그룹을 사용자 순서로 재정렬한다(방 탭·오늘·과거/미래 날짜 모두 같은 클라이언트 규칙). 서버가 정렬해 주면 그 코드는 방어용으로만 남는다. 삭제된 카테고리(현재 목록에 없음)의 그룹은 뒤에, 미분류(`categoryId=null`)는 맨 뒤.
+
 > today·calendar의 카테고리 그룹은 `categoryId`만 담고 카테고리 이름·색상은 embed하지 않는다(루틴·투두 응답과 동일 규칙 — `GET /api/v1/categories`에서 resolve). 미분류 그룹은 `categoryId=null`. 진행률 필드는 최상위가 아니라 `summary` 객체 안에 중첩된다.
 > 정렬: 카테고리 그룹은 `categoryId` 오름차순(미분류 null 그룹은 맨 뒤), 그룹 안에서 루틴은 `scheduledTime` 오름차순(null 뒤) → `id`, 투두는 `dueTime` 오름차순(null 뒤) → `id`.
 > `/api/v1/today`는 상위 [api.md](../../api.md)의 오늘 현황 엔드포인트와 동일. 방 도메인의 스트릭 표시와 `streaks` 데이터를 공유한다.
