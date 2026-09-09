@@ -60,11 +60,11 @@
   - `house_mission_id`: 연동된 단체미션(오늘 완료 시 자동 기여, 추가 2026-07-29 server V35). **FK 미부여** — `house_missions` 논리 참조. 미션 삭제·집 탈퇴/강퇴 시 서버가 null 로 일괄 해제, 버전 분기 시 새 버전으로 승계.
   - `auth_type`: `CHECK`/`PHOTO`. `status`: `ACTIVE`만 유효(컬럼 VARCHAR(30)은 유지, `PAUSED`/`ARCHIVED`는 미사용). `repeat_type`: `DAILY`/`WEEKLY`/`BIWEEKLY`/`MONTHLY`/`YEARLY`, `repeat_days`(JSON): `WEEKLY`/`BIWEEKLY`일 때 `{"daysOfWeek":[...]}`, `MONTHLY`일 때 `{"dayOfMonth":N}`, `YEARLY`일 때 `{"month":M,"day":D}`. `BIWEEKLY`는 `starts_on`이 속한 주(월요일 시작)를 1주차로 삼아 2주 간격 판정하므로 `starts_on` 필수. `visibility` 없음(공개는 카테고리를 따름).
   - `origin_routine_id`: 루틴 시간버전 계보 루트(최초 생성 시 자기 자신). 스케줄 수정으로 버전이 갈려도 불변 — 완료·취소의 계보 판정(중복 완료 가드·`FAILED` 전이/복원·day-end 배치)과 같은 루틴 묶음 판별에 사용.
-- **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at
+- **routine_logs**: id* | routine_id→routines | routine_date DATE | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | growth_reward_amount INT | created_at
   - `status`(`RoutineLogStatus`): `PENDING`/`COMPLETED`/`FAILED` — enum 3종이나 `PENDING`을 쓰는 경로는 현재 없다(미사용 잠정값 `MISSED`는 제거). `FAILED`는 day-end 배치가 기록하는 미수행 로그 — `completed_at` null, 보상 0. 늦은(과거) 완료 시 `FAILED` row는 `COMPLETED`로 전이(UPDATE)되고, 과거 수행 대상 완료를 취소하면 다시 `FAILED`로 복원된다(당일·유효기간 밖 완료의 취소는 hard delete). 과거 캘린더는 그제(D-2) 이전 날짜에서 이 로그를 단독 소싱한다(어제는 그날 유효 버전 재계산 + `COMPLETED` 병합 — routine-todo api.md 캘린더 참고). unique(`routine_id`, `routine_date`)가 같은 날짜 중복 로그를 막는다(배치 멱등성의 기반).
 - **photo_verifications**: id* | routine_log_id→routine_logs | storage_key VARCHAR(255) | privacy_scope VARCHAR(30) | ai_review_status VARCHAR(30) | uploaded_at | deleted_at?
   - `privacy_scope`: `categories.visibility`와 같은 값 집합(`PRIVATE`/`FRIENDS`/`HOUSE`/`PUBLIC`). 단, 사진 인증 API는 현재 미구현이며 공개 범위는 카테고리 스코프를 따르는 방향으로 검토 중(컬럼은 스키마상 유지). `ai_review_status`: AI 분석 결과용 컬럼이나 현재 범위에선 미사용(enum `PENDING`/`APPROVED`/`REJECTED`, DDL 기본값 `PENDING`, 쓰기 경로 미구현·미노출).
-- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | created_at | updated_at | deleted_at? | external_source VARCHAR(30)? | external_id VARCHAR(255)? | unique (user_id, external_source, external_id)
+- **todos**: id* | user_id→users | category_id→categories? | title VARCHAR(160) | description TEXT? | due_date DATE? | due_time TIME? | status VARCHAR(30) | completed_at TIMESTAMP? | reward_currency_type VARCHAR(30)? | reward_amount INT | growth_reward_amount INT | created_at | updated_at | deleted_at? | external_source VARCHAR(30)? | external_id VARCHAR(255)? | unique (user_id, external_source, external_id)
   - `external_source`/`external_id`는 **기기 캘린더에서 가져온 일정**의 원본 참조(모바일 #844). `external_source`는 `GOOGLE_CALENDAR` 등 출처, `external_id`는 그 캘린더의 이벤트 id다. **중복 임포트를 막는 유일한 근거**이며 unique가 그 방어선이다 — 동기화는 반복 실행되므로 이 값이 없으면 같은 일정이 실행할 때마다 복제된다.
   - 사용자 단위 "연동함" 플래그로는 중복을 막을 수 없다. 어느 이벤트를 이미 가져왔는지는 **항목마다** 알아야 한다.
   - unique는 `deleted_at`을 포함하지 않으므로 **soft delete 된 행도 중복 판정에 들어간다** — 사용자가 지운 임포트 투두의 쌍은 다시 등록되지 않는다(지운 일정을 되살리지 않음). 일반 투두는 둘 다 NULL이라 unique의 NULL 다중 허용으로 영향 없다. `external_source`는 대문자 영숫자·언더스코어(`^[A-Z][A-Z0-9_]{0,29}$`, 서버가 값을 해석하지 않음), `external_id`는 앞뒤 공백을 trim한 값을 저장한다.
@@ -79,7 +79,9 @@
   - `viewed_at`: 상세 최초 조회 시각(null = 미열람). 상세 조회 API가 최초 열람에만 기록하고 재조회는 덮어쓰지 않는다 — admin 관측의 열람 건수·열람률 분자.
 
 ### 방 (개인)
-- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
+- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | growth_points BIGINT | highest_growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
+  - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 모루 레벨 5 보상 자격은 완료 취소 후에도 유지하며 카탈로그 준비 뒤 미지급 보정에 사용한다.
+  - `growth_points`: 기본 0, 음수 불가. `growth_level`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. 다음 구간 필요량은 `20 + 2 × L`이다. `routine_logs`·`todos`의 `growth_reward_amount`는 해당 완료가 실제 적립한 포인트(기본 0)이며 취소 시 회수 근거다. 이전 완료 이력은 실제 COIN 보상액 중 미적립 차액을 소급하고, 같은 트랜잭션에서 완료별 지급 표식과 누적·최고 레벨을 반영한다.
   - `layout_format`: `SLOT_V1`(기본, 슬롯 배치 정본) / `FREE_V1`(자유배치 정본). `layout_revision`은 0부터 시작하고 배치 저장 성공마다 증가한다.
 - **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP | unique (room_user_id, slot_type)
   - unique는 슬롯 upsert 정합의 최후 방어선. 해제는 null 대입이 아니라 row 삭제다(빈 슬롯 row 없음).
@@ -230,7 +232,7 @@ erDiagram
 - 방 자유배치는 `room_item_placements`에 보유 아이템과 정규화 좌표·z-index·scale·rotation·flip을 저장한다. 같은 보유 아이템은 한 방에 한 번만 배치할 수 있다.
 - 배치 정본은 `personal_rooms.layout_format`이 결정한다. `SLOT_V1` 방만 자유배치 첫 저장 시 `FREE_V1`으로 지연 전환하며, surface 3종은 형식과 무관하게 `room_surface_slots`에 남는다.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
-- **캐릭터 획득**: 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 8개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
+- **캐릭터 획득**: 모루(`moru`)는 개인 방 레벨 5 달성 보상으로 1회 지급하고 온보딩/뽑기에서 제외한다. 기존 캐릭터는 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 8개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
 - **캐릭터 악세사리 획득**: `items.placement_type = character`인 아이템은 직접 구매하지 않고 테마별 뽑기에서 `reward_type = ITEM`으로 획득한다. 풀 엔트리는 `rarity = NULL`, `weight = 1`로 균등 추첨하며 중복 시 다른 아이템과 동일하게 다이아 3을 환급한다.
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.

@@ -8,8 +8,10 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 
 ### `GET /api/v1/rooms/me`
 - 목적: 내 방의 성장 레벨 + 착용 캐릭터 + 배치 형식·revision + 슬롯·자유배치 + 스트릭을 한 번에 조회.
-- 응답 핵심: `roomUserId`, `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `layoutRevision`, `character?`, `slots[]`, `placements[]`, `streak`(`currentCount`, `longestCount`), `cobweb?`(`assetKey`, `appearedAt`, `cleanable`), `updatedAt`.
-- **lazy 생성**: 방 row가 없으면 첫 조회 때 생성한다(`growthLevel 0`·`SLOT_V1`·`layoutRevision 0`) — 읽기 전용이 아니라 쓰기 트랜잭션이다. `PUT .../slots`·`PUT .../layout`도 동일하게 방을 자동 생성한다.
+- 응답 핵심: `roomUserId`, `growthLevel`, `growthPoints`, `pointsToNextLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `layoutRevision`, `character?`, `slots[]`, `placements[]`, `streak`(`currentCount`, `longestCount`), `cobweb?`(`assetKey`, `appearedAt`, `cleanable`), `updatedAt`.
+- **lazy 생성**: 방 row가 없으면 첫 조회·배치 저장·성장 포인트를 지급하는 첫 완료에서 생성한다(`growthLevel 0`·`growthPoints 0`·`SLOT_V1`·`layoutRevision 0`). 동시 생성은 PK upsert로 보호하며 첫 완료로 이미 생성된 방은 누적된 성장을 그대로 반환한다. 조회도 생성 가능성이 있어 쓰기 트랜잭션이다.
+- **성장 값**: `growthPoints`는 누적 정수 포인트, `growthLevel`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. `pointsToNextLevel = T(L + 1) - growthPoints`이며 구간 필요량은 20 → 22 → 24 → …으로 증가한다. 예: 30포인트 → 레벨 1, 다음 레벨까지 12포인트. 50포인트 → 레벨 2, 다음 레벨까지 16포인트. 문턱을 넘은 포인트는 다음 구간에 유지한다. 두 포인트 필드는 64비트 정수다. 완료·취소 후 이 API를 다시 조회해 반영 결과를 확인한다. 완료/취소 API 응답 형태는 유지한다. 성장 변화만으로 `layoutRevision`은 증가하지 않는다.
+- **타인 방**: 같은 응답을 쓰는 인가된 방 방문 경로도 성장 3개 값을 반환한다. 집 공개 미리보기의 렌더 부분집합은 기존 `growthLevel`만 유지한다.
 - `character`: `{ characterId, code, name, assetKey, animations, accessories[] }`. `accessories[]`는 `{ userItemId, itemId, name, assetKey, characterSlotType, equippedAt, renderProfiles[] }`이며 슬롯·보유 아이템 순으로 정렬한다. `renderProfiles[]`의 좌표·크기·상태 fallback 계약은 [상점/아이템 API의 캐릭터 응답 공통 착용 정보](../shop/api.md#캐릭터-응답의-공통-착용-정보)를 따른다. 대표 캐릭터가 없으면 `character=null`, 악세사리가 없으면 빈 배열이다.
 - `slots[]`: **배치된 슬롯만** 내려간다(빈 슬롯 항목 없음 — 해제는 row 삭제).
 - `placements[]`: `{ userItemId, assetKey, positionX, positionY, zIndex, scale, rotationDeg, flipped, updatedAt }`, `zIndex asc → id asc` 정렬. `FREE_V1` 전환 전에는 빈 배열이다.
@@ -69,3 +71,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 - 방명록(`room_guestbooks`) → 집(공동) 도메인.
 - 인벤토리/상점 조회·구매(`GET /api/v1/me/items`, `GET /api/v1/items`, `POST /api/v1/items/{id}/purchase`) → 상점/인벤토리 도메인. 방은 배치만.
 - 스트릭 갱신·루틴 완료 보상 지급 → 루틴/투두 도메인. 방은 `streaks` 읽기, 성장 반영 결과만 노출.
+
+### 레벨 달성 보상 반영
+
+내 방 조회는 모루(`moru`)의 레벨 5 미지급 보상을 보정한다. 모루는 누적 120포인트 이상 최초 달성 시 지급하며, 현재 레벨 하락 후에도 최고 달성 기록을 기준으로 보정한다. `highest_growth_level`은 내부 지급 판정용으로 응답에 추가하지 않는다. 지급 캐릭터는 `GET /api/v1/me/characters`에서 확인하고 기존 대표 선택은 유지한다.
