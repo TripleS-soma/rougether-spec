@@ -18,7 +18,7 @@
 
 ### GET /api/v1/me/houses
 내가 속한(active) 집 목록. 집 탭에서 내 집들을 오가는 화면용. 페이지네이션 없음(다중 가입 소수 전제).
-- res: `{ items }` / items[]: `houseId`, `name`, `coverImageKey`, `level`, `currentMemberCount`, `maxMembers`, `myRole`, `joinedAt`
+- res: `{ items }` / items[]: `houseId`, `name`, `coverImageKey`, `level`, `currentMemberCount`, `maxMembers`, `isPublic`, `myRole`, `joinedAt`
 - **정렬**: `house_members.sort_order` 오름차순, NULL은 뒤로(그 안에서는 `joined_at` 오름차순). 사용자가 순서를 지정한 적 없으면 전부 NULL이라 종전과 같은 "먼저 가입한 집 먼저"가 된다. 새로 가입한 집은 `sort_order=NULL`이라 끝에 붙어 기존 순서를 흐트러뜨리지 않는다.
 - 삭제된 집(`deleted_at`)·탈퇴(left) membership 은 제외
 - table: `house_members`, `house`
@@ -86,7 +86,7 @@
 
 ### POST /api/v1/houses
 집 생성. 생성자가 `owner`. 이름은 금칙어 검사(공통 규칙, 위반 400 `HOUSE_NAME_BANNED` — 설정 수정의 이름 변경도 동일).
-- req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만)
+- req: `name`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 미지정 시 4), `goalIds[]`(필수 1~3개, 활성 goal 만), `isPublic?`(미지정 시 true)
 - res: `houseId`, `ownerUserId`, `inviteCode`, `inviteExpiresAt`
 - 생성자는 `house_members`에 role=owner·status=active 로 즉시 등록, `current_member_count=1`. 집은 `level=0`, `growth_points=0` 에서 시작.
 - 초대코드: 영대문자+숫자 8자(혼동문자 I,O,L,0,1 제외), 만료 7일.
@@ -96,7 +96,7 @@
 
 ### GET /api/v1/houses/{houseId}
 집 상세 조회(설정·목표·레벨·성장 포인트·구성원 수). **ACTIVE 구성원만** 조회 가능.
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`(`goalId`,`code`,`name`), `myRole`, `inviteCode`, `inviteExpiresAt`
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `isPublic`, `currentMemberCount`, `level`, `growthPoints`, `goals[]`(`goalId`,`code`,`name`), `myRole`, `inviteCode`, `inviteExpiresAt`
 - `inviteCode`/`inviteExpiresAt` 는 **소유자에게만** 값, 그 외 null. `myRole` 은 화면의 소유자 UI 분기용
 - `goals[]`는 빈 배열일 수 있다(가입 직후 온보딩 목표 저장 전의 기본 집)
 - 예외: 비구성원 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 `HOUSE_NOT_FOUND`(404)
@@ -104,10 +104,11 @@
 
 ### PUT /api/v1/houses/{houseId}
 설정 수정(이름·소개글·대표 이미지·최대 인원·공개 여부). **소유자만**, **부분 수정**(보내지 않은 필드는 유지).
-- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가), `isPublic?`(공개 전환 토글, #350)
-- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `isPublic`
+- req: `name?`(2~30자), `description?`, `coverImageKey?`, `maxMembers?`(1~10, 현재 인원 미만으로 축소 불가), `isPublic?`, `isPublic?`(공개 전환 토글, #350)
+- res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `isPublic`, `isPublic`
 - `isPublic=false`로 바꾸면 탐색·비구성원 미리보기·탐색형 입주 신청에서 즉시 제외되고 초대코드로만 참여할 수 있다. 이미 접수된 입주 신청은 그대로 남아 방장이 수락·거절할 수 있다. 비공개로 시작하는 기본 집의 공개 전환도 이 API가 담당한다
 - 예외: 소유자 아님 `HOUSE_NOT_OWNER`(403) · 목록에 없는 `coverImageKey` `HOUSE_COVER_IMAGE_INVALID`(400) · 인원 미만 축소 `HOUSE_MAX_MEMBERS_BELOW_CURRENT`(409) · 없는/삭제 집 404
+- **공개 범위 `isPublic`** (2026-09-10 확정, 서버 V53·V62): `true`면 집 탐색(`GET /houses`)·비구성원 미리보기에 노출, `false`면 초대코드로만 참여 가능(탐색·미리보기 제외, 참여 신청 불가). 가입 시 지급되는 기본 집은 비공개로 시작한다. 읽기는 `GET /houses/{houseId}`·`GET /me/houses`에 실리고, 생성은 `POST /houses`의 `isPublic?`(기본 true).
 - table: `house`
 
 ### POST /api/v1/houses/{houseId}/invite-code
