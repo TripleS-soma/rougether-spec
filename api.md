@@ -21,6 +21,7 @@
 | 회원 / 온보딩 | [domains/member/api.md](domains/member/api.md) |
 | 루틴 / 투두 | [domains/routine-todo/api.md](domains/routine-todo/api.md) |
 | 개인 방 | [domains/room/api.md](domains/room/api.md) |
+| 미니게임 | [domains/minigame/api.md](domains/minigame/api.md) |
 | 상점 / 재화 | [domains/shop/api.md](domains/shop/api.md) |
 | 뽑기 | [domains/gacha/api.md](domains/gacha/api.md) |
 | 공동 집 | [domains/house/api.md](domains/house/api.md) |

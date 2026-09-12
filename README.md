@@ -5,7 +5,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 ## 루트 문서
 
 - **프로덕트 개요(PRD)** (비전·문제·타겟·KPI·수익) → [product.md](product.md) · 출처 기획서
-- **전체 ERD / 데이터 모델** (37 table) → [erd.md](erd.md) · 출처 [ERDCloud](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi)
+- **전체 ERD / 데이터 모델** (55 table) → [erd.md](erd.md) · 출처 [ERDCloud](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi)
 - **API 공통 규약** → [api.md](api.md)
 - **전체 기능 인덱스** → [features.md](features.md) · 출처 [Notion](https://www.notion.so/MVP-3782b260870e80988962cc129f651b6f)
 - **미결정 사항** → [open-questions.md](open-questions.md)
@@ -19,6 +19,7 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 | 회원 / 온보딩 | [domains/member/](domains/member/) | 목표·캐릭터 선택, 사용자 기본 |
 | 루틴 / 투두 | [domains/routine-todo/](domains/routine-todo/) | 루틴·투두·카테고리, 완료·스트릭, 사진 인증 |
 | 개인 방 | [domains/room/](domains/room/) | 방 성장, 아이템 배치, 스냅샷 |
+| 미니게임 | [domains/minigame/](domains/minigame/) | 고양이 게임 3종, 입력 검증, 게임별 전체 회원 랭킹 |
 | 상점 / 재화 | [domains/shop/](domains/shop/) | 아이템·인벤토리·구매, 코인/다이아 |
 | 뽑기 | [domains/gacha/](domains/gacha/) | 벽지·바닥·가구 뽑기, 보상 풀, 기존 머신 호환 |
 | 공동 집 | [domains/house/](domains/house/) | 집 참여·관리·단체 미션·레벨 |
