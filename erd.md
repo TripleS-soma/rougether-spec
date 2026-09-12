@@ -1,6 +1,6 @@
 # ERD / 데이터 모델
 
-출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **50 table**(`attendance_events`·`attendance_check_ins`·`routine_recommendations`·`weekly_reports`·`user_app_activity` 포함 — ERDCloud 정본 반영 필요).
+출처: [ERDCloud — 루게더 mvp (최종)](https://www.erdcloud.com/d/Qn9GqwdWnsqsiQQpi) · 총 **55 table**(`attendance_events`·`attendance_check_ins`·`routine_recommendations`·`weekly_reports`·`user_app_activity`·`minigame_runs`·`minigame_best_scores` 포함 — ERDCloud 정본 반영 필요).
 
 컬럼/타입 상세는 구현 시 서버 repo의 Flyway migration에서 최종 확정한다. 이 문서는 팀이 맞춰야 하는 **table·컬럼·관계 합의안**이다.
 
@@ -91,6 +91,13 @@
   - 방마다 행 1개를 재사용한다. `cleaned_at` null이면 활성 상태이고, 청소 시 시각·청소자를 기록한다. 다시 미접속 조건을 만족하면 같은 행을 새 회차로 재활성화한다.
 - **room_guestbooks**: id* | content VARCHAR(500) | created_at | deleted_at? | room_owner_id→users | house_id→house | author_id→users
 
+### 미니게임
+- **minigame_runs**: id* VARCHAR(36) | user_id→users | game_code VARCHAR(40) | rules_version INT | seed INT | started_at DATETIME(6) | expires_at DATETIME(6) | ticks INT? | score INT? | finished_best_score INT? | personal_best BOOLEAN? | finished_rank BIGINT? | submission_hash VARCHAR(64)? | finished_at DATETIME(6)? | created_at | updated_at
+  - 서버 시드로 발급한 플레이 세션과 최초 완료 응답. 원본 점프·방향 입력은 저장하지 않고 SHA-256 해시로 동일 제출을 구분한다. 완료 필드는 전부 null 또는 전부 non-null이어야 한다.
+- **minigame_best_scores**: id* | user_id→users | game_code VARCHAR(40) | rules_version INT | score INT | achieved_at DATETIME(6) | created_at | updated_at | unique (game_code, user_id) | index (game_code, score DESC, achieved_at ASC, user_id ASC)
+  - 게임별 누적 개인 최고점. 동점이면 최초 달성 시각을 보존하며 닉네임은 현재 회원 정보에서 읽는다. 랭킹은 미탈퇴 일반 회원만 포함한다.
+  - 두 테이블 모두 회원탈퇴 트랜잭션에서 즉시 삭제하며 users FK에 ON DELETE CASCADE를 적용한다. 완료와 최고점 반영은 같은 트랜잭션이며, 세션의 30분 만료는 최초 제출 기한이지 자동 삭제 시각이 아니다. 기능·멱등성 계약은 [minigame/features.md](domains/minigame/features.md)를 따른다.
+
 ### 상점 / 아이템 / 테마
 - **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | cover_image_key VARCHAR(255)? | is_active BOOLEAN
 - **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) (`positioned`/`surface_slot`) | surface_slot_type VARCHAR(40)? (`wallpaper`/`floor`/`background`) | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
@@ -166,6 +173,8 @@ erDiagram
     users ||--o{ todos : creates
     users ||--o{ streaks : has
     users ||--o{ user_items : owns
+    users ||--o{ minigame_runs : plays
+    users ||--o{ minigame_best_scores : achieves
     users ||--o{ house_members : joins
     users ||--o{ house_join_requests : requests
     users ||--o{ house : owns

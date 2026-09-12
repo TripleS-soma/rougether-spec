@@ -9,6 +9,7 @@
 | 회원 / 온보딩 | 목표 선택, 캐릭터 선택 | [domains/member/features.md](domains/member/features.md) |
 | 루틴 / 투두 | 카테고리·루틴·투두 관리, 오늘 현황, 완료/취소, 사진 인증 | [domains/routine-todo/features.md](domains/routine-todo/features.md) |
 | 개인 방 | 성장 현황, 아이템 배치, 스냅샷 공유, 스트릭 표시 | [domains/room/features.md](domains/room/features.md) |
+| 미니게임 | 루틴 러너·고양이 계단·고양이 합치기, 개인 최고점, 전체 회원 랭킹 | [domains/minigame/features.md](domains/minigame/features.md) |
 | 상점 / 재화 | 아이템 조회, 인벤토리, 다이아 구매 | [domains/shop/features.md](domains/shop/features.md) |
 | 뽑기 | 벽지·바닥·가구 3종 목록, 뽑기, 공통 결과 연출 | [domains/gacha/features.md](domains/gacha/features.md) |
 | 공동 집 | 탐색/참여, 집 관리, 구성원 관리, 방 방문, 단체 미션, 집 레벨 | [domains/house/features.md](domains/house/features.md) |
