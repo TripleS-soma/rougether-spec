@@ -94,8 +94,8 @@
 ### 미니게임
 - **minigame_runs**: id* VARCHAR(36) | user_id→users | game_code VARCHAR(40) | rules_version INT | seed INT | started_at DATETIME(6) | expires_at DATETIME(6) | ticks INT? | score INT? | finished_best_score INT? | personal_best BOOLEAN? | finished_rank BIGINT? | submission_hash VARCHAR(64)? | finished_at DATETIME(6)? | created_at | updated_at
   - 서버 시드로 발급한 플레이 세션과 최초 완료 응답. 원본 점프·방향 입력은 저장하지 않고 SHA-256 해시로 동일 제출을 구분한다. 완료 필드는 전부 null 또는 전부 non-null이어야 한다.
-- **minigame_best_scores**: id* | user_id→users | game_code VARCHAR(40) | rules_version INT | score INT | achieved_at DATETIME(6) | created_at | updated_at | unique (game_code, user_id) | index (game_code, score DESC, achieved_at ASC, user_id ASC)
-  - 게임별 누적 개인 최고점. 동점이면 최초 달성 시각을 보존하며 닉네임은 현재 회원 정보에서 읽는다. 랭킹은 미탈퇴 일반 회원만 포함한다.
+- **minigame_best_scores**: id* | user_id→users | game_code VARCHAR(40) | rules_version INT | score INT | achieved_at DATETIME(6) | created_at | updated_at | unique (game_code, rules_version, user_id) | index (game_code, rules_version, score DESC, achieved_at ASC, user_id ASC)
+  - 게임·규칙 버전별 누적 개인 최고점. 동점이면 최초 달성 시각을 보존하며 닉네임은 현재 회원 정보에서 읽는다. 랭킹은 같은 버전의 미탈퇴 일반 회원만 포함한다. 기존 규칙 1 행을 보존하고 규칙 2 기록을 별도 행으로 생성한다. 최고점 갱신으로 행의 규칙 버전을 변경하지 않는다.
   - 두 테이블 모두 회원탈퇴 트랜잭션에서 즉시 삭제하며 users FK에 ON DELETE CASCADE를 적용한다. 완료와 최고점 반영은 같은 트랜잭션이며, 세션의 30분 만료는 최초 제출 기한이지 자동 삭제 시각이 아니다. 기능·멱등성 계약은 [minigame/features.md](domains/minigame/features.md)를 따른다.
 
 ### 상점 / 아이템 / 테마
