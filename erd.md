@@ -137,6 +137,7 @@
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at? | is_public BOOLEAN | onboarding_auto_join_enabled BOOLEAN DEFAULT FALSE
   - 초대코드는 **`house` 컬럼**(`invite_code`, `invite_expires_at`)에 둔다. `current_member_count`는 **저장**한다.
+  - `onboarding_auto_join_enabled`의 스키마 기본값은 `FALSE`를 유지한다. 2026-09-13 적용 시점의 미삭제 공개 집은 [초기 운영 정책](domains/house/api.md#기존-공개-집-초기-적용-2026-09-13)에 따라 일회성으로 `TRUE`를 설정하며, 비공개·삭제 집과 이후 일반 신규 집의 기본값은 바꾸지 않는다.
 - **onboarding_house_selections**: user_id→users PK | choice VARCHAR(20) | result VARCHAR(20) | membership_id→house_members | created_at | updated_at
   - 사용자당 집 선택 1회. `PERSONAL`→`PERSONAL`, `AUTO_JOIN`→`JOINED`/`NO_MATCH` 조합만 허용합니다. 가입·정원 변경과 원자적으로 저장합니다. 멤버십 탈퇴 이후에도 최초 결과를 보존하여 재요청이 재가입으로 바뀌지 않게 합니다.
 - **house_members**: id* | house_id→house | user_id→users | role VARCHAR(30) | status VARCHAR(30) | joined_at | left_at? | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | sort_order INT?

@@ -56,6 +56,7 @@
 | `PUT /api/v1/onboarding/house` | 본인의 집 선택을 1회 처리 | req: `choice` 필수 (`AUTO_JOIN` / `PERSONAL`). res: `completed`, `choice`, `result`, `houseId`, `membershipId` |
 
 - `AUTO_JOIN`은 `좋아요`, `PERSONAL`은 `괜찮아요` 버튼에 대응합니다. 인증 토큰의 사용자에게만 적용합니다.
+- 매칭 대상 집의 허용 여부는 소유자용 `GET/PUT /api/v1/houses/{houseId}/auto-join`으로 관리합니다. 2026-09-13 기존 미삭제 공개 집의 일회성 허용 정책과 프론트 연결 기준은 [집 API](../house/api.md#온보딩-자동-입주-허용-설정)를 따릅니다.
 - `result=JOINED`: 자동 입주 허용 공개 집에 MEMBER/ACTIVE로 즉시 가입합니다. 기존 개인집은 유지합니다.
 - `result=NO_MATCH`: 합류할 집이 없어 개인집을 **공개 + 자동 입주 허용**으로 전환하거나 새로 생성했습니다. 프론트는 매칭 실패를 안내하고 응답 `houseId`로 시작합니다.
 - `result=PERSONAL`: 비공개·자동 입주 비허용 개인집으로 시작합니다.
