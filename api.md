@@ -8,6 +8,11 @@
 - 관리자 API(`admin-api`) prefix: `/admin`. 사용자 JWT와 분리된 운영자 세션 인증을 사용하며, 브라우저의 상태 변경 요청은 CSRF 보호를 적용한다.
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
 - 타임존: 모든 날짜·당일/자정 판정은 **`Asia/Seoul`(KST, UTC+9)** 기준. 시각 저장도 KST로 통일한다 (`+9` 하드코딩 말고 `Asia/Seoul` 설정값으로).
+- **날짜와 시각은 다른 계약이다.**
+  - **날짜**(`YYYY-MM-DD` — `routineDate`, `startsOn`, `endsOn`, `dueDate`, `date` 파라미터 등)는 **Asia/Seoul 달력 날짜**다. 클라이언트는 단말 시간대나 UTC가 아니라 Asia/Seoul로 날짜를 만든다. `toISOString().slice(0, 10)`처럼 시각을 UTC 문자열로 바꾼 뒤 잘라 쓰면 KST 00:00~08:59에 전날이 전송된다(2026-09 사고). 단말 로컬 날짜도 시간대가 KST가 아닌 사용자에게서 같은 문제를 낸다.
+  - **시각**(ISO-8601 + offset)은 절대 순간이다. 같은 순간을 어떤 offset으로 적어도 의미가 같으므로 UTC(`Z`) 표기 자체는 오류가 아니다. 시각을 잘라 날짜로 쓰지 않는다.
+  - 서버는 클라이언트가 보낸 과거 날짜를 오늘로 고쳐 쓰지 않는다 — 사용자가 실제로 과거 기록을 입력했을 수 있다. 과거·미래 판정과 그 결과(보상 0, 400 등)는 각 도메인 api.md의 규칙을 따른다.
+  - 경계값은 [contracts/date-boundary-cases.json](contracts/date-boundary-cases.json)에 실행 가능한 예제로 둔다(KST 자정 직후·월말·연말·윤일, 단말 시간대 UTC·미국·뉴질랜드). 프론트의 날짜 생성 테스트와 서버의 날짜 판정 테스트가 같은 파일을 읽는다 — 사용법은 [contracts/README.md](contracts/README.md).
 - 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.
 - 목록 응답은 `items` 배열로 감싼다.
 - 인증/인가는 **MVP에 포함**한다(멘토 결정). **소셜 로그인(카카오·구글·애플) + JWT** 기반. `me` path는 인증된 사용자를 가리키며, 소유권 식별자(`user_id`, `owner_user_id`, `house_id`, `room_user_id`, `membership_id`)로 권한(guard)을 실제 적용한다. 토큰/세션 상세는 [open-questions.md](open-questions.md).

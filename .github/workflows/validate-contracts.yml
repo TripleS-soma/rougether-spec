@@ -1,0 +1,20 @@
+name: Validate contracts
+
+# contracts/ 아래 실행 가능한 계약 예제가 자체 모순 없이 유지되는지 확인한다.
+on:
+  push:
+    branches: [main]
+    paths: ['contracts/**']
+  pull_request:
+    paths: ['contracts/**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: date-boundary-cases.json
+        run: node contracts/validate-date-boundary.js
