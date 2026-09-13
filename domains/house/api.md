@@ -66,7 +66,7 @@
 탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
 - res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`, `myJoinRequestStatus?`, `missions[]`, `memberRooms[]`
 - 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(신청 버튼 비활성용), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
-- `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다. WEEKLY 진행 수치는 기여 누적 합, DAILY 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
+- `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다(구성원 전용 개인값 `myContribution`·`contributedToday` 는 제외). WEEKLY 진행 수치는 기여 누적 합, DAILY 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
 - `memberRooms[]`: 구성원 타일에 실제 방을 렌더하기 위한 데이터(서버 #177 확정). 가입순, ACTIVE 구성원만. 항목은 `membershipId`, `nickname`(온보딩 전 null), `room`(방 미생성 구성원은 null - 기본 방 타일로 표시)
   - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순), `cobweb?`(`assetKey`, `appearedAt`, `cleanable` - 요청자가 같은 집 ACTIVE 구성원이고 활성 거미줄이 있을 때만 제공, 비구성원 미리보기에서는 null)
   - **공개 범위(확정)**: 방 렌더 데이터(가구 배치·surface·착용 캐릭터·성장 레벨)는 미리보기를 통해 로그인 회원 전체에 공개된다(집 탐색 전체공개 정책과 일치, 방 내용물은 장식 데이터). 단 활동 정보(`streak`·`lastAccessedAt`·그날 현황·완료 내역·방명록)와 편집용 값(`layoutRevision`)·소유 리소스 식별자(`userItemId`)·배치 시각은 내려가지 않는다 — 이들은 기존대로 구성원 전용("구성원 방 방문 / 활동 열람" 계약은 불변)
@@ -241,7 +241,8 @@
 
 ### GET /api/v1/houses/{houseId}/missions
 집 미션 목록·진행률 조회. 최신 생성순.
-- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `status`, `startsAt`, `endsAt`, `todayClaimed`(DAILY 전용 — 오늘 보상 수령 여부, WEEKLY 는 null 생략), `createdAt`
+- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `status`, `startsAt`, `endsAt`, `todayClaimed`(DAILY 전용 — 오늘 보상 수령 여부, WEEKLY 는 null 생략), `myContribution`(내 누적 기여 — 유형 무관 누적 체크 횟수, 참여 행 없으면 0), `contributedToday`(오늘(KST) 내가 기여했는지 — 두 유형 모두 하루 1회 기여라 앱의 "기여함" 표시 근거), `createdAt`
+- `myContribution`·`contributedToday` 는 **구성원 목록 전용** — 미리보기 `missions[]` 에는 내려가지 않는다(2026-09-13, mobile #373: 앱이 세션 메모리로 추적하던 "기여함"이 재시작 시 사라지던 문제)
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions
@@ -254,7 +255,7 @@
 
 ### GET /api/v1/houses/{houseId}/missions/{missionId}
 미션 상세·내 기여 조회.
-- res: 목록 항목 + `myContribution`(내 누적 기여 — 유형 무관 누적 체크 횟수), `achieved`(WEEKLY: currentValue >= targetValue / DAILY: 오늘 달성률 기준)
+- res: 목록 항목(`myContribution` 포함) + `achieved`(WEEKLY: currentValue >= targetValue / DAILY: 오늘 달성률 기준)
 - 참여자별 기여 목록(participants[])은 화면 요구 확정 전까지 미노출
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
