@@ -290,3 +290,15 @@
 ## 집 레벨
 
 집 레벨·성장 포인트는 별도 조회 엔드포인트 없이 `GET /api/v1/houses/{houseId}`의 `level`·`growthPoints`로 노출. 레벨 상승 트리거는 미션 달성(`.../claim`)에서 발생하며 **레벨 = growth_points / 100 선형**(레벨당 100pt, 확정 2026-07-05). 테마 보상 해금은 상점/테마 도메인 의존 — 테마 매핑 **미정**. (`house.level`, `house.growth_points`)
+
+## 온보딩 자동 입주 허용 설정
+
+| method · path | 목적 | 요청 / 응답 |
+| --- | --- | --- |
+| `GET /api/v1/houses/{houseId}/auto-join` | 소유자의 자동 입주 설정 조회 | res: `houseId`, `enabled` |
+| `PUT /api/v1/houses/{houseId}/auto-join` | 소유자의 자동 입주 설정 변경 | req: `enabled` 필수 boolean. res: `houseId`, `enabled` |
+
+- 활성 OWNER만 조회·변경할 수 있습니다. 비소유자는 403 `HOUSE_NOT_OWNER`, 삭제·없는 집은 404 `HOUSE_NOT_FOUND`입니다.
+- 기본값은 `false`이며 기존 공개 집을 일괄 허용하지 않습니다. `enabled=true`이면서 공개인 집만 온보딩 자동 매칭 대상입니다. 비공개 전환은 즉시 매칭에서 제외하며, 공개 여부 자체는 기존 집 설정 API로 변경합니다.
+- `AUTO_JOIN`의 매칭 실패로 시작하는 개인집은 공개·자동 입주 허용으로 설정합니다. `PERSONAL`을 고른 개인집은 비공개·자동 입주 비허용입니다.
+- 이 설정의 즉시가입은 `PUT /api/v1/onboarding/house`에 적용합니다. 기존 탐색 입주 신청·초대코드 API의 요청과 응답 계약은 유지합니다.
