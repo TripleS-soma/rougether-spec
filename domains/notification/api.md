@@ -21,11 +21,17 @@
 | `GET /api/v1/notifications` | 내 알림 목록 조회 (커서) | query: `cursor`?, `size`(기본 20·최대 50) / resp: `items[]`(`notificationId`, `type`, `title`, `body`, `isRead`, `createdAt`), `nextCursor`, `hasNext` | `notification` |
 | `PATCH /api/v1/notifications/{notificationId}/read` | 알림 개별 읽음 처리 | resp: 204 | `notification` |
 | `PATCH /api/v1/notifications/read-all` | 알림 전체 읽음 처리 | resp: 204 | `notification` |
+| `DELETE /api/v1/notifications/{notificationId}` | 알림 개별 삭제 | resp: 204 | `notification` |
+| `DELETE /api/v1/notifications` | 알림 전체 삭제 | resp: 204 | `notification` |
 
 - 목록은 커서 방식(방명록 컨벤션 동일) — `cursor`는 이전 응답의 `nextCursor`, 첫 요청은 생략. 최신순(id desc).
 - 개별 읽음은 본인 알림만(소유권 guard: `user_id`). 존재하지 않거나 타인 소유면 404(`NOTIFICATION_NOT_FOUND`)로 통일. 이미 읽음이면 멱등(에러 아님).
 - 전체 읽음은 본인의 `is_read = false` 전체를 bulk update.
 - 읽음 해제(unread 되돌리기)는 없다.
+- 개별 삭제는 본인 알림만(소유권 guard: `user_id`). 존재하지 않거나 타인 소유면 404(`NOTIFICATION_NOT_FOUND`)로 통일(존재 여부 노출 회피). **이미 삭제된 본인 알림에 다시 호출하면 204**(멱등, 최초 삭제 시각 유지) — 읽음 처리와 같은 멱등 계약이라 네트워크 재시도가 성공한 삭제를 실패로 보이게 하지 않는다. 복구(되돌리기)는 없다.
+- 개별 읽음도 삭제 여부와 무관하게 본인 알림이면 204(기존 계약 유지) — 지운 알림의 지연 push를 탭해 읽음을 호출해도 에러가 나지 않는다.
+- 전체 삭제는 본인의 미삭제 알림 전체를 bulk 처리한다. 읽음 여부와 무관하며, 삭제할 알림이 없어도 204.
+- 삭제는 **soft delete**(`notification.deleted_at`)다. 목록·읽음·삭제 API만 `deleted_at IS NULL`을 보고, 발송·중복 발송 판정 경로(리마인드 당일 dedup, 주간 회고 `not exists(type, ref_id)`, 입주 신청 본문 dedup, 저녁 digest의 `notification_id` FK, 미접속 알림의 `last_notification_id`)는 삭제 여부를 보지 않는다 — 행을 지우면 같은 알림이 재발송되거나 FK가 깨지기 때문. 삭제된 알림은 목록에서 빠지고 전체 읽음 대상에서도 제외된다. 삭제 시점에 아직 `push_status = PENDING`인 알림(발송 실패 뒤 재시도 회차 등)은 batch 발송 writer가 FCM 발송 없이 `BLOCKED`로 종결한다(잔존 PENDING을 남기지 않되 사용자가 지운 알림은 보내지 않음). 진입점 `send(...)`의 커밋 직후 push는 삭제보다 앞서므로 별도 처리가 없다. 회원탈퇴 시에는 기존대로 하드 삭제한다.
 - 후속(비차단): 안 읽은 알림 개수(badge) 엔드포인트는 프론트 요청 시 별도 확정.
 
 ## 알림 설정
