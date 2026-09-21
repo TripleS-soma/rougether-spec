@@ -1,5 +1,7 @@
 # 회원 / 온보딩 API
 
+> 한국어·영어 표시와 개인 알림 시간대의 공통 계약은 [다국어·시간대](../../global-localization.md)를 따른다. 아래 기존 한국어 문구는 기본 언어 예시다.
+
 공통 규칙은 전체 [api.md](../../api.md) 참조 (prefix `/api/v1`, 목록은 `items` 배열, 이미지/에셋은 `*_key`, 인증된 사용자 기준 소유권 guard 적용).
 
 > 아래는 **설계 중(draft)**. method/path/목적과 핵심 필드만 합의하고, 상세 req/res는 구현 시 서버 repo `docs/`에서 확정한다.
@@ -91,7 +93,7 @@
 - 회수(`isActive=false`)된 캐릭터는 보유 중이어도 **목록에서 제외**한다. 보유 레코드 자체는 유지되며 뽑기 중복 환급 판정에는 계속 사용된다.
 - `poses[]`는 관리자가 등록한 **활성 포즈만** `{ id, code, assetKey, sortOrder }` 형태로 `sortOrder` 오름차순(동순위 id 오름차순) 정렬해 내려간다. 마스터 목록(`GET /api/v1/characters`)과 보유 목록이 같은 계약을 쓴다. 등록된 포즈가 없으면 빈 배열.
 - `animations`는 asset key 묶음 — `characters/{code}/animations/{idle|pose-cycle|wave}.webp` (무손실 애니메이션 WebP, 프레임 지연 보존). key는 `code`에서 파생되므로 **새 캐릭터를 마스터에 등록하기 전에 애니메이션 3종 적재가 전제 조건**이다. 클라이언트는 key를 유추하지 않고 응답 필드를 그대로 사용한다.
-- `name`은 한국어 표기(예: 고양이, 호랑이). `code`는 영문 식별자로 불변.
+- `name`은 `Accept-Language`에 따른 표시 이름이며 번역 미등록 시 기존 이름을 유지한다. `code`는 영문 식별자로 불변.
 
 ## 어드민: 캐릭터 포즈 관리
 
@@ -106,7 +108,8 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/me` | 내 기본 정보 + 온보딩 완료 여부 | res: `userId`, `nickname`, `bio`(nullable), `profileImageKey`(nullable), `lastAccessedAt`, `onboarding: { completed, primaryGoalId, selectedCharacterId }` | `users`, `user_goals`, `user_characters` |
+| `GET /api/v1/me` | 내 기본 정보 + 온보딩 완료 여부 | res: `userId`, `nickname`, `bio`(nullable), `profileImageKey`(nullable), `lastAccessedAt`, `language`, `timeZone`, `onboarding: { completed, primaryGoalId, selectedCharacterId }` | `users`, `user_goals`, `user_characters` |
+| `PATCH /api/v1/me` | 언어·개인 알림 시간대 부분 수정 | req: `language?`(ko/en), `timeZone?`(IANA ID), 최소 한 필드 / res: `GET /me`와 동일 | `users` |
 | `PUT /api/v1/me` | 닉네임·소개글 수정 (JSON) | req: `nickname`(필수, 최대 30자), `bio?`(최대 100자) / res: `GET /api/v1/me`와 동일 형태 | `users` |
 | `PUT /api/v1/me/profile-image` | 내 프로필 사진 등록·교체 (multipart 서버 직접 업로드) | req: multipart `file` / res: `profileImageKey` | `users` |
 | `DELETE /api/v1/me/profile-image` | 내 프로필 사진 삭제 | res: 204 — `profile_image_key`를 null로 되돌림 | `users` |

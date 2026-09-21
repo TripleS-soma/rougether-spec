@@ -1,5 +1,7 @@
 # 루틴 / 투두 — API (초안)
 
+> 한국어·영어 표시와 개인 알림 시간대의 공통 계약은 [다국어·시간대](../../global-localization.md)를 따른다. 아래 기존 한국어 문구는 기본 언어 예시다.
+
 상위 공통 규약: [api.md](../../api.md) · 기능: [features.md](features.md) · 데이터: [erd.md](../../erd.md)
 
 > path·필드는 서버 구현 기준으로 확정(photo_verifications만 미구현). 시각 입력(루틴 `scheduledTime`, 투두 `dueTime`)은 **5분 단위**(분이 5의 배수, 초·나노초는 0)만 허용하며 위반 시 400 `VALIDATION_FAILED` — `07:05:30`처럼 초가 붙어도 거부된다. 공통 규칙(prefix `/api/v1`, ISO-8601 + offset, 이미지/에셋 `*_key`, 목록은 `items` 배열, 보상은 쓰기 트랜잭션, 인증된 사용자 기준 소유권 guard 적용)은 상위 [api.md](../../api.md)를 따른다. 상세 req/res·에러코드는 서버 repo `docs/work/routine-todo/`에서 관리한다.

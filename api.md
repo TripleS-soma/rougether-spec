@@ -7,7 +7,8 @@
 - 사용자 API(`user-api`) prefix: `/api/v1`
 - 관리자 API(`admin-api`) prefix: `/admin`. 사용자 JWT와 분리된 운영자 세션 인증을 사용하며, 브라우저의 상태 변경 요청은 CSRF 보호를 적용한다.
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
-- 타임존: 모든 날짜·당일/자정 판정은 **`Asia/Seoul`(KST, UTC+9)** 기준. 시각 저장도 KST로 통일한다 (`+9` 하드코딩 말고 `Asia/Seoul` 설정값으로).
+- 타임존: 공동 미션·출석·보상·기존 기록/통계 날짜는 **`Asia/Seoul`(KST, UTC+9)** 기준이다. 개인 예약/저녁 알림과 복귀 알림의 허용 시간은 `users.time_zone` 기준이다. 시각 저장/전송 계약은 유지한다. 세부 규칙은 [다국어·시간대](global-localization.md)를 따른다.
+- 다국어: `Accept-Language`로 카탈로그·조정 추천 표시 언어를 협상한다. 비동기 알림·AI는 회원에 저장된 언어를 사용한다. [프론트 연동 계약](global-localization.md) 참고.
 - 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.
 - 목록 응답은 `items` 배열로 감싼다.
 - 인증/인가는 **MVP에 포함**한다(멘토 결정). **소셜 로그인(카카오·구글·애플) + JWT** 기반. `me` path는 인증된 사용자를 가리키며, 소유권 식별자(`user_id`, `owner_user_id`, `house_id`, `room_user_id`, `membership_id`)로 권한(guard)을 실제 적용한다. 토큰/세션 상세는 [open-questions.md](open-questions.md).
