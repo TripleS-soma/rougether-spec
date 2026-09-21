@@ -256,3 +256,11 @@ erDiagram
   - 출석은 `reason=ATTENDANCE_REWARD`, `reference_id=attendance:{eventId}`, `amount=1`이다. 사용자 행 잠금 안에서 원장 중복과 출석 완료를 검사한다.
 - **furniture_credit_reservations**: job_id→furniture_generation_jobs (PK) | user_id→users | status VARCHAR(20) | created_at TIMESTAMP | updated_at TIMESTAMP
   - `RESERVED` → `SPENT` 또는 `RELEASED`. 실패 시 예약량을 잔액으로 반환한다.
+
+## 채팅 모델
+
+기존 확정 table 수와 별개인 신규 3개 table입니다. 상세는 [채팅 데이터](domains/chat/data.md), 동작은 [채팅 API](domains/chat/api.md)를 따릅니다.
+
+- **chat_rooms**: id* | room_type VARCHAR(20) | house_id? →house, UNIQUE | last_sequence BIGINT default 0
+- **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6). UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id).
+- **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0. UNIQUE(room_id,user_id).

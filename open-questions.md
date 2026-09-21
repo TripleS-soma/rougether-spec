@@ -67,3 +67,10 @@
 - **기본 집 생성 시점**: (결정됨) 기본 집(`나의 집`)은 회원가입 트랜잭션에서 생성하고, 집 목표는 온보딩 목표 저장(`PUT /onboarding/goals`) 시 1회 채운다. 나간·해체된 뒤 재생성 없음, 기존 계정 백필 없음. 집 목표 변경 API는 없음 → [house/features.md](domains/house/features.md)·[member/api.md](domains/member/api.md) 반영.
 - **탈퇴 회원 처리**(회원 도메인 dependency): (일부 결정됨) 탈퇴 시 집 정리는 확정 — 모든 ACTIVE 멤버십 LEFT + 정원 감소 + pending 입주 신청 철회, 소유 집은 가입일 최선임 ACTIVE 멤버에게 자동 승계(동률 시 membership id 오름차순), 남은 멤버 없으면 집 해체(soft delete) → [member/api.md](domains/member/api.md)·[house/api.md](domains/house/api.md) 반영. 미확정 잔여: 단체미션 `house_mission_participants` 정산·분모 처리, house 미리보기·길드북 등에서 탈퇴 회원 `nickname`이 null로 내려갈 때의 표시 문구("탈퇴한 회원" 등 — 프론트 협의), `user_characters`/`user_items`/`user_wallets` 잔여 데이터 처리.
 - **탈퇴 회원의 집 완료 내역 노출**(회원 도메인 dependency): 탈퇴 시 카테고리가 연쇄 soft delete되므로, 카테고리 visibility 기반의 집 멤버 완료 내역 조회에서 탈퇴자 이력이 빈 결과가 된다(`routine_logs` 자체는 보존되지만 노출 경로가 끊김). 이대로 수용할지, 집 통계·표시에서 별도 처리가 필요할지 미정.
+
+## 채팅
+
+- 사용자 요청으로 집 텍스트 채팅·대화 기록·재접속 복구·읽음 표시를 구현합니다. 전체 채팅은 후속입니다. [채팅 API](domains/chat/api.md).
+- 현재 구현은 ACTIVE 일반 구성원에게 입주 전 기록도 공개하고 재입주 시 읽음 위치를 유지합니다. 입주 시점 이후로만 제한할지는 후속 정책 결정 대상입니다.
+- 본문 보존기간·수정/삭제·신고/차단·도배 제한은 미정입니다. 현재 계정 탈퇴 후 본문은 공동 기록으로 유지하고 발신자 닉네임·프로필 이미지는 노출하지 않습니다.
+- 푸시 알림은 알림 도메인 담당자와 별도 협의합니다. 전체 채팅의 참여 자격과 읽음 표현은 집 채팅 정책을 그대로 적용하지 않고 별도로 정합니다.

@@ -30,6 +30,8 @@
 | 연속 출석 이벤트 | [domains/attendance/api.md](domains/attendance/api.md) |
 | 고양이 앱 아이콘 | [domains/app-icon/api.md](domains/app-icon/api.md) |
 
+집 채팅 API: [domains/chat/api.md](domains/chat/api.md).
+
 ## 에러 응답
 
 실패 응답은 적절한 HTTP status + 아래 body로 통일한다. 전역 핸들러(`@RestControllerAdvice`)에서 일괄 변환한다.
