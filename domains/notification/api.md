@@ -1,5 +1,7 @@
 # 알림 API
 
+> 한국어·영어 표시와 개인 알림 시간대의 공통 계약은 [다국어·시간대](../../global-localization.md)를 따른다. 아래 기존 한국어 문구는 기본 언어 예시다.
+
 공통 규칙은 전체 [api.md](../../api.md) 참조 (prefix `/api/v1`, 목록은 `items` 배열, 이미지/에셋은 `*_key`, 인증된 사용자 기준 소유권 guard 적용).
 
 ## 디바이스 토큰
@@ -59,27 +61,27 @@
 
 ## 고양이 미접속 알림 (`APP_INACTIVITY_REMINDER`)
 
-실제 foreground 활동 후 48·96·168시간에 맞춰 고양이 말투의 복귀 알림을 보낸다. KST 09:00 이상 21:00 미만에 30분마다 확인하고, 회차당 단계별 최대 한 번 적재한다. 오래 미접속한 경우 현재 최고 단계 한 건만 보낸다. 본문·중복 방지·복귀 시 취소·모바일 연동 계약은 [고양이 앱 아이콘 명세](../app-icon/features.md)를 따른다.
+실제 foreground 활동 후 48·96·168시간에 맞춰 고양이 말투의 복귀 알림을 보낸다. 회원 현지 시간 09:00 이상 21:00 미만에 30분마다 확인하고, 회차당 단계별 최대 한 번 적재한다. 오래 미접속한 경우 현재 최고 단계 한 건만 보낸다. 본문·중복 방지·복귀 시 취소·모바일 연동 계약은 [고양이 앱 아이콘 명세](../app-icon/features.md)를 따른다.
 
 설정 그룹은 `REMINDER`이다. 기존 `ALL`/`REMINDER` 게이트와 FCM 토큰 처리 경로를 사용하고, 설정 off여도 알림 내역은 남는다. 이 타입은 복귀·성취·이전 회차/단계로 발송 필요가 사라진 대기 알림도 `BLOCKED`로 종결한다. `ref_id`는 수신 사용자 ID이며 외부 리소스 상세로 이동시키는 ID가 아니다. 서버는 title/body를 발송하고 앱 실행과 네이티브 아이콘 적용은 모바일이 처리한다.
 
 ## 리마인드 스케줄러 (루틴·투두, 내부, 신규 엔드포인트 없음)
 
-예약 시각이 도래한 당일 미완료 루틴과 마감 시각이 도래한 미완료 투두에 FCM 리마인드를 발송한다. 공용 batch worker(`reminderJob`)가 **5분 주기**(`@Scheduled` cron `0 */5 * * * *`, KST `Asia/Seoul`)로 실행되어 실행 시각의 분(`targetMinute`)을 대상으로 잡는다. 한 job 안에서 루틴 적재 → 투두 적재 → 발송 순으로 진행한다(별도 job·트리거 없음). 단일 인스턴스 전제. 리마인드는 공용 진입점 `NotificationService.send(...)`를 거치지 않고 batch worker가 알림 내역 저장과 push 발송을 직접 수행하므로, 알림 설정 게이트도 batch의 push 단계에서 별도로 적용된다(위 "알림 설정" 절).
+예약 시각이 도래한 당일 미완료 루틴과 마감 시각이 도래한 미완료 투두에 FCM 리마인드를 발송한다. 공용 batch worker(`reminderJob`)가 **5분 주기**(`@Scheduled` cron `0 */5 * * * *`, KST `Asia/Seoul`)로 실행되어 실행 시각의 분(`targetMinute`)을 대상으로 잡는다. `targetMinute`은 실행 Instant를 식별하는 KST 표현이며, 시간대별 현지 날짜·시각과 현지 자정 경계로 후보를 조회한다. 한 job 안에서 루틴 적재 → 투두 적재 → 발송 순으로 진행한다(별도 job·트리거 없음). 단일 인스턴스 전제. 리마인드는 공용 진입점 `NotificationService.send(...)`를 거치지 않고 batch worker가 알림 내역 저장과 push 발송을 직접 수행하므로, 알림 설정 게이트도 batch의 push 단계에서 별도로 적용된다(위 "알림 설정" 절).
 
 ### 루틴 리마인드 (`ROUTINE_REMINDER`)
 
-- 발송 대상 조건(모두 충족): `routines.status = ACTIVE` + 미삭제(`deleted_at IS NULL`) + `scheduled_time`이 `targetMinute`과 일치 + 오늘 요일이 반복 규칙(`repeat_days`)에 해당(오늘 현황 판정과 동일 로직 재사용) + 당일(`routine_logs.routine_date = 오늘`) COMPLETED 로그 없음 + 오늘 미발송.
+- 발송 대상 조건(모두 충족): `routines.status = ACTIVE` + 미삭제(`deleted_at IS NULL`) + `scheduled_time`이 `targetMinute`을 회원 시간대로 변환한 시각과 일치 + 오늘 요일이 반복 규칙(`repeat_days`)에 해당(오늘 현황 판정과 동일 로직 재사용) + 당일(`routine_logs.routine_date = 오늘`) COMPLETED 로그 없음 + 오늘 미발송.
 - `scheduled_time`은 **5분 단위만 허용**한다(서버 검증 — 위반 시 400, routine-todo 도메인 참고). 실행이 5분 주기 + 해당 분 정확 일치 매칭이지만 값이 5분 단위로 보장되므로 매칭 누락이 없다.
-- 중복 발송 방지: 같은 분(`targetMinute`) 재실행은 batch job instance 중복으로 스킵. 그리고 `notification`에 `type = ROUTINE_REMINDER` + `ref_id = routineId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다.
+- 중복 발송 방지: 같은 분(`targetMinute`) 재실행은 batch job instance 중복으로 스킵. 그리고 `notification`에 `type = ROUTINE_REMINDER` + `ref_id = routineId` + 오늘(회원 현지 날짜) 생성 건이 있으면 재발송하지 않는다.
 - 문구: 고정 템플릿(제목 "루틴 리마인드", 본문 "『{루틴명}』 할 시간이에요!"). 프론트 협의로 변경 가능, LLM 문구 생성은 후속.
 - 알림 내역 저장과 push 발송은 batch 단계로 분리돼 있고, push 단계에서 사용자 알림 설정으로 차단된 건은 FCM 호출 없이 `push_status = BLOCKED`로 종결한다. 예외 격리는 **FCM 발송 호출 실패에 한정**된다 — 개별 건의 FCM 발송 예외는 나머지 발송을 막지 않지만, 토큰 조회·상태 갱신 예외는 해당 청크 실패로 이어진다(적재 스텝의 skip limit 50과 달리 발송 스텝에는 skip 정책이 없음).
 
 ### 투두 리마인드 (`TODO_REMINDER`)
 
-- 발송 시점: `dueDate = 오늘(KST)` AND `dueTime = targetMinute` 정각에 발송한다. 루틴과 같은 5분 주기 job을 공유하며, `dueTime`은 서버에서 5분 단위로 검증되므로 정확 일치 매칭에 누락이 없다.
+- 발송 시점: `dueDate = 오늘(회원 현지 날짜)` AND `dueTime = targetMinute의 회원 현지 시각` 정각에 발송한다. 루틴과 같은 5분 주기 job을 공유하며, `dueTime`은 서버에서 5분 단위로 검증되므로 정확 일치 매칭에 누락이 없다.
 - 발송 대상 조건(모두 충족): `status = PENDING` + 미삭제(`deleted_at IS NULL`) + `dueDate`·`dueTime` 모두 존재 + 오늘 미발송. `dueDate` 없이 `dueTime`만 있는 투두는 알림 대상에서 제외한다.
-- 중복 발송 방지: `notification`에 `type = TODO_REMINDER` + `ref_id = todoId` + 오늘(KST) 생성 건이 있으면 재발송하지 않는다(루틴 리마인드와 동일 판정).
+- 중복 발송 방지: `notification`에 `type = TODO_REMINDER` + `ref_id = todoId` + 오늘(회원 현지 날짜) 생성 건이 있으면 재발송하지 않는다(루틴 리마인드와 동일 판정).
 - 문구: 고정 템플릿(제목 "투두 리마인드", 본문 "『{투두 제목}』 할 시간이에요!" — 루틴과 동일 형태로 통일됨).
 - 알림 내역 저장과 push 발송은 루틴과 같은 batch 단계를 재사용하며, `push_status` 규칙(`PENDING`/`SENT`/`BLOCKED`/`FAILED`, 알림 설정으로 차단된 건은 `BLOCKED`로 종결, 재시도 없음)과 예외 격리 범위(FCM 발송 호출 실패에 한정)도 동일하게 적용한다.
 - job 결합: 루틴 적재 스텝이 실패(skip limit 초과)하면 투두 적재 스텝도 돌지 않는 결합은 수용한다(MVP).

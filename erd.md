@@ -12,7 +12,7 @@
 - **user_app_activity**: **user_id*** (PK이자 →users, 1:1) | last_foreground_at TIMESTAMP(6) | last_notified_stage INT default 0 | last_notification_id BIGINT? | index (last_foreground_at, user_id)
   - 실제 foreground 활동과 미접속 알림 회차를 저장한다. 기존 인증·일일 활동 집계 시각을 소급 적용하지 않는다. 행 없음은 미접속 알림 미참여 상태이다.
   - `last_notified_stage`는 현 회차에 적재한 최고 단계(0~3), `last_notification_id`는 그 알림의 논리 참조(FK 없음)이다. 복귀 시 각각 0/null로 초기화한다. 회원탈퇴 시 즉시 삭제하며 잔존 행은 탈퇴 purge에서도 삭제한다. 상태 계산과 알림 계약은 [app-icon/features.md](domains/app-icon/features.md)를 따른다.
-- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
+- **users**: id* | nickname VARCHAR(30)? | bio VARCHAR(100)? | email VARCHAR(255)? | profile_image_key VARCHAR(255)? | language VARCHAR(10) default 'ko' | time_zone VARCHAR(64) default 'Asia/Seoul' | last_accessed_at TIMESTAMP? | created_at | updated_at | deleted_at?
   - `email`은 소셜 provider가 제공/동의한 경우 저장(nullable, unique 없음 — provider 간 동일 이메일 재연결 여지).
   - `bio`는 프로필 소개글(최대 100자, nullable).
   - `profile_image_key`는 프로필 사진 S3 object key(`profile/{uuid}.{ext}`). 전체 URL이 아닌 key만 저장하며, null이면 기본 이미지를 표시한다.
@@ -37,13 +37,13 @@
   - 친구 초대 redeem 기록 — unique(invitee)로 계정당 평생 1회 보장. 보상 각 50코인, 초대자 한도 10건(초과 시 inviter_amount 0) → [member/api.md](domains/member/api.md) "친구 초대 보상".
 
 ### 캐릭터 (온보딩 · 방)
-- **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
+- **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
 - **character_poses**: id* | character_id→characters | code VARCHAR(40) | asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN | created_at | updated_at | unique (character_id, code) | index (character_id, is_active, sort_order)
   - 캐릭터별 추가 포즈 에셋 카탈로그. 표준 애니메이션(idle/pose-cycle/wave)은 기존 code 파생 key 규칙을 유지하고, 추가 포즈만 이 테이블로 동적 관리한다(admin 등록·수정·삭제).
 - **user_characters**: id* | user_id→users | character_id→characters | is_selected BOOLEAN | acquired_at | created_at | updated_at | deleted_at?
 
 ### 목표 (온보딩)
-- **goals**: id* | code VARCHAR(50) | name VARCHAR(100) | sort_order INT | is_active BOOLEAN
+- **goals**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | sort_order INT | is_active BOOLEAN
 - **user_goals**: id* | user_id→users | goal_id→goals | is_primary BOOLEAN | created_at
 
 ### 카테고리
@@ -99,8 +99,8 @@
   - 두 테이블 모두 회원탈퇴 트랜잭션에서 즉시 삭제하며 users FK에 ON DELETE CASCADE를 적용한다. 완료와 최고점 반영은 같은 트랜잭션이며, 세션의 30분 만료는 최초 제출 기한이지 자동 삭제 시각이 아니다. 기능·멱등성 계약은 [minigame/features.md](domains/minigame/features.md)를 따른다.
 
 ### 상점 / 아이템 / 테마
-- **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | cover_image_key VARCHAR(255)? | is_active BOOLEAN
-- **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) (`positioned`/`surface_slot`) | surface_slot_type VARCHAR(40)? (`wallpaper`/`floor`/`background`) | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
+- **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | cover_image_key VARCHAR(255)? | is_active BOOLEAN
+- **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) (`positioned`/`surface_slot`) | surface_slot_type VARCHAR(40)? (`wallpaper`/`floor`/`background`) | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | name_translations JSON? | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
   - `default_position_x`·`default_position_y`는 positioned 가구를 새 `FREE_V1` 배치에 추가할 때 쓰는 중심점 기준 기본 좌표(각 0.0~1.0)다. 두 값은 함께 null이거나 함께 값이 있어야 하며, null 쌍이면 클라이언트 공통 기본 위치를 사용한다. 기존 `room_item_placements`에는 소급하지 않는다.
 - **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
 - **user_character_accessories**: id* | user_character_id→user_characters | user_item_id→user_items | character_slot_type VARCHAR(40) | equipped_at TIMESTAMP | unique (user_character_id, character_slot_type) | unique (user_character_id, user_item_id)
@@ -115,7 +115,7 @@
   - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전 보상 상태는 null, 생성권 지급량은 0이다. 가구 완료 row는 기존 보상 3개 컬럼에 값이 있다. 생성권 완료 row는 가구 참조 없이 지급량 1과 보상 처리 시각을 기록한다.
 
 ### 뽑기
-- **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
+- **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | name_translations JSON? | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
   - `theme_id`는 **NULL 허용**: 신규 벽지·바닥·가구 3종과 캐릭터 뽑기는 테마 무관(NULL)이다. 기존 테마별 머신의 FK는 이행 기간 동안 유지한다.
   - 신규 꾸미기 정식 `code`는 `wallpaper_gacha`·`floor_gacha`·`furniture_gacha`다. API의 `category`(`WALLPAPER`/`FLOOR`/`FURNITURE`, 기존 머신은 `null`)는 코드에서 도출하므로 별도 DB 컬럼이 아니다. `theme_id=NULL`만으로 캐릭터 머신을 식별하지 않는다.
 - **gacha_pool_entries**: id* | gacha_id→gacha | reward_type VARCHAR(30) | item_id→items? | character_id→characters? | currency_type VARCHAR(30)? | reward_amount INT? | rarity VARCHAR(30)? | weight INT | is_active BOOLEAN
@@ -264,3 +264,13 @@ erDiagram
 - **chat_rooms**: id* | room_type VARCHAR(20) | house_id? →house, UNIQUE | last_sequence BIGINT default 0
 - **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6). UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id).
 - **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0. UNIQUE(room_id,user_id).
+
+## 다국어·개인 알림 시간대 확장
+
+- `users.language`: VARCHAR(10) NOT NULL DEFAULT 'ko'. 지원 ko/en.
+- `users.time_zone`: VARCHAR(64) NOT NULL DEFAULT 'Asia/Seoul'. IANA ID, 시간대 후보 조회 인덱스.
+- `items`, `themes`, `characters`, `goals`, `gacha`의 `name_translations`: nullable JSON, 언어 코드 → 표시 이름. 기존 `name`과 모든 ID/key를 유지.
+- `routine_recommendations.message_code`: nullable VARCHAR(40), `message_params`: nullable JSON. 기존 추천 원문은 보존하며 신규 추천부터 채운다.
+- 회원 익명화 시 언어·시간대도 기본값으로 되돌린다.
+
+API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른다.

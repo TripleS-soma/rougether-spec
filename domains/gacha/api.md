@@ -1,5 +1,7 @@
 # 뽑기 도메인 API
 
+> 한국어·영어 표시와 개인 알림 시간대의 공통 계약은 [다국어·시간대](../../global-localization.md)를 따른다. 아래 기존 한국어 문구는 기본 언어 예시다.
+
 상위 규약: [api.md](../../api.md) · 기능: [features.md](./features.md) · 데이터: [erd.md](../../erd.md)
 
 공통 규칙(prefix `/api/v1`, JSON, ISO-8601+offset, 이미지/에셋은 `*_key`, 목록은 `items` 배열, 재화는 `user_wallets.currency_type`, 인증된 사용자 기준 소유권 guard 적용)은 상위 [api.md](../../api.md)를 따른다.
