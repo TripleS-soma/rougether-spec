@@ -2,6 +2,16 @@
 
 아직 합의 안 된 것들. 정해지면 [features.md](features.md) / [api.md](api.md) / [erd.md](erd.md)에 반영하고 여기서 지운다.
 
+## SNS 공개 피드
+
+첫 구현 계약: [기능](domains/feed/features.md) · [API](domains/feed/api.md). 사진 1–10장·본문 2,000자·댓글 500자, 로그인한 전체 일반 회원 공개, 좋아요·작성자별 목록, 삭제·탈퇴 즉시 비노출과 비동기 정리를 구현한다. 다음은 후속 결정 사항이다.
+
+- **신고·차단·운영**: 게시물/댓글 신고, 사용자 차단, 운영자 숨김의 첫 출시 범위와 차단 적용 대상을 정해야 한다. 현재 피드 API에는 포함하지 않는다.
+- **확장**: 글만 쓰기·게시 후 사진 교체·댓글 수정·대댓글·비로그인 공개 링크·팔로우의 도입 시점은 미정이다.
+- **삭제 기록 보존**: 재시도 방지용 ID·작성자 ID·요청 UUID·hash의 보존기간과 완전 파기 시점을 별도로 정한다. 공개 본문·사진은 삭제 계약에 따라 제거한다.
+- **루틴·방 연동**: 1차는 직접 공유한 이미지·본문이다. 완료 기록 검증 배지·공개 루틴 가져오기·실제 방 방문은 해당 도메인의 소유권·공개 범위 계약이 선행되어야 한다.
+- **알림**: 댓글은 사용자 요청으로 `FEED_COMMENT`/`FEED` 그룹을 구현한다(본인 댓글·UUID 재시도 제외, 알림함+FCM). 좋아요 알림과 여러 댓글 묶음·추가 도배 제한 정책은 후속이다.
+
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
 - **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.

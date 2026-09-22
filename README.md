@@ -26,6 +26,8 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 | 연속 출석 이벤트 | [domains/attendance/](domains/attendance/) | KST 일일 출석, 일차별 코인, 7일차 AI 가구 생성권 |
 | 고양이 앱 아이콘 | [domains/app-icon/](domains/app-icon/) | 실제 앱 활동, 6가지 표정, 미접속 FCM 알림 |
 
+공개 SNS 피드: [기능](domains/feed/features.md) · [API](domains/feed/api.md).
+
 ## 도메인 (MVP)
 
 회원 · 루틴/투두 · 방(개인) · 뽑기 · 상점 · 집(공동) · 연속 출석 이벤트. 재화는 **코인**(루틴 실천·이벤트 보상)과 **다이아**(아이템 구매)로 구분.
