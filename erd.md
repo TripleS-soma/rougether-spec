@@ -274,3 +274,17 @@ erDiagram
 - 회원 익명화 시 언어·시간대도 기본값으로 되돌린다.
 
 API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른다.
+
+
+### 공개 SNS 피드 (신규 4개 테이블)
+
+- **feed_posts**: id* BIGINT | author_id→users | client_post_id VARCHAR(36) | request_hash VARCHAR(64) | content VARCHAR(2000) | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
+  - unique(author_id, client_post_id), index(deleted_at, id), index(author_id, deleted_at, id). 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다.
+- **feed_images**: id* BIGINT | owner_id→users | post_id→feed_posts? | storage_key VARCHAR(255) | width INT | height INT | ready BOOLEAN | sort_order INT? | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6)
+  - unique(storage_key), index(post_id, sort_order), index(expires_at, id). 비공개 JPEG key와 변환 후 치수다. 업로드 예약 시 row를 만들고 S3 저장 완료 후 ready=true가 된다. 게시 시 post_id와 0부터 시작하는 사진 순서를 저장한다. expires_at은 미게시 사진에만 적용한다.
+- **feed_likes**: id* BIGINT | post_id→feed_posts | user_id→users
+  - unique(post_id, user_id). 개수는 활성 회원의 좋아요를 집계한다. 취소·글 삭제 시 제거한다.
+- **feed_comments**: id* BIGINT | post_id→feed_posts | author_id→users | client_comment_id VARCHAR(36) | request_hash VARCHAR(64) | content VARCHAR(500) | created_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
+  - unique(post_id, author_id, client_comment_id), index(post_id, deleted_at, id). 댓글 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. 부모 글 삭제 시 제거할 수 있다.
+
+조회 시 작성자의 users.deleted_at도 확인한다. 탈퇴 후 피드 글·댓글·좋아요·사진을 즉시 숨기고, 후속 정리에서 본문·반응·사진을 제거한다. 피드는 기존 루틴·방·집 테이블을 직접 참조하지 않는다. 상세 계약은 [피드 기능](domains/feed/features.md)을 따른다. 위 4개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다.

@@ -9,7 +9,7 @@
 - 본문은 JSON, 시각은 ISO-8601 + offset (`2026-06-21T12:00:00+09:00`)
 - 타임존: 공동 미션·출석·보상·기존 기록/통계 날짜는 **`Asia/Seoul`(KST, UTC+9)** 기준이다. 개인 예약/저녁 알림과 복귀 알림의 허용 시간은 `users.time_zone` 기준이다. 시각 저장/전송 계약은 유지한다. 세부 규칙은 [다국어·시간대](global-localization.md)를 따른다.
 - 다국어: `Accept-Language`로 카탈로그·조정 추천 표시 언어를 협상한다. 비동기 알림·AI는 회원에 저장된 언어를 사용한다. [프론트 연동 계약](global-localization.md) 참고.
-- 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 프론트가 CDN base URL과 조합.
+- 이미지/에셋은 전체 URL 대신 key로 주고받는다 (`asset_key` / `cover_image_key` / `storage_key`). 공개 에셋은 프론트가 CDN base URL과 조합한다. 비공개 피드 사진은 예외로 [인증된 이미지 API](domains/feed/api.md)를 사용한다.
 - 목록 응답은 `items` 배열로 감싼다.
 - 인증/인가는 **MVP에 포함**한다(멘토 결정). **소셜 로그인(카카오·구글·애플) + JWT** 기반. `me` path는 인증된 사용자를 가리키며, 소유권 식별자(`user_id`, `owner_user_id`, `house_id`, `room_user_id`, `membership_id`)로 권한(guard)을 실제 적용한다. 토큰/세션 상세는 [open-questions.md](open-questions.md).
 - 재화는 `user_wallets.currency_type`로 코인/다이아 구분. 보상 지급·차감은 쓰기 트랜잭션으로 묶는다.
@@ -30,6 +30,8 @@
 | 운영 지원 (버그 제보) | [domains/support/api.md](domains/support/api.md) |
 | 연속 출석 이벤트 | [domains/attendance/api.md](domains/attendance/api.md) |
 | 고양이 앱 아이콘 | [domains/app-icon/api.md](domains/app-icon/api.md) |
+
+공개 SNS 피드 API: [domains/feed/api.md](domains/feed/api.md).
 
 집 채팅 API: [domains/chat/api.md](domains/chat/api.md).
 

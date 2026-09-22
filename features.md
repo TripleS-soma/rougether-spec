@@ -15,3 +15,4 @@
 | 공동 집 | 탐색/참여, 집 관리, 구성원 관리, 방 방문, 단체 미션, 집 레벨 | [domains/house/features.md](domains/house/features.md) |
 | 연속 출석 이벤트 | 이벤트 생성, 오늘 출석, 일차별 코인, 7일차 AI 가구 생성권 지급 | [domains/attendance/features.md](domains/attendance/features.md) |
 | 고양이 앱 아이콘 | foreground 기록, 성공·스트릭·미접속 상태, 2·4·7일 FCM | [domains/app-icon/features.md](domains/app-icon/features.md) |
+| 공개 SNS 피드 | 사진·본문 공유, 최신순 목록, 좋아요·댓글, 작성자별 목록 | [domains/feed/features.md](domains/feed/features.md) |
