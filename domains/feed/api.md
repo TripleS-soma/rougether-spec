@@ -138,3 +138,14 @@ GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나�
 | 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류 |
 
 HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼저 거절될 수 있다. 삭제·탈퇴·재시도 세부 정책은 [기능 계약](features.md)을 따른다.
+
+
+## 댓글 알림 연동
+
+댓글 등록 성공 응답은 그대로다. 서버가 타인이 쓴 **새 댓글**에 대해 게시물 작성자에게 알림을 생성하므로 프론트가 별도 발송 API를 호출하지 않는다. 본인 댓글·등록 재시도는 제외한다.
+
+- `GET /api/v1/notifications`의 `type=FEED_COMMENT`, `refId=postId`를 이용해 `GET /api/v1/feed/posts/{refId}` 상세와 댓글 화면을 연다.
+- FCM data는 모든 값이 문자열이다: `{ "type": "FEED_COMMENT", "notificationId": "100", "postId": "42" }`. 알림 탭 시 로그인 상태를 복구한 뒤 게시물 42로 이동한다. `notificationId`는 기존 알림 읽음 처리에 사용한다.
+- `GET/PATCH /api/v1/users/me/notification-settings`에 `feed` boolean이 추가된다. 기본 true, PATCH 생략 시 기존 값 유지. 예: `{ "feed": false }`. `all=false`도 피드 푸시를 막는다. 두 경우 모두 알림함 내역은 저장된다.
+- 삭제·탈퇴로 게시물 상세가 404이면 삭제 안내 후 피드로 돌아간다. 이미 삭제된 댓글의 도착 알림일 수 있으므로 특정 댓글이 반드시 남아 있다고 가정하지 않는다.
+- 기기 FCM 토큰 등록·알림 권한과 위 화면 이동/설정 UI 반영은 프론트 담당이다. 좋아요 알림은 이번 추가 범위에 포함하지 않는다.
