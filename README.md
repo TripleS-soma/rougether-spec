@@ -28,6 +28,8 @@ Rougether 팀의 **공유 계약(spec)** 저장소입니다. 프론트 · 백엔
 
 공개 SNS 피드: [기능](domains/feed/features.md) · [API](domains/feed/api.md).
 
+가구 거래소: [기능](domains/market/features.md) · [API](domains/market/api.md).
+
 ## 도메인 (MVP)
 
 회원 · 루틴/투두 · 방(개인) · 뽑기 · 상점 · 집(공동) · 연속 출석 이벤트. 재화는 **코인**(루틴 실천·이벤트 보상)과 **다이아**(아이템 구매)로 구분.
