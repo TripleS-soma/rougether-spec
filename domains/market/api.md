@@ -47,15 +47,17 @@
   - `side`: `BUY` / `SELL`. `SELL`이면 `source` 필수: `INVENTORY`(내 보유분, `quantity` 1) / `ISSUANCE`(제작자 발행 재고, `quantity` 1~남은 재고, 최대 10). `BUY`는 `quantity` 1.
   - `price`: 1~1,000 코인 정수.
 - 동작: 검증 → 에스크로(코인 차감 / 보유분 인벤토리 숨김·방 배치 해제 / 발행 재고 차감) → 접수. 체결은 비동기.
+- 같은 가구 반대 주문 금지: 같은 가구에 내 판매 주문(`OPEN`이거나 엔진 처리 전 접수, 보유분·발행 재고 무관)이 있으면 구매할 수 없고, 내 구매 주문(`OPEN`이거나 엔진 처리 전 접수)이 있으면 발행 재고를 판매할 수 없다 → `MARKET_OWN_ORDER_CONFLICT`(409). 보유분 판매 중 구매는 기존대로 `MARKET_ALREADY_HOLDING`이다.
 - 응답 202: `{ "commandId": 10, "status": "PENDING" }`
 - 멱등: 같은 `requestId`로 같은 내용을 다시 보내면 기존 접수를 그대로 반환한다. 같은 `requestId`에 다른 내용(가격·수량·방향·종목이 다르거나, 취소에 쓴 `requestId`를 주문에 재사용 등)이면 `MARKET_REQUEST_CONFLICT`(409).
 - 원장: 매수 에스크로 차감(`MARKET_ORDER_ESCROW`)은 `source_type = MARKET_COMMAND`, `source_id` = 접수(`market_commands`) id로 기록한다. 주문 row는 엔진이 처리할 때 만들어지기 때문이다.
-- 주요 오류: 범위 위반 `VALIDATION_FAILED`(400), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409), `MARKET_ASSET_NOT_FOUND`(404), 거래 정지 `MARKET_ASSET_SUSPENDED`(409), 코인 부족 `MARKET_INSUFFICIENT_COIN`(409), 이미 보유·매수 대기 중 `MARKET_ALREADY_HOLDING`(409), 판매할 보유분 없음 `MARKET_ITEM_NOT_OWNED`(403), 발행 재고 판매인데 제작자 아님 `MARKET_NOT_CREATOR`(403), 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`(409).
+- 주요 오류: 범위 위반 `VALIDATION_FAILED`(400), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409), `MARKET_ASSET_NOT_FOUND`(404), 거래 정지 `MARKET_ASSET_SUSPENDED`(409), 코인 부족 `MARKET_INSUFFICIENT_COIN`(409), 이미 보유·매수 대기 중 `MARKET_ALREADY_HOLDING`(409), 같은 가구에 내 반대 주문 있음 `MARKET_OWN_ORDER_CONFLICT`(409), 판매할 보유분 없음 `MARKET_ITEM_NOT_OWNED`(403), 발행 재고 판매인데 제작자 아님 `MARKET_NOT_CREATOR`(403), 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`(409).
 
 ## POST /api/v1/market/orders/{orderId}/cancel
 
 - 요청 body: `{ "requestId": "uuid" }`
 - 응답 202: Command. 환불은 엔진 처리 시 이뤄진다.
+- 같은 주문에 `requestId`가 다른 취소 접수가 여러 번 들어오면 접수는 각각 받지만, 엔진은 두 번째부터 `MARKET_ORDER_NOT_OPEN`으로 거절한다. 환불은 한 번만 이뤄진다.
 - 멱등: 같은 `requestId`로 같은 주문 취소를 다시 보내면 기존 접수를 그대로 반환한다. 같은 `requestId`에 다른 내용(다른 주문, 또는 주문 접수에 쓴 `requestId` 재사용)이면 `MARKET_REQUEST_CONFLICT`(409).
 - 주요 오류: 본인 주문 아님 `MARKET_ORDER_NOT_FOUND`(404), 이미 종료 `MARKET_ORDER_NOT_OPEN`(409), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409).
 
@@ -65,9 +67,9 @@
 
 - 응답: `commandId`, `status`(`PENDING` / `APPLIED` / `REJECTED`), `rejectCode?`, `order?`(아래 Order)
 - 주요 오류: 없거나 본인 접수가 아님 `MARKET_COMMAND_NOT_FOUND`(404).
-- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`, 처리 반복 실패 `MARKET_ENGINE_ERROR`. 거절 시 맡아 둔 것은 돌려준다.
+- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`, 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
 
 ## GET /api/v1/me/market/orders
 
 - 요청(query): `status` = `OPEN`(기본) / `CLOSED`, `page`, `size`. 최신순.
-- 응답 `items[]`(Order): `orderId`, `assetId`, `name`, `assetKey`, `side`, `source?`, `price`, `quantity`, `filledQuantity`, `status`(`OPEN` / `FILLED` / `CANCELLED` / `EXPIRED`), `expiresAt`, `createdAt`
+- 응답 `items[]`(Order): `orderId`, `assetId`, `name`, `assetKey`, `side`, `source?`, `price`, `quantity`, `filledQuantity`, `status`(`OPEN` / `FILLED` / `CANCELLED` / `EXPIRED`), `expiresAt`(주문 접수 시각 + 7일), `createdAt`
