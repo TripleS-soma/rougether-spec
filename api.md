@@ -33,6 +33,8 @@
 
 공개 SNS 피드 API: [domains/feed/api.md](domains/feed/api.md).
 
+가구 거래소 API: [domains/market/api.md](domains/market/api.md).
+
 집 채팅 API: [domains/chat/api.md](domains/chat/api.md).
 
 ## 에러 응답

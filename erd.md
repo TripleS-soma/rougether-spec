@@ -27,8 +27,8 @@
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 - **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
   - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
-  - `reason` 허용값 9종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`(차감).
-  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
+  - `reason` 허용값 13종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`·`MARKET_ESCROW_REFUND`·`MARKET_SALE`·`MARKET_ROYALTY`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`·`MARKET_ORDER_ESCROW`(차감). 거래소 값은 [가구 거래소](domains/market/features.md#로열티와-수수료) 참고.
+  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN`/`MARKET_ORDER`/`MARKET_TRADE` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
 - **user_invite_codes**: id* | user_id→users | invite_code VARCHAR | created_at | unique (user_id), unique (invite_code)
@@ -102,7 +102,8 @@
 - **themes**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | cover_image_key VARCHAR(255)? | is_active BOOLEAN
 - **items**: id* | theme_id→themes | category_code VARCHAR(50) | placement_type VARCHAR(40) (`positioned`/`surface_slot`) | surface_slot_type VARCHAR(40)? (`wallpaper`/`floor`/`background`) | character_slot_type VARCHAR(40)? | default_slot VARCHAR(40)? (positioned 가구 기본 배치 슬롯 - 서버 관리, admin 조정) | default_scale DECIMAL(4,2) (새 배치 초기 렌더 배율, 기본 1.00, admin 조정 범위 0.50~2.00, 기존 배치 비소급) | default_position_x DECIMAL(6,5)? | default_position_y DECIMAL(6,5)? | name VARCHAR(120) | name_translations JSON? | purchase_currency_type VARCHAR(30)? | price_amount INT? | asset_key VARCHAR(255) | is_limited BOOLEAN | is_active BOOLEAN
   - `default_position_x`·`default_position_y`는 positioned 가구를 새 `FREE_V1` 배치에 추가할 때 쓰는 중심점 기준 기본 좌표(각 0.0~1.0)다. 두 값은 함께 null이거나 함께 값이 있어야 하며, null 쌍이면 클라이언트 공통 기본 위치를 사용한다. 기존 `room_item_placements`에는 소급하지 않는다.
-- **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | unique (user_id, item_id)
+- **user_items**: id* | user_id→users | item_id→items | acquired_at | deleted_at? | active_flag(생성 컬럼: deleted_at이 null이면 1, 아니면 null) | unique (user_id, item_id, active_flag)
+  - 활성 보유(`deleted_at` null)는 사람당 아이템 1개, 비활성 이력은 여러 개 허용한다. 거래소 판매 등록 시 `deleted_at`을 채워 맡겨 두고, 취소·만료 시 null로 되돌린다. 체결되면 판매자 row는 비활성으로 남고 구매자에게 새 row를 만든다 → [가구 거래소](domains/market/features.md).
 - **user_character_accessories**: id* | user_character_id→user_characters | user_item_id→user_items | character_slot_type VARCHAR(40) | equipped_at TIMESTAMP | unique (user_character_id, character_slot_type) | unique (user_character_id, user_item_id)
   - 캐릭터별 슬롯 착용 상태. 같은 슬롯 적용은 기존 row를 교체하고, 캐릭터 선택을 바꿔도 row를 유지한다. `character_slot_type`은 적용 시 `items.character_slot_type`을 복사하며 클라이언트 입력값을 신뢰하지 않는다.
 - **character_accessory_render_profiles**: id* | item_id→items | character_id→characters | render_state VARCHAR(40) | asset_key VARCHAR(255) | canvas_width INT | canvas_height INT | asset_width INT | asset_height INT | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | width_ratio DECIMAL(5,4) | rotation_deg INT | z_index INT | created_at | updated_at | unique (item_id, character_id, render_state)
@@ -293,3 +294,19 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 ### 피드 댓글 알림 연결
 
 기존 `notification.type`에 `FEED_COMMENT`를 추가하고 `ref_id`에는 게시물 ID를 저장한다. 댓글과 알림은 같은 트랜잭션에서 생성하며 중복은 댓글 UUID 제약·잠금으로 방지한다(별도 알림 dedupe 테이블 없음). 기존 `notification_setting.type`에 `FEED`를 추가한다. 둘 다 VARCHAR enum 값 추가이므로 새 migration은 필요 없다. `ALL`/`FEED` off는 push만 막고 알림 내역은 유지한다.
+
+
+### 가구 거래소 (신규 5개 테이블)
+
+- **market_assets**: id* | item_id→items (unique) | creator_user_id→users? | total_supply INT (1~10) | unissued_quantity INT (0~total_supply) | status VARCHAR(20) (`ACTIVE`/`SUSPENDED`) | created_at | updated_at | index (status, id)
+  - AI 가구 1개당 상장 1회. `unissued_quantity`는 제작자가 아직 팔지 않은 발행 재고다(발행 시 `total_supply - 1`). 제작자 탈퇴 시 `creator_user_id`를 null, `unissued_quantity`를 0으로 바꾼다.
+- **market_commands**: id* | user_id→users | request_id VARCHAR(64) | type VARCHAR(10) (`PLACE`/`CANCEL`/`EXPIRE`) | asset_id→market_assets | side VARCHAR(4)? | source VARCHAR(10)? (`INVENTORY`/`ISSUANCE`) | price INT? | quantity INT? | escrow_amount INT? | escrow_user_item_id→user_items? | target_order_id BIGINT? | engine_seq BIGINT? (unique) | status VARCHAR(10) (`PENDING`/`APPLIED`/`REJECTED`) | reject_code VARCHAR(50)? | order_id BIGINT? | attempts INT default 0 | created_at | applied_at? | unique (user_id, request_id) | index (status, id)
+  - 주문·취소·만료 접수 대장. API가 에스크로와 같은 트랜잭션에서 `PENDING`으로 넣고, 매칭 엔진이 `engine_seq`를 부여하며 처리한다. `engine_seq`가 공식 처리 순서다. 만료 접수의 `request_id`는 `expire-{orderId}`다.
+- **market_orders**: id* | command_id→market_commands (unique) | asset_id→market_assets | user_id→users | side VARCHAR(4) | source VARCHAR(10)? | user_item_id→user_items? | price INT (1~1000) | quantity INT | filled_quantity INT | escrow_remaining INT | engine_seq BIGINT | status VARCHAR(10) (`OPEN`/`FILLED`/`CANCELLED`/`EXPIRED`) | expires_at | created_at | updated_at | index (asset_id, side, status, price, engine_seq) | index (user_id, status, id) | index (status, expires_at)
+  - 호가창의 정본. `escrow_remaining`은 아직 맡아 둔 코인(매수) 또는 수량(매도)이다. `expires_at`은 접수 + 7일.
+- **market_trades**: id* | asset_id→market_assets | engine_seq BIGINT | buy_order_id→market_orders | sell_order_id→market_orders | buyer_user_id→users | seller_user_id→users | royalty_user_id→users? | price INT | quantity INT | royalty_amount INT | fee_amount INT | created_at | index (asset_id, id) | index (engine_seq)
+  - 체결 내역. `fee_amount`는 소각된 수수료다.
+- **market_engine_lease**: id* (항상 1) | owner_token VARCHAR(36)? | fencing_token BIGINT | lease_until TIMESTAMP(6)? | last_engine_seq BIGINT default 0
+  - 매칭 엔진 담당 인스턴스 리스(단일 행). 담당이 바뀔 때마다 `fencing_token`을 1 올리고, 엔진은 처리 트랜잭션마다 이 값을 확인해 이전 담당의 쓰기를 거부한다.
+
+위 5개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다. 동작 계약은 [가구 거래소](domains/market/features.md)를 따른다.

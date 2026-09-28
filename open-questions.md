@@ -12,6 +12,15 @@
 - **루틴·방 연동**: 1차는 직접 공유한 이미지·본문이다. 완료 기록 검증 배지·공개 루틴 가져오기·실제 방 방문은 해당 도메인의 소유권·공개 범위 계약이 선행되어야 한다.
 - **알림**: 댓글은 사용자 요청으로 `FEED_COMMENT`/`FEED` 그룹을 구현한다(본인 댓글·UUID 재시도 제외, 알림함+FCM). 좋아요 알림과 여러 댓글 묶음·추가 도배 제한 정책은 후속이다.
 
+## 가구 거래소
+
+첫 구현 계약: [기능](domains/market/features.md) · [API](domains/market/api.md). 다음은 후속 결정 사항이다.
+
+- **콘텐츠 검수**: 사진 기반 가구가 발행 즉시 공개된다. AI 검수 연동 방식과 운영자 `SUSPENDED` 처리 화면은 미정이다.
+- **인기 발행**: 발행 직후 주문이 몰리는 경우 응모(드로우) 방식 도입 여부는 몰림이 관측된 뒤 정한다.
+- **체결 알림**: 1차는 접수 결과 조회(폴링)다. 푸시·웹소켓 알림은 후속이다.
+- **부계정 거래**: 가입 기간 제한·가격제한폭 등은 두지 않았다. 악용이 관측되면 다시 정한다.
+
 ## 착수 전 확정 (P0 — 백/프 시작하면 바로 부딪힘)
 
 - **인증/인가 상세**: (결정됨) 카카오(access token 방식) · 구글·애플(id token/identityToken JWK 검증 방식) 소셜 로그인 · JWT access + refresh 회전 정책 · `oauth_accounts` 스키마 확정 · `users.email`(nullable) 추가. (결정됨) 회원탈퇴 `DELETE /api/v1/me` — soft delete + `oauth_accounts` 삭제 + provider revoke(카카오 admin unlink · 애플 refresh token revoke, 커밋 후 best-effort), 재가입 즉시 허용(재로그인 = 신규 가입). App Store 심사 5.1.1(v)의 앱 내 계정 삭제·revoke 요구 확인됨 → [member/api.md](domains/member/api.md) "회원탈퇴" 반영.
