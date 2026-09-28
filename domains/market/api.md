@@ -49,7 +49,7 @@
 - 동작: 검증 → 에스크로(코인 차감 / 보유분 인벤토리 숨김·방 배치 해제 / 발행 재고 차감) → 접수. 체결은 비동기.
 - 응답 202: `{ "commandId": 10, "status": "PENDING" }`
 - 멱등: 같은 `requestId` 재요청은 기존 접수를 그대로 반환한다.
-- 주요 오류: 범위 위반 `VALIDATION_ERROR`(400), `MARKET_ASSET_NOT_FOUND`(404), 거래 정지 `MARKET_ASSET_SUSPENDED`(409), 코인 부족 `MARKET_INSUFFICIENT_COIN`(409), 이미 보유·매수 대기 중 `MARKET_ALREADY_HOLDING`(409), 판매할 보유분 없음 `MARKET_ITEM_NOT_OWNED`(403), 발행 재고 판매인데 제작자 아님 `MARKET_NOT_CREATOR`(403), 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`(409).
+- 주요 오류: 범위 위반 `VALIDATION_FAILED`(400), `MARKET_ASSET_NOT_FOUND`(404), 거래 정지 `MARKET_ASSET_SUSPENDED`(409), 코인 부족 `MARKET_INSUFFICIENT_COIN`(409), 이미 보유·매수 대기 중 `MARKET_ALREADY_HOLDING`(409), 판매할 보유분 없음 `MARKET_ITEM_NOT_OWNED`(403), 발행 재고 판매인데 제작자 아님 `MARKET_NOT_CREATOR`(403), 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`(409).
 
 ## POST /api/v1/market/orders/{orderId}/cancel
 
