@@ -1,6 +1,6 @@
 # 가구 거래소 API
 
-[features.md](features.md) 기준 계약. 공통 규칙(prefix `/api/v1`, key 기반 이미지, 에러 `{ code, message }`, 인증된 사용자 기준 소유권 guard)은 [api.md](../../api.md)를 따른다. 목록은 `{ items, page, size, totalElements }` 페이지 형식이다.
+[features.md](features.md) 기준 계약. 공통 규칙(prefix `/api/v1`, key 기반 이미지, 에러 `{ code, message }`, 인증된 사용자 기준 소유권 guard)은 [api.md](../../api.md)를 따른다. 목록은 `{ items, page, size, totalElements }` 페이지 형식이다. 목록 조회의 `page`는 0 이상, `size`는 1~100(기본 20)이고, 범위를 벗어나면 `VALIDATION_FAILED`(400)이다.
 
 ## 엔드포인트
 
@@ -27,19 +27,20 @@
 
 ## GET /api/v1/market/assets
 
-- 요청(query): `page`, `size`(기본 20). 거래 중(`ACTIVE`) 종목만, 최근 상장순.
-- 응답 `items[]`: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`(제작자 탈퇴 시 null), `totalSupply`, `bestAskPrice?`, `askQuantity`(판매 대기 총수량), `lastTradePrice?`, `status`
+- 요청(query): `page`, `size`(기본 20, 최대 100). 거래 중(`ACTIVE`) 종목만, 최근 상장순.
+- 응답 `items[]`: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`(제작자 탈퇴 시 null), `totalSupply`, `bestAskPrice?`(최저 매도가, 판매 대기 없으면 null), `askQuantity`(판매 대기 주문의 남은 수량 합계, 없으면 0), `lastTradePrice?`(체결 없으면 null), `status`
 
 ## GET /api/v1/market/assets/{assetId}
 
-- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(활성 보유 여부), `asks[]`, `bids[]`
+- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `asks[]`, `bids[]`. `isCreator`도 요청자 기준이다.
   - `asks[]`·`bids[]`: `{ price, quantity }` 가격대별 합산, 각 최대 10단계. `asks` 가격 오름차순, `bids` 내림차순.
 - 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404).
 
 ## GET /api/v1/market/assets/{assetId}/trades
 
-- 요청(query): `page`, `size`. 최신순.
+- 요청(query): `page`, `size`(기본 20, 최대 100). 최신순.
 - 응답 `items[]`: `tradeId`, `price`, `quantity`, `tradedAt`
+- 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404).
 
 ## POST /api/v1/market/orders
 
@@ -71,5 +72,6 @@
 
 ## GET /api/v1/me/market/orders
 
-- 요청(query): `status` = `OPEN`(기본) / `CLOSED`, `page`, `size`. 최신순.
+- 요청(query): `status` = `OPEN`(기본, 대기 중) / `CLOSED`(체결 완료·취소·만료), `page`, `size`(기본 20, 최대 100). 최신순.
+- 주요 오류: `status`가 허용값이 아니면 `VALIDATION_FAILED`(400).
 - 응답 `items[]`(Order): `orderId`, `assetId`, `name`, `assetKey`, `side`, `source?`, `price`, `quantity`, `filledQuantity`, `status`(`OPEN` / `FILLED` / `CANCELLED` / `EXPIRED`), `expiresAt`(주문 접수 시각 + 7일), `createdAt`
