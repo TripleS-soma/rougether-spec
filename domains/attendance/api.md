@@ -78,6 +78,7 @@
 - `GET /api/v1/me/furniture-generations`: `{ "items": [...] }`, 본인 최근 작업 20개.
 - `GET /api/v1/me/furniture-generations/{id}`: 본인 작업 상세.
 - 작업 상태는 `UPLOADING`, `QUEUED`, `PROCESSING`, `SUCCEEDED`, `FAILED`. 공개 필드에는 `id`, `assetKey`, `userItemId`, `failureCode`가 포함된다. 검수 전 이미지와 원본 key는 노출하지 않는다.
+- 가구 피드백 재검수(`POST /api/v1/me/furniture-generations/{id}/feedback`)는 그 가구가 거래소에 상장돼 있으면 `FURNITURE_MARKET_LISTED`(409)로 거절한다.
 - 생성권 부족은 `FURNITURE_CREDITS_REQUIRED`, 진행 중 작업은 `FURNITURE_JOB_IN_PROGRESS`, 일일 한도는 `FURNITURE_DAILY_LIMIT`, 사용 불가는 `FURNITURE_GENERATION_UNAVAILABLE`다.
 
 ## 출석 에러
