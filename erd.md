@@ -304,8 +304,9 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
   - 주문·취소·만료 접수 대장. API가 에스크로와 같은 트랜잭션에서 `PENDING`으로 넣고, 매칭 엔진이 `engine_seq`를 부여하며 처리한다. `engine_seq`가 공식 처리 순서다. 만료 접수의 `request_id`는 `expire-{orderId}`다.
 - **market_orders**: id* | command_id→market_commands (unique) | asset_id→market_assets | user_id→users | side VARCHAR(4) | source VARCHAR(10)? | user_item_id→user_items? | price INT (1~1000) | quantity INT | filled_quantity INT | escrow_remaining INT | engine_seq BIGINT | status VARCHAR(10) (`OPEN`/`FILLED`/`CANCELLED`/`EXPIRED`) | expires_at | created_at | updated_at | index (asset_id, side, status, price, engine_seq) | index (user_id, status, id) | index (status, expires_at)
   - 호가창의 정본. `escrow_remaining`은 아직 맡아 둔 코인(매수) 또는 수량(매도)이다. `expires_at`은 접수 + 7일.
-- **market_trades**: id* | asset_id→market_assets | engine_seq BIGINT | buy_order_id→market_orders | sell_order_id→market_orders | buyer_user_id→users | seller_user_id→users | royalty_user_id→users? | price INT | quantity INT | royalty_amount INT | fee_amount INT | created_at | index (asset_id, id) | index (engine_seq)
-  - 체결 내역. `fee_amount`는 소각된 수수료다.
+  - 조합 제약: 매수는 `source`·`user_item_id`가 null이고 수량 1, `INVENTORY` 매도는 `user_item_id` 필수·수량 1, `ISSUANCE` 매도는 `user_item_id` null.
+- **market_trades**: id* | asset_id→market_assets | engine_seq BIGINT | buy_order_id→market_orders | sell_order_id→market_orders | buyer_user_id→users | seller_user_id→users | royalty_user_id→users? | price INT | quantity INT | royalty_amount INT | fee_amount INT | created_at | unique (engine_seq, buy_order_id, sell_order_id) | index (asset_id, id) | index (engine_seq)
+  - 체결 내역. `fee_amount`는 소각된 수수료다. `royalty_amount + fee_amount`는 체결 금액을 넘지 않는다. unique는 엔진 재시도 시 같은 체결의 이중 정산을 막는다.
 - **market_engine_lease**: id* (항상 1) | owner_token VARCHAR(36)? | fencing_token BIGINT | lease_until TIMESTAMP(6)? | last_engine_seq BIGINT default 0
   - 매칭 엔진 담당 인스턴스 리스(단일 행). 담당이 바뀔 때마다 `fencing_token`을 1 올리고, 엔진은 처리 트랜잭션마다 이 값을 확인해 이전 담당의 쓰기를 거부한다.
 
