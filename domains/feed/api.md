@@ -19,6 +19,10 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | GET | `/posts/{postId}/comments` | 댓글 커서 목록 → 200 Page<Comment> |
 | POST | `/posts/{postId}/comments` | 댓글 등록 → 201 Comment (재시도도 201) |
 | DELETE | `/posts/{postId}/comments/{commentId}` | 본인 댓글 삭제 → 204 |
+| POST | `/posts/{postId}/reports` | 게시물 신고 → 201 Report (재신고도 201) |
+| POST | `/posts/{postId}/comments/{commentId}/reports` | 댓글 신고 → 201 Report (재신고도 201) |
+
+사용자 차단은 피드 prefix 밖의 `PUT/DELETE /api/v1/users/{userId}/block`, `GET /api/v1/me/blocks`다. [신고·차단](#신고차단) 절을 따른다.
 
 ## 사진 업로드 → 게시
 
@@ -136,6 +140,9 @@ GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나�
 | 409 | `FEED_IMAGE_UNAVAILABLE` | 사진이 본인 소유/완료/미사용/유효 상태가 아님 |
 | 429 | `FEED_UPLOAD_LIMIT` | 미사용 업로드 30개 상한. 취소·만료 정리 후 재시도 |
 | 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류 |
+| 400 | `REPORT_SELF_TARGET` | 내 글·댓글·가구를 신고 |
+| 400 | `BLOCK_SELF` | 나 자신을 차단 |
+| 404 | `USER_NOT_FOUND` | 차단 대상이 없거나 탈퇴·봇 계정 |
 
 HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼저 거절될 수 있다. 삭제·탈퇴·재시도 세부 정책은 [기능 계약](features.md)을 따른다.
 
@@ -149,3 +156,49 @@ HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼�
 - `GET/PATCH /api/v1/users/me/notification-settings`에 `feed` boolean이 추가된다. 기본 true, PATCH 생략 시 기존 값 유지. 예: `{ "feed": false }`. `all=false`도 피드 푸시를 막는다. 두 경우 모두 알림함 내역은 저장된다.
 - 삭제·탈퇴로 게시물 상세가 404이면 삭제 안내 후 피드로 돌아간다. 이미 삭제된 댓글의 도착 알림일 수 있으므로 특정 댓글이 반드시 남아 있다고 가정하지 않는다.
 - 기기 FCM 토큰 등록·알림 권한과 위 화면 이동/설정 UI 반영은 프론트 담당이다. 좋아요 알림은 이번 추가 범위에 포함하지 않는다.
+
+
+## 신고·차단
+
+App Store 심사 지침 1.2(사용자 생성 콘텐츠)의 신고·차단·운영자 조치 요건을 위한 API다. 가구 거래소 종목 신고도 같은 형식이다([거래소 API](../market/api.md#신고)).
+
+### 신고
+
+POST `/posts/{postId}/reports`, POST `/posts/{postId}/comments/{commentId}/reports`:
+
+```json
+{ "reason": "ABUSE", "detail": "욕설이 포함돼 있어요" }
+```
+
+- `reason`: 필수. `SPAM`(스팸·광고) / `ABUSE`(욕설·괴롭힘) / `SEXUAL`(선정적) / `VIOLENCE`(폭력·위협) / `PERSONAL_INFO`(개인정보 노출) / `COPYRIGHT`(저작권 침해) / `OTHER`(기타). 허용값 밖이면 요청 본문 오류(400)다.
+- `detail`: 선택, 최대 500자. 앞뒤 공백을 제거하고 빈 문자열은 null로 저장한다. 금칙어 검사를 하지 않는다(운영자만 본다).
+- 응답 201 Report: `{ "reportId": 12, "status": "RECEIVED" }`. `status`는 `RECEIVED`(검토 대기) / `ACTIONED`(숨김 조치) / `DISMISSED`(조치 없음 종료)다.
+- **멱등**: 같은 사용자가 같은 대상을 다시 신고하면 새로 저장하지 않고 **기존 신고를 201로** 돌려준다(피드 등록 재시도와 같은 규칙). 사유·설명은 처음 값이 유지되고, 이미 처리된 신고면 처리 결과 `status`가 그대로 나온다.
+- 신고해도 콘텐츠는 자동으로 숨겨지지 않는다(신고 수 임계값 없음). 운영자가 검토해 숨기거나 종료한다. 앱은 접수 즉시 "검토 중" 안내만 한다.
+- 이미 차단한 사용자의 글·댓글도 ID를 알면 신고할 수 있다(차단은 조회만 막는다). 내 콘텐츠는 신고할 수 없다 → 400 `REPORT_SELF_TARGET`.
+- 대상이 없거나 삭제·탈퇴로 숨겨졌으면 기존 404 코드다: 글 `FEED_POST_NOT_FOUND`, 댓글 `FEED_COMMENT_NOT_FOUND`(부모 글이 없으면 `FEED_POST_NOT_FOUND`).
+
+### 사용자 차단
+
+| Method | Path | 결과 |
+| --- | --- | --- |
+| PUT | `/api/v1/users/{userId}/block` | 차단 → 204 (이미 차단해도 204) |
+| DELETE | `/api/v1/users/{userId}/block` | 차단 해제 → 204 (차단하지 않았어도 204) |
+| GET | `/api/v1/me/blocks?cursor=&size=20` | 내가 차단한 사용자 커서 목록 → 200 Page<BlockedUser> |
+
+BlockedUser:
+
+```json
+{ "userId": 8, "nickname": "이웃", "profileImageKey": null, "blockedAt": "2026-09-29T03:00:00Z" }
+```
+
+- 목록은 최근에 차단한 순서다. 피드와 같은 Page 형식(`items`, `nextCursor`, `hasNext`)이며 `size` 기본 20·1–50, `cursor`는 이전 응답의 `nextCursor`를 그대로 전달한다(차단 기록 ID라 `userId`와 다르다).
+- 나 자신 차단은 400 `BLOCK_SELF`, 없거나 탈퇴한 회원·봇 계정은 404 `USER_NOT_FOUND`다. 해제는 대상이 탈퇴했어도 204다.
+- **차단은 한 방향이다.** 차단한 사람의 화면에서만 상대를 숨기고, 상대에게 차단 사실을 알리지 않는다. 상대는 내 글을 계속 보고 댓글도 달 수 있다(내 목록에서는 보이지 않는다).
+- 차단한 사람 기준으로:
+  - 피드 목록·작성자별 목록에서 상대 게시물을 뺀다. 상대 게시물 상세·댓글 목록·좋아요·댓글 작성은 삭제된 글처럼 404 `FEED_POST_NOT_FOUND`다.
+  - 다른 글의 댓글 목록에서 상대 댓글을 뺀다. **`commentCount`도 요청자 기준으로 상대 댓글을 빼고 센다.** `likeCount`는 누가 눌렀는지 드러나지 않으므로 전체 기준 그대로다.
+  - 상대가 내 글에 댓글을 달아도 `FEED_COMMENT` 알림을 만들지 않는다(알림함·푸시 모두 없음).
+  - 거래소 종목 목록에서 상대가 만든 가구를 뺀다([거래소 API](../market/api.md#차단)).
+- 차단·해제는 즉시 반영된다. 이미 받아 둔 화면은 프론트가 차단 직후 상대 콘텐츠를 목록에서 지우고 새로고침한다.
+- 회원탈퇴 시 그 회원이 한 차단과 그 회원을 대상으로 한 차단을 모두 지운다.
