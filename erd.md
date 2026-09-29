@@ -311,3 +311,13 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
   - 매칭 엔진 담당 인스턴스 리스(단일 행). 담당이 바뀔 때마다 `fencing_token`을 1 올리고, 엔진은 처리 트랜잭션마다 이 값을 확인해 이전 담당의 쓰기를 거부한다.
 
 위 5개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다. 동작 계약은 [가구 거래소](domains/market/features.md)를 따른다.
+
+
+### 신고·차단 (신규 2개 테이블)
+
+- **content_reports**: id* | reporter_user_id→users | target_type VARCHAR(20) (`FEED_POST`/`FEED_COMMENT`/`MARKET_ASSET`) | target_id BIGINT | target_owner_user_id BIGINT? | reason VARCHAR(20) (`SPAM`/`ABUSE`/`SEXUAL`/`VIOLENCE`/`PERSONAL_INFO`/`COPYRIGHT`/`OTHER`) | detail VARCHAR(500)? | status VARCHAR(10) default `RECEIVED` (`RECEIVED`/`ACTIONED`/`DISMISSED`) | created_at | resolved_at? | resolved_by→admin_users? | unique (reporter_user_id, target_type, target_id) | index (status, id) | index (target_type, target_id, status)
+  - 대상은 종류별 테이블을 가리키는 논리 참조라 FK가 없다. `target_owner_user_id`는 신고 시점의 작성자·제작자 스냅샷(FK 없음)이며 작성자가 탈퇴해도 남는다. 신고자가 탈퇴하면 그 회원의 신고 row를 지운다. 운영자 처리 시 같은 대상의 `RECEIVED` 신고를 함께 닫는다.
+- **user_blocks**: id* | blocker_user_id→users | blocked_user_id→users | created_at | unique (blocker_user_id, blocked_user_id) | index (blocked_user_id) | check (blocker_user_id <> blocked_user_id)
+  - 한 방향 차단. 피드·댓글·거래소 목록 쿼리가 `NOT EXISTS`로 제외해 커서·페이지가 어긋나지 않는다. 회원탈퇴 시 양쪽 방향 row를 지운다. `id`는 내 차단 목록의 커서다.
+
+위 2개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다. 동작 계약은 [피드 기능](domains/feed/features.md#신고차단운영자-조치)을 따른다.

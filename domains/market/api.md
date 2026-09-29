@@ -14,6 +14,7 @@
 | POST | `/market/orders/{orderId}/cancel` | 주문 취소 접수 → 202 Command |
 | GET | `/market/commands/{commandId}` | 접수 결과 → 200 Command |
 | GET | `/me/market/orders` | 내 주문 목록 → 200 Page<Order> |
+| POST | `/market/assets/{assetId}/reports` | 종목(가구) 신고 → 201 Report (재신고도 201) |
 
 ## POST /api/v1/market/assets
 
@@ -27,13 +28,14 @@
 
 ## GET /api/v1/market/assets
 
-- 요청(query): `page`, `size`(기본 20, 최대 100). 거래 중(`ACTIVE`) 종목만, 최근 상장순.
+- 요청(query): `page`, `size`(기본 20, 최대 100). 거래 중(`ACTIVE`) 종목만, 최근 상장순. 요청자가 차단한 회원이 만든 종목은 빠지고 `totalElements`도 그 기준이다([차단](#차단)).
 - 응답 `items[]`: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`(제작자 탈퇴 시 null), `totalSupply`, `bestAskPrice?`(최저 매도가, 판매 대기 없으면 null), `askQuantity`(판매 대기 주문의 남은 수량 합계, 없으면 0), `lastTradePrice?`(체결 없으면 null), `status`
 
 ## GET /api/v1/market/assets/{assetId}
 
 - 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `asks[]`, `bids[]`. `isCreator`도 요청자 기준이다.
   - `asks[]`·`bids[]`: `{ price, quantity }` 가격대별 합산, 각 최대 10단계. `asks` 가격 오름차순, `bids` 내림차순.
+- 차단한 회원이 만든 종목도 상세는 그대로 조회된다. 이미 보유한 가구·대기 주문 화면이 깨지지 않게 하기 위해서다.
 - 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404).
 
 ## GET /api/v1/market/assets/{assetId}/trades
@@ -75,3 +77,16 @@
 - 요청(query): `status` = `OPEN`(기본, 대기 중) / `CLOSED`(체결 완료·취소·만료), `page`, `size`(기본 20, 최대 100). 최신순.
 - 주요 오류: `status`가 허용값이 아니면 `VALIDATION_FAILED`(400).
 - 응답 `items[]`(Order): `orderId`, `assetId`, `name`, `assetKey`, `side`, `source?`, `price`, `quantity`, `filledQuantity`, `status`(`OPEN` / `FILLED` / `CANCELLED` / `EXPIRED`), `expiresAt`(주문 접수 시각 + 7일), `createdAt`
+
+## 신고
+
+POST `/api/v1/market/assets/{assetId}/reports` — 발행된 AI 사진 가구를 신고한다. 요청·응답·멱등 규칙은 [피드 신고](../feed/api.md#신고)와 같다.
+
+- 요청 body: `{ "reason": "COPYRIGHT", "detail": "다른 사람 사진이에요" }` (`reason` 필수, `detail` 선택 500자)
+- 응답 201: `{ "reportId": 13, "status": "RECEIVED" }`. 같은 사용자의 재신고는 기존 신고를 201로 돌려준다.
+- 거래 정지(`SUSPENDED`) 종목도 신고할 수 있다. 신고만으로 거래가 멈추지 않는다. 운영자가 숨김 조치하면 `SUSPENDED`가 된다.
+- 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404), 내가 만든 종목 `REPORT_SELF_TARGET`(400).
+
+## 차단
+
+차단 API는 [피드 API](../feed/api.md#사용자-차단)의 `PUT/DELETE /api/v1/users/{userId}/block`이다. 차단하면 차단한 사람의 종목 목록(`GET /market/assets`)에서 상대가 만든 종목이 빠진다. 상세·체결·내 주문·주문 접수는 차단과 무관하게 그대로다.
