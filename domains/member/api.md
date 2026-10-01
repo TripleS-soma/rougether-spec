@@ -13,7 +13,7 @@
 | `POST /api/v1/auth/kakao` | 카카오 access token으로 로그인. 최초 로그인이면 회원 자동 생성 | req: `accessToken`, `allowNewAccount?` / res: `userId`, `accessToken`, `refreshToken`, `isNewUser` | `users`, `oauth_accounts` |
 | `POST /api/v1/auth/google` | 구글 id token으로 로그인. 최초 로그인이면 회원 자동 생성 | req: `idToken`, `allowNewAccount?` / res: `userId`, `accessToken`, `refreshToken`, `isNewUser` | `users`, `oauth_accounts` |
 | `POST /api/v1/auth/apple` | 애플 identityToken으로 로그인. 최초 로그인이면 회원 자동 생성 | req: `idToken`, `authorizationCode`, `allowNewAccount?` / res: `userId`, `accessToken`, `refreshToken`, `isNewUser` | `users`, `oauth_accounts` |
-| `POST /api/v1/auth/refresh` | refresh token으로 access/refresh 재발급. **1회용(회전)** — 사용한 refresh는 즉시 폐기되고 새 토큰으로 교체. 정상 회전 성공 시 `users.last_accessed_at` 갱신 | req: `refreshToken` / res: `accessToken`, `refreshToken` | `refresh_tokens` |
+| `POST /api/v1/auth/refresh` | refresh token으로 access/refresh 재발급. **1회용(회전)** — 사용한 refresh는 즉시 폐기되고 같은 기기(family)의 새 토큰으로 교체. 회전된 지 **60초 안**의 재제출은 응답 유실 재시도로 보고 새 쌍을 다시 준다(200). 그 밖의 재사용은 **그 기기(family)의 토큰만** 폐기하고 401 `AUTH_REFRESH_TOKEN_INVALID`(아래 「refresh 회전·재사용 정책」). 새 쌍을 발급한 경우에만 `users.last_accessed_at` 갱신 | req: `refreshToken` / res: `accessToken`, `refreshToken` | `refresh_tokens` |
 | `POST /api/v1/auth/logout` | 전달한 refresh token 폐기. **멱등**(없는/이미 폐기된 토큰도 성공) — access token은 만료까지 유효하므로 클라이언트가 삭제 | req: `refreshToken` / res: 204 | `refresh_tokens` |
 | `POST /api/v1/auth/dev-login` | **개발 전용** — userId로 토큰 발급(생략 시 새 회원 생성 — 소셜 가입과 동일하게 지갑 발급·기본 집(`나의 집`) 생성 포함). 운영에서는 사용하지 않는 것이 정책이나, **현재 프로파일 가드·설정 스위치가 없어 어느 환경에서도 열려 있다**(운영 차단은 미결 → [open-questions.md](../../open-questions.md)) | req: `userId?` / res: 로그인과 동일 | `users` |
 
@@ -27,7 +27,15 @@
   - 미인증 이메일에 적용하지 않는 이유: 미인증 이메일로 타인 계정의 존재·provider를 캐지 못하게 하기 위함.
   - 앱(rougether-mobile) 동작: 409를 받으면 "이미 가입된 이메일이에요" 다이얼로그에서 [OO로 로그인] / [새 계정으로 계속] / [닫기]를 보여 준다. [새 계정으로 계속]은 같은 자격증명으로 `allowNewAccount: true` 재요청.
 - 인증 토큰은 JWT(stateless) access + 불투명 refresh(회전·재사용 감지) 기반. access 유효기간 30분, refresh 14일. refresh는 원문이 아닌 해시만 `refresh_tokens`에 저장. 소셜 provider는 카카오·구글·애플을 지원한다.
-- `users.last_accessed_at`은 **마지막 토큰 발급 시각**이다. 소셜/dev 로그인과 refresh 정상 회전 성공 시 갱신하고, 재사용 감지→전체 폐기 경로에서는 갱신하지 않는다. 갱신은 **역행 무시 조건부 UPDATE**다 — 기존 값이 null이거나 새 값보다 과거일 때만 갱신해, 다기기 동시 회전이 최신값을 되돌리지 않는다. access 유효기간(30분)만큼의 오차를 허용한다(알림·휴면 판별 용도로 충분).
+- `users.last_accessed_at`은 **마지막 토큰 발급 시각**이다. 소셜/dev 로그인과 refresh 새 쌍 발급(정상 회전·유예 재발급) 시 갱신하고, 재사용 감지→폐기(거부) 경로에서는 갱신하지 않는다. 갱신은 **역행 무시 조건부 UPDATE**다 — 기존 값이 null이거나 새 값보다 과거일 때만 갱신해, 다기기 동시 회전이 최신값을 되돌리지 않는다. access 유효기간(30분)만큼의 오차를 허용한다(알림·휴면 판별 용도로 충분).
+- **refresh 회전·재사용 정책** (mobile #1388, 2026-10-01 결정: 60초 유예 + 기기 단위 폐기)
+  - **family**: 로그인 1회마다 새 family(UUID)를 시작하고, 회전으로 받은 토큰은 같은 family를 물려받는다. family = 기기(로그인 세션) 1개의 회전 사슬이다.
+  - **정상 회전**: 살아있는 토큰을 내면 그 토큰은 `ROTATED`로 폐기되고 같은 family의 새 쌍을 준다.
+  - **유예(60초)**: 제출한 토큰이 회전 계열 사유(`ROTATED`, 또는 유예 재발급으로 밀려난 `SUPERSEDED`)로 폐기된 지 60초 미만이면, 서버는 회전했지만 클라이언트가 응답을 못 받은 경우(웹 탭 새로고침·닫기, 앱 백그라운드, 네트워크 끊김)로 본다. 같은 family에 아직 살아있는 후속 토큰을 `SUPERSEDED`로 폐기하고(그 family의 살아있는 토큰은 항상 1개) 같은 family로 새 쌍을 준다(200). 다른 기기의 family는 건드리지 않는다. 유예 길이는 서버 설정(`jwt.refresh-reuse-grace`, 기본 60초)이다.
+  - **진짜 재사용**: 유예가 지났거나, 회전 외 사유(`LOGOUT`·`REUSE`·`WITHDRAWAL`)로 폐기된 토큰을 내면 **그 family의 살아있는 토큰만** `REUSE`로 폐기하고 401 `AUTH_REFRESH_TOKEN_INVALID`를 준다. 같은 회원의 다른 기기는 로그인 상태를 유지한다. 폐기는 거부 응답과 함께 롤백되지 않고 커밋된다.
+  - **동시 요청**: 같은 토큰으로 두 요청이 동시에 오면 서버가 그 토큰 row를 잠가 줄 세운다. 먼저 온 요청은 정상 회전, 뒤 요청은 방금 회전된 토큰을 본 것이므로 유예 규칙으로 새 쌍을 받는다(예전처럼 회원 전체 폐기로 번지지 않음).
+  - **레거시 토큰**: family가 없는(2026-10 이전 발급) 토큰은 다음 정상 회전 때 새 family를 받는다. family 없이 이미 폐기된 토큰을 재사용하면 범위를 알 수 없어 예전처럼 회원의 살아있는 토큰을 전부 폐기한다.
+  - 만료·탈퇴 회원 토큰은 유예와 무관하게 401이다. 로그아웃은 전달한 토큰을 `LOGOUT`으로, 회원탈퇴는 살아있는 토큰 전부를 `WITHDRAWAL`로 폐기한다(동작은 기존과 같고 사유만 기록).
 
 ## 마스터 조회 (목표 · 캐릭터)
 
@@ -127,7 +135,7 @@
 | --- | --- | --- | --- |
 | `DELETE /api/v1/me` | 회원탈퇴 — soft delete + 개인정보 즉시 익명화 + 소셜 로그인 연동 해제(revoke) + 집 멤버십 정리·소유권 승계 | res: 204. 이미 탈퇴한 사용자는 404 `USER_NOT_FOUND` | `users`, `oauth_accounts`, `refresh_tokens`, `user_device_token`, `routines`, `todos`, `categories`, `house_members`, `house`, `house_join_requests` |
 
-- 탈퇴는 단일 트랜잭션으로 처리한다: `users.deleted_at` 세팅(soft delete — hard delete 아님) + **개인정보 즉시 익명화**(`users.email`·`nickname`·`bio`·`profile_image_key`를 null 처리 — 유예기간 없음, 배치 없음) + 보유 중인 active `refresh_tokens` 전량 폐기(`revoked_at`) + `oauth_accounts` row 삭제 + FCM 토큰(`user_device_token`) 전량 삭제(탈퇴자에게 push가 가지 않도록) + 해당 회원의 루틴·투두·카테고리 연쇄 soft delete(아래 참고) + 집 멤버십·입주 신청 정리와 소유권 승계(아래 참고). 소유권은 인증된 본인(`user_id`) guard, 별도 파라미터 없음.
+- 탈퇴는 단일 트랜잭션으로 처리한다: `users.deleted_at` 세팅(soft delete — hard delete 아님) + **개인정보 즉시 익명화**(`users.email`·`nickname`·`bio`·`profile_image_key`를 null 처리 — 유예기간 없음, 배치 없음) + 보유 중인 active `refresh_tokens` 전량 폐기(`revoked_at`, `revoke_reason = WITHDRAWAL`) + `oauth_accounts` row 삭제 + FCM 토큰(`user_device_token`) 전량 삭제(탈퇴자에게 push가 가지 않도록) + 해당 회원의 루틴·투두·카테고리 연쇄 soft delete(아래 참고) + 집 멤버십·입주 신청 정리와 소유권 승계(아래 참고). 소유권은 인증된 본인(`user_id`) guard, 별도 파라미터 없음.
 - **프로필 이미지는 S3 원본까지 삭제**한다 — `profile_image_key`를 익명화 전에 스냅샷해 두고, 트랜잭션 커밋 이후 best-effort로 삭제한다(provider revoke와 동일 경로). 삭제 실패는 로그만 남기고 탈퇴·익명화는 유지되며, key가 없는 회원은 호출하지 않는다.
 - **루틴·투두·카테고리는 연쇄 soft delete한다** — 탈퇴 트랜잭션에서 해당 회원의 `routines`·`todos`·`categories`에 `deleted_at`을 일괄 세팅한다(이미 삭제된 row의 원래 삭제 시각은 보존). 완료 이력(`routine_logs`)·스트릭(`streaks`)·인증 사진은 보존한다 — 집 통계·방 성장 의존 가능성이 있어 완전 파기는 집 도메인 확인 후 별도 결정. 리마인더 배치는 루틴 soft delete로 탈퇴자가 자연 제외된다(별도 탈퇴 조건 없음).
 - **집 도메인도 같은 트랜잭션에서 정리한다** (외부 API 호출이 없어 전부 트랜잭션 안):
