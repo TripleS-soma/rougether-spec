@@ -20,8 +20,10 @@
 - **oauth_accounts**: id* | user_id→users | provider VARCHAR(20) (kakao/google/apple) | provider_user_id VARCHAR(255) | apple_refresh_token_encrypted VARCHAR(1000)? | created_at | unique (provider, provider_user_id)
   - 소셜 로그인. 한 user가 여러 provider 연결 가능. 인증 토큰은 JWT(stateless).
   - `apple_refresh_token_encrypted`는 provider=apple일 때만 사용 — 로그인 시 `authorizationCode`를 교환해 받은 애플 refresh token을 암호화 저장(재로그인 시 갱신), 회원탈퇴 시 revoke 호출에 사용. 탈퇴 시 row 자체를 삭제한다(재가입 = 신규 가입).
-- **refresh_tokens**: id* | user_id→users | token_hash VARCHAR(255) | expires_at TIMESTAMP | revoked_at TIMESTAMP? | created_at | unique (token_hash)
+- **refresh_tokens**: id* | user_id→users | token_hash VARCHAR(255) | expires_at TIMESTAMP | revoked_at TIMESTAMP? | family_id VARCHAR(36)? | revoke_reason VARCHAR(20)? | created_at | unique (token_hash) | index (family_id)
   - refresh 토큰 회전(RTR) 저장소. 원문이 아니라 **해시만** 저장. 재발급 시 사용한 토큰은 `revoked_at` 기록 후 새 행으로 교체.
+  - `family_id`: 로그인 1회마다 새 UUID, 회전은 같은 값을 물려받는다(기기 1대의 회전 사슬). 재사용 감지 시 폐기 범위. null은 2026-10 이전 발급 레거시(다음 회전 때 채워짐).
+  - `revoke_reason`: `ROTATED`(정상 회전) / `SUPERSEDED`(유예 재발급으로 밀려남) / `LOGOUT` / `REUSE`(재사용 감지 폐기) / `WITHDRAWAL`(회원탈퇴). 레거시 폐기 row는 null. 회전 계열(`ROTATED`·`SUPERSEDED`)로 폐기된 지 60초 안의 재제출만 유예 재발급 대상 — 정책은 [member api](domains/member/api.md)의 「refresh 회전·재사용 정책」.
 - **user_wallets**: id* | user_id→users | currency_type VARCHAR(30) | balance INT | created_at | updated_at | unique (user_id, currency_type)
   - unique는 동시 가입·지급의 이중 지갑 생성 방어선(`uq_user_wallets_user_currency`) — 가입 지갑 발급이 이 제약에 의존한다.
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
