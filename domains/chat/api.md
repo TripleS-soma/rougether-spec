@@ -84,29 +84,68 @@
 연결 후 10초 이내 첫 텍스트 프레임으로 구독 요청을 보냅니다. 토큰을 URL/query string에 넣지 않습니다. 한 연결은 한 방만 구독합니다.
 
 ```json
-{"type":"SUBSCRIBE","roomId":5,"accessToken":"<accessToken>"}
+{"type":"SUBSCRIBE","roomId":5,"accessToken":"<accessToken>","includeMessages":true}
 ```
+
+`includeMessages=true`는 본문 직접 수신 모드입니다. 생략하거나 false이면 기존 상태 알림 모드로 동작하며 `MESSAGE_CREATED`를 보내지 않습니다. 구버전 앱과 같은 서버를 사용할 수 있습니다. 메시지 전송과 읽음 갱신은 두 모드 모두 HTTP API를 유지합니다.
 
 서버가 JWT와 현재 구성원 권한을 검증한 뒤 아래를 반환합니다.
 
 ```json
-{"type":"READY","room":{"roomId":5,"roomType":"HOUSE","houseId":20,"lastSequence":31,"readers":[]}}
+{"type":"READY","includeMessages":true,"room":{"roomId":5,"roomType":"HOUSE","houseId":20,"lastSequence":31,"readers":[]}}
 ```
 
-메시지 전송·읽음 변경 이후 `type=ROOM_UPDATED`와 같은 형태의 최신 `room` 상태를 보냅니다. 메시지 본문은 HTTP 목록으로 가져옵니다. 방 변경이 없더라도 약 5초마다 최신 상태를 보내 연결을 유지하고 Redis 알림 누락을 보정합니다. 서버 부하·네트워크 지연에 따른 절대 시간 보장은 아닙니다.
+기존 상태 모드의 READY에는 `includeMessages` 필드가 없습니다. 본문 모드의 READY는 서버가 본문 수신을 지원한다는 확인입니다. READY의 `lastSequence`까지의 기록은 최초 목록 또는 HTTP `after`로 가져옵니다. 서버는 그 다음 순서부터 본문을 직접 전달하며, READY보다 본문을 먼저 보내지 않습니다.
+
+### 본문 직접 전달
+
+커밋 또는 다른 노드의 Redis 알림을 받으면 소켓 송신 작업을 즉시 제출합니다. 정상 전달을 위해 250ms 주기를 기다리지 않습니다. DB 조회·작업 대기·네트워크 지연까지 없다는 의미는 아니며 절대 지연시간은 보장하지 않습니다.
+
+```json
+{
+  "type":"MESSAGE_CREATED",
+  "message":{
+    "messageId":121,"roomId":5,"sequence":32,
+    "clientMessageId":"f0e8d3a2-902a-4b76-bb50-1ca73b277709",
+    "senderUserId":7,"senderNickname":"이웃","senderProfileImageKey":null,
+    "content":"오늘 루틴 완료했어요!","createdAt":"2026-10-02T08:00:00Z","unreadCount":2
+  }
+}
+```
+
+- `message`는 HTTP 전송/기록 API와 동일한 메시지 DTO입니다. 별도 HTTP 조회 없이 표시할 수 있습니다. 발신자의 구독 소켓에도 전달됩니다.
+- 연결별로 DB의 마지막 전송 순서 이후를 오름차순으로 읽고 한 프레임씩 보냅니다. 로컬·Redis 신호가 중복되거나 합쳐져도 본문을 생략하지 않습니다.
+- 한 작업은 최대 50개 본문을 보내고, 남으면 다음 작업으로 이어집니다. 송신 중 본문을 메모리에 무제한 쌓지 않으며 대기 중인 기록은 DB가 보관합니다.
+- 서버의 소켓 쓰기 완료는 클라이언트 수신/저장 확인이나 읽음 확인이 아닙니다. HTTP 응답·소켓·복구 조회가 겹칠 수 있으므로 `(roomId, sequence)` 또는 `messageId`로 중복을 제거합니다.
+- 본문 수신만으로 읽음 상태가 바뀌지 않습니다. 화면에 표시한 마지막 위치를 기존 read API로 전송합니다.
+
+### 방 상태와 복구
+
+메시지 전송·읽음 변경 이후에는 기존 형식의 `ROOM_UPDATED`도 보냅니다.
+
+```json
+{"type":"ROOM_UPDATED","room":{"roomId":5,"roomType":"HOUSE","houseId":20,"lastSequence":32,"readers":[]}}
+```
+
+본문 모드에서는 해당 작업의 본문들을 먼저 전달한 뒤 방 상태를 보냅니다. 클라이언트가 이미 연속 수신한 위치까지는 추가 HTTP 조회를 하지 않습니다. 구성원과 읽음 상태는 `room.readers`로 갱신합니다.
+
+방 변경이 없더라도 약 5초마다 DB와 동기화합니다. 본문 모드는 구독 이후 누락된 본문도 이때 이어 보내고, 상태 모드는 최신 방 상태만 알립니다. Redis Pub/Sub는 전달 보장이 아니며, 재접속 시 HTTP 복구는 두 모드 모두 필요합니다.
 
 ### 클라이언트 연결 순서
 
 1. 방 생성/조회로 `roomId`를 얻고 WebSocket 이벤트 리스너를 연결합니다.
-2. SUBSCRIBE를 보내고 READY 이후 기록을 조회합니다. 로컬 기록이 있으면 `after=마지막 연속 수신 sequence`로 복구합니다.
-3. ROOM_UPDATED의 `lastSequence`가 로컬 연속 수신 위치보다 크면 `after` 조회를 반복하고 `hasNext`를 따라갑니다. 알림 여러 개를 합쳐 하나의 조회 작업으로 처리할 수 있습니다.
-4. 저장한 마지막 메시지의 `sequence`만 수신 커서로 기록합니다. 알림의 `lastSequence`로 바로 점프하면 중간 메시지를 놓칩니다.
-5. 화면에 실제 표시한 마지막 순서를 read API로 전송합니다. 전송 응답이 유실되면 같은 UUID로 재전송합니다.
-6. 토큰 만료/네트워크 단절/배포로 끊어지면 기존 로그인 refresh 흐름으로 유효한 JWT를 확보한 뒤 재연결합니다.
+2. `includeMessages=true`로 SUBSCRIBE를 보내고 READY를 기다립니다. READY 이전까지의 기록을 최초 목록으로 조회하거나, 로컬 기록이 있으면 `after=마지막 연속 수신 sequence`로 복구합니다.
+3. 기록 조회 중 들어오는 `MESSAGE_CREATED`를 보관하고 HTTP 결과와 순서대로 병합합니다. 예를 들어 로컬 위치가 29, READY가 31일 때 32가 먼저 와도 30·31을 복구하기 전에 커서를 32로 올리지 않습니다.
+4. 정상 수신은 본문을 바로 표시합니다. 중복은 제거하고, 순서에 틈이 있거나 ROOM_UPDATED의 `lastSequence`가 로컬 연속 수신 위치보다 크면 `after` 조회로 채웁니다. `hasNext`가 true이면 계속 조회합니다. 동시에 여러 복구 요청을 만들지 않습니다.
+5. 수신 커서는 실제로 확보한 연속 구간 끝까지만 전진합니다. READY/ROOM_UPDATED의 `lastSequence`나 아직 앞 구간이 빠진 본문 순서로 바로 점프하지 않습니다. 처음 최신 목록을 가져온 경우에는 그 목록의 연속 구간을 시작점으로 삼고, 이전 기록은 `before`로 따로 조회합니다.
+6. 화면에 실제 표시한 마지막 순서를 read API로 전송합니다. 발신 HTTP 응답이 유실되면 같은 UUID로 재전송합니다. HTTP 응답보다 본문 이벤트가 먼저 도착할 수도 있으므로 발신자·`clientMessageId`로 전송 중 말풍선과 연결합니다.
+7. 토큰 만료/네트워크 단절/배포/서버 용량 초과로 끊어지면 필요 시 기존 로그인 refresh 흐름으로 유효한 JWT를 확보한 뒤 지수 백오프와 jitter를 적용해 재연결합니다. 마지막 연속 수신 위치부터 HTTP로 복구합니다.
 
-인가 실패·잘못된 구독 요청·인증 시간 초과는 1008, 잘못된 JSON은 1007, 종료 중 서버는 1001, 용량 초과는 1013입니다. 토큰 만료 및 탈퇴·강퇴는 수신 시와 주기 동기화 때 다시 검사합니다. HTTP 접근 권한은 매 요청 검사하므로 소켓 정리 전에 메시지 본문을 추가 조회할 수 없습니다.
+기존 상태 모드는 `includeMessages`를 생략하고 READY 뒤 기록 조회, ROOM_UPDATED 뒤 부족한 구간 HTTP 조회를 수행합니다. 서버 배포 후 모바일에서 본문 모드를 활성화합니다. 백엔드 변경만으로 기존 앱이 새 본문 이벤트를 처리하는 것은 아닙니다.
 
-소켓에 SEND/READ 프레임을 보내지 않습니다. 상태 변경은 위 HTTP API로 수행하며 모든 수신은 WebSocket으로 알림받습니다.
+인가 실패·잘못된 구독 요청·인증 시간 초과는 1008, 잘못된 JSON은 1007, 종료 중 서버는 1001, 작업 대기열/연결 용량 초과는 1013, 송신 실패·지연 또는 순서 불일치는 1011입니다. 토큰 만료 및 탈퇴·강퇴는 각 프레임 쓰기 직전과 주기 동기화 때 다시 검사합니다. 이미 네트워크로 내보낸 프레임을 회수할 수는 없지만, 권한 상실이 확인된 이후 다음 본문은 전달하지 않습니다. HTTP 접근 권한도 매 요청 검사합니다.
+
+소켓에 SEND/READ 프레임을 보내지 않습니다. 상태 변경은 위 HTTP API로 수행합니다.
 
 ## 오류
 
