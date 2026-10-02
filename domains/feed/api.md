@@ -10,7 +10,7 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | GET | `/images/{imageId}` | 권한 확인 후 JPEG 바이너리 → 200 |
 | DELETE | `/images/{imageId}` | 본인의 미게시 업로드 취소 → 204 |
 | POST | `/posts` | 게시물 등록 → 201 Post (재시도도 201) |
-| GET | `/posts` | 전체/작성자별 커서 목록 → 200 Page<Post> |
+| GET | `/posts` | 전체/게시판별/작성자별 커서 목록 → 200 Page<Post> |
 | GET | `/posts/{postId}` | 게시물 상세 → 200 Post |
 | PATCH | `/posts/{postId}` | 본인 본문 수정 → 200 Post |
 | DELETE | `/posts/{postId}` | 본인 게시물 삭제 → 204 |
@@ -46,17 +46,19 @@ POST `/posts`:
 ```json
 {
   "clientPostId": "79bbc1e8-ae4c-4870-b7d0-e1b978517e8b",
+  "boardType": "VERIFICATION",
   "content": "오늘 루틴 완료!",
   "imageIds": [21, 22]
 }
 ```
 
 - `clientPostId`: 필수 UUID. 같은 등록 작업의 네트워크 재시도에는 같은 값, 새 글에는 새 값.
-- `content`: 생략/null/빈 문자열 허용, 최대 2,000자. 앞뒤 공백 제거.
-- `imageIds`: 필수 1–10개, 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
-- 동일 사용자·UUID에 같은 정규화 본문과 같은 사진 순서이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`.
+- `boardType`: `FREE` 또는 `VERIFICATION`. 생략/null은 구버전 호환을 위해 `VERIFICATION`. 다른 값은 400.
+- `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 사진이 있으면 생략/null/빈 문자열 허용.
+- `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 필수 1–10개. 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
+- 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`.
 
-PATCH `/posts/{postId}`는 `{ "content": "수정할 본문" }`만 받는다. `content`는 필수이고 빈 문자열은 허용한다. 사진 변경은 지원하지 않는다.
+PATCH `/posts/{postId}`는 `{ "content": "수정할 본문" }`만 받는다. `content`는 필수이며 사진이 있는 글에만 빈 문자열을 허용한다. 사진과 게시판 종류 변경은 지원하지 않는다.
 
 Post:
 
@@ -64,6 +66,7 @@ Post:
 {
   "postId": 100,
   "author": { "userId": 7, "nickname": "루틴친구", "profileImageKey": null },
+  "boardType": "VERIFICATION",
   "content": "오늘 루틴 완료!",
   "images": [
     { "imageId": 21, "storageKey": "private/feed/11111111-2222-3333-4444-555555555555.jpg", "width": 1200, "height": 1600, "contentType": "image/jpeg" }
@@ -79,9 +82,24 @@ Post:
 
 `images`는 요청한 순서다. `nickname`, `profileImageKey`는 null 가능하므로 앱 기본 표시를 사용한다. `mine`/`likedByMe`는 요청자 기준이다. 본인 글에도 좋아요·댓글을 달 수 있다.
 
-## 피드·작성자별 목록
+자유글 등록 예시(사진 업로드 없이 요청):
 
-GET `/posts?size=20&cursor=100&authorId=7`
+```json
+{
+  "clientPostId": "481e86b3-09bd-46ab-82fd-d834a1f3e7fc",
+  "boardType": "FREE",
+  "content": "오늘 하루는 어땠나요?",
+  "imageIds": []
+}
+```
+
+`Post.boardType`은 항상 `FREE` 또는 `VERIFICATION`이며 사진 없는 자유글의 `images`는 빈 배열이다. 기존 게시물은 `VERIFICATION`으로 반환한다. 인증게시판의 사진은 완료 기록의 서버 검증을 의미하지 않는다.
+
+## 피드·게시판별·작성자별 목록
+
+GET `/posts?boardType=FREE&size=20&cursor=100&authorId=7`
+
+- `boardType`: `FREE` 또는 `VERIFICATION`. 생략하면 통합 피드다. 작성자·커서 조건과 함께 적용하며 잘못된 값은 400이다. 게시판 전환 시 cursor 없이 첫 페이지부터 조회한다.
 
 - `authorId` 생략: 전체 피드, 지정: 해당 사용자 공개 게시물. 내 ID를 넣으면 내 목록이다. 존재하지 않거나 탈퇴한 작성자는 빈 목록이다.
 - `size`: 기본 20, 1–50.
