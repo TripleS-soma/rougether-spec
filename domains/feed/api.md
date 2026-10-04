@@ -12,7 +12,7 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | POST | `/posts` | 게시물 등록 → 201 Post (재시도도 201) |
 | GET | `/posts` | 전체/게시판별/작성자별 커서 목록 → 200 Page<Post> |
 | GET | `/posts/{postId}` | 게시물 상세 → 200 Post |
-| PATCH | `/posts/{postId}` | 본인 본문 수정 → 200 Post |
+| PATCH | `/posts/{postId}` | 본인 본문·게시판·연결 루틴 수정 → 200 Post |
 | DELETE | `/posts/{postId}` | 본인 게시물 삭제 → 204 |
 | PUT | `/posts/{postId}/like` | 좋아요 → 204 |
 | DELETE | `/posts/{postId}/like` | 좋아요 취소 → 204 |
@@ -48,7 +48,8 @@ POST `/posts`:
   "clientPostId": "79bbc1e8-ae4c-4870-b7d0-e1b978517e8b",
   "boardType": "VERIFICATION",
   "content": "오늘 루틴 완료!",
-  "imageIds": [21, 22]
+  "imageIds": [21, 22],
+  "routineCompletion": { "routineId": 15, "date": "2026-10-04" }
 }
 ```
 
@@ -56,9 +57,37 @@ POST `/posts`:
 - `boardType`: `FREE` 또는 `VERIFICATION`. 생략/null은 구버전 호환을 위해 `VERIFICATION`. 다른 값은 400.
 - `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 사진이 있으면 생략/null/빈 문자열 허용.
 - `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 필수 1–10개. 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
-- 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`.
+- `routineCompletion`: 인증게시판 **필수**, 자유게시판 **금지**(보내면 400 `FEED_INPUT_INVALID`). 아래 [루틴 완료 연결](#루틴-완료-연결) 규칙을 따른다.
+- 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서·연결 루틴(`routineId`+`date`)이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`. 재시도 판정이 연결 필수 검사보다 먼저이므로, 이 규칙 이전에 연결 없이 등록된 인증글의 재시도도 원래 글을 돌려받는다.
 
-PATCH `/posts/{postId}`는 `{ "content": "수정할 본문" }`만 받는다. `content`는 필수이며 사진이 있는 글에만 빈 문자열을 허용한다. 사진과 게시판 종류 변경은 지원하지 않는다.
+### 루틴 완료 연결
+
+인증게시판 글은 작성자의 루틴 완료 기록 하나를 가리킨다.
+
+- `routineId`: 본인 루틴 id(양수). 오늘 현황·캘린더에서 받은 현재 id를 보낸다. 루틴 수정으로 갈린 옛 버전 id·삭제된 루틴 id도 본인 것이면 같은 계보로 판정한다.
+- `date`: 완료한 날의 **Asia/Seoul 달력 날짜** `YYYY-MM-DD`(루틴 완료 기록의 `routineDate`와 같은 기준). 요청 시점 KST **오늘과 그 이전 6일(총 7일)** 만 허용하고 미래 날짜는 거절한다. 예: KST 2026-10-04이면 2026-09-28 ~ 2026-10-04.
+- 해당 루틴 계보에 그 날짜의 `COMPLETED` 기록이 있어야 한다. 건너뜀(`SKIPPED`)·실패·미완료는 연결할 수 없다. 투두 완료는 연결 대상이 아니다.
+- 위 조건 중 하나라도 어기면(남의 루틴·없는 루틴 포함) 400 `FEED_ROUTINE_COMPLETION_INVALID`. 루틴 존재 여부를 드러내지 않도록 사유를 구분하지 않는다. 형식이 틀린 날짜·`routineId` 누락은 공통 validation 400이다.
+- 응답의 루틴 제목은 **연결 시점 스냅샷**이다(계보의 현재 살아 있는 버전 제목, 모두 삭제됐으면 요청한 버전의 제목). 연결 후 루틴 이름 변경·삭제·완료 취소는 기존 글의 배지를 바꾸지 않는다. 공개되는 것은 작성자가 고른 그 루틴의 제목·날짜뿐이다.
+
+### 게시물 수정
+
+PATCH `/posts/{postId}`의 모든 필드는 선택이며 **생략한 필드는 유지**한다. `{ "content": "..." }`만 보내는 기존 요청은 이전과 똑같이 본문만 바꾼다.
+
+```json
+{
+  "content": "수정할 본문",
+  "boardType": "VERIFICATION",
+  "routineCompletion": { "routineId": 15, "date": "2026-10-03" }
+}
+```
+
+- `content`: 최대 2,000자. 결과 게시판이 인증게시판이거나 사진이 있는 글에만 빈 문자열을 허용한다. 세 필드를 모두 생략하면 400 `FEED_INPUT_INVALID`.
+- `boardType` → `VERIFICATION`(자유글에서 전환): 사진이 1장 이상 있는 글만 가능하다(사진은 수정 불가, 없으면 400 `FEED_INPUT_INVALID`). 유효한 `routineCompletion`이 필요하다(없으면 400 `FEED_ROUTINE_COMPLETION_REQUIRED`).
+- `boardType` → `FREE`(인증글에서 전환): 루틴 연결을 해제하고 응답 `routine`이 null이 된다. 사진 없는 글이 되는 경우는 없지만, 결과가 사진 없는 자유글이면 비어 있지 않은 본문이 필요하다.
+- 인증글로 남는 수정: `routineCompletion`을 보내면 검증 후 교체, 생략하면 기존 연결(또는 연결 없음)을 유지한다. 기간 제한은 수정 요청 시점 KST 기준이다.
+- 결과가 자유게시판인데 `routineCompletion`을 보내면 400 `FEED_INPUT_INVALID`.
+- 게시판을 바꾼 글에 원래 등록 요청을 같은 `clientPostId`로 재전송하면 게시판이 달라 409다. 본문·연결 루틴만 바꾼 경우는 기존처럼 현재 글을 반환한다.
 
 Post:
 
@@ -68,6 +97,7 @@ Post:
   "author": { "userId": 7, "nickname": "루틴친구", "profileImageKey": null },
   "boardType": "VERIFICATION",
   "content": "오늘 루틴 완료!",
+  "routine": { "routineId": 15, "title": "아침 스트레칭", "date": "2026-10-04" },
   "images": [
     { "imageId": 21, "storageKey": "private/feed/11111111-2222-3333-4444-555555555555.jpg", "width": 1200, "height": 1600, "contentType": "image/jpeg" }
   ],
@@ -80,7 +110,7 @@ Post:
 }
 ```
 
-`images`는 요청한 순서다. `nickname`, `profileImageKey`는 null 가능하므로 앱 기본 표시를 사용한다. `mine`/`likedByMe`는 요청자 기준이다. 본인 글에도 좋아요·댓글을 달 수 있다.
+`images`는 요청한 순서다. `routine`은 인증글의 연결 루틴이며 자유글과 연결 없는 기존 인증글은 `null`이다(필드는 항상 존재). `nickname`, `profileImageKey`는 null 가능하므로 앱 기본 표시를 사용한다. `mine`/`likedByMe`는 요청자 기준이다. 본인 글에도 좋아요·댓글을 달 수 있다.
 
 자유글 등록 예시(사진 업로드 없이 요청):
 
@@ -93,7 +123,7 @@ Post:
 }
 ```
 
-`Post.boardType`은 항상 `FREE` 또는 `VERIFICATION`이며 사진 없는 자유글의 `images`는 빈 배열이다. 기존 게시물은 `VERIFICATION`으로 반환한다. 인증게시판의 사진은 완료 기록의 서버 검증을 의미하지 않는다.
+`Post.boardType`은 항상 `FREE` 또는 `VERIFICATION`이며 사진 없는 자유글의 `images`는 빈 배열이다. 기존 게시물은 `VERIFICATION`으로 반환한다. 인증게시판의 `routine`은 연결 시점에 서버가 완료 기록을 확인했다는 뜻이며, 사진 내용 자체를 검증하지는 않는다.
 
 ## 피드·게시판별·작성자별 목록
 
@@ -143,7 +173,9 @@ GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나�
 | HTTP | code | 의미 |
 | --- | --- | --- |
 | 401 | `AUTH_INVALID_TOKEN` 등 인증 코드 | 미인증·탈퇴·봇 접근 불가 |
-| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류 |
+| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 사진 없는 글의 인증게시판 전환, 빈 수정 요청 |
+| 400 | `FEED_ROUTINE_COMPLETION_REQUIRED` | 인증게시판 등록·전환에 `routineCompletion` 누락 |
+| 400 | `FEED_ROUTINE_COMPLETION_INVALID` | 본인 루틴이 아님·없음, 그 날짜 완료 기록 없음, KST 오늘~6일 전 밖·미래 날짜 |
 | 400 | `FEED_CONTENT_BANNED` | 본문·댓글 금칙어 |
 | 400 | `FEED_IMAGE_INVALID` | 실제 JPEG/PNG 아님, 용량·화소 제한, 손상 이미지 |
 | 403 | `FEED_FORBIDDEN` | 다른 사람의 글·댓글·미게시 사진 변경 |
