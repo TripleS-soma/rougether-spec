@@ -279,8 +279,8 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 
 ### 공개 SNS 피드 (신규 4개 테이블)
 
-- **feed_posts**: id* BIGINT | author_id→users | client_post_id VARCHAR(36) | request_hash VARCHAR(64) | board_type VARCHAR(20) NOT NULL DEFAULT 'VERIFICATION' | content VARCHAR(2000) | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
-  - unique(author_id, client_post_id), index(deleted_at, id), index(author_id, deleted_at, id), index(board_type, deleted_at, id), index(board_type, author_id, deleted_at, id). board_type은 FREE/VERIFICATION이며 기존 글은 VERIFICATION이다. 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다.
+- **feed_posts**: id* BIGINT | author_id→users | client_post_id VARCHAR(36) | request_hash VARCHAR(64) | board_type VARCHAR(20) NOT NULL DEFAULT 'VERIFICATION' | content VARCHAR(2000) | routine_id BIGINT? | routine_date DATE? | routine_title VARCHAR(160)? | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
+  - unique(author_id, client_post_id), index(deleted_at, id), index(author_id, deleted_at, id), index(board_type, deleted_at, id), index(board_type, author_id, deleted_at, id). board_type은 FREE/VERIFICATION이며 기존 글은 VERIFICATION이다. 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. routine_id·routine_date·routine_title은 인증글이 연결한 루틴 완료 기록(KST 날짜)과 연결 시점 제목 스냅샷이다. 루틴 버전 분기·삭제와 무관하게 남도록 FK를 두지 않으며, 연결 없는 기존 글은 NULL이다. 글 삭제·탈퇴 정리 시 비운다.
 - **feed_images**: id* BIGINT | owner_id→users | post_id→feed_posts? | storage_key VARCHAR(255) | width INT | height INT | ready BOOLEAN | sort_order INT? | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6)
   - unique(storage_key), index(post_id, sort_order), index(expires_at, id). 비공개 JPEG key와 변환 후 치수다. 업로드 예약 시 row를 만들고 S3 저장 완료 후 ready=true가 된다. 게시 시 post_id와 0부터 시작하는 사진 순서를 저장한다. expires_at은 미게시 사진에만 적용한다.
 - **feed_likes**: id* BIGINT | post_id→feed_posts | user_id→users
