@@ -133,7 +133,7 @@
 - `ROOM_COBWEB_CLEANED`는 같은 집 구성원이 거미줄을 청소했을 때 방 주인에게 저장·push하며 `ref_id`는 방 주인 user id다.
 - `WEEKLY_REPORT`는 AI 주간 회고 도착 알림 — 주간 배치(`weeklyReportPushJob`)가 회고 생성 배치(일요일 00:30 KST)와 **분리된 발송 시각**(일요일 20:00 KST) 이후 저장·push하며, `ref_id`는 주간 회고(`weekly_reports` — 위 "루틴 / 투두" 참고) id로 중복 발송을 막는다. 대상은 항상 가장 최근 끝난 주뿐(뒤늦은 지난 주 push 없음). 설정 그룹은 `REMINDER`.
 - **notification_setting**: id* | user_id→users | type VARCHAR(30) | enabled BOOLEAN | created_at | updated_at
-  - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림)/`FEED`(피드 알림)/`MARKET`(거래소 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`. **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
+  - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림)/`FEED`(피드 알림)/`MARKET`(거래소 알림)/`CHAT`(채팅 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `CHAT` ← `CHAT_MESSAGE`(푸시 전용 — `notification`에 저장하지 않으므로 아래 push_status 규칙 대상 아님). **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
 
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at? | is_public BOOLEAN | onboarding_auto_join_enabled BOOLEAN DEFAULT FALSE
@@ -264,7 +264,7 @@ erDiagram
 
 - **chat_rooms**: id* | room_type VARCHAR(20) | house_id? →house, UNIQUE | last_sequence BIGINT default 0
 - **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6). UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id).
-- **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0. UNIQUE(room_id,user_id).
+- **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0 | push_muted BOOLEAN default false. UNIQUE(room_id,user_id). `push_muted`는 사용자별 방 푸시 음소거 여부.
 
 ## 다국어·개인 알림 시간대 확장
 

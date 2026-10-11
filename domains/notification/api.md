@@ -34,14 +34,14 @@
 
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
-| `GET /api/v1/users/me/notification-settings` | 내 알림 설정 조회 | resp: `all`, `reminder`, `house`, `feed`, `market` (전부 boolean) | `notification_setting` |
-| `PATCH /api/v1/users/me/notification-settings` | 내 알림 설정 부분 변경 | req: `all`?, `reminder`?, `house`?, `feed`?, `market`? (전부 optional boolean) / resp: 변경 반영된 전체 설정(GET과 동일 형태) | `notification_setting` |
+| `GET /api/v1/users/me/notification-settings` | 내 알림 설정 조회 | resp: `all`, `reminder`, `house`, `feed`, `market`, `chat` (전부 boolean) | `notification_setting` |
+| `PATCH /api/v1/users/me/notification-settings` | 내 알림 설정 부분 변경 | req: `all`?, `reminder`?, `house`?, `feed`?, `market`?, `chat`? (전부 optional boolean) / resp: 변경 반영된 전체 설정(GET과 동일 형태) | `notification_setting` |
 
-- 설정 단위는 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`)이다: `ALL`(전체 마스터) / `REMINDER`(리마인더) / `HOUSE`(집 알림) / `FEED`(피드 알림) / `MARKET`(거래소 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`·`HOUSE_JOIN_REQUEST_CREATED`·`HOUSE_JOIN_REQUEST_ACCEPTED`·`HOUSE_JOIN_REQUEST_REJECTED`·`ROOM_COBWEB_CLEANED`, `FEED` ← `FEED_COMMENT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `SERVICE`(서비스 메시지, #348) ← `BUG_REPORT_REPLY`. `SERVICE` 는 설정 UI·API 에 노출하지 않는다 — off 행이 생길 수 없어 사실상 마스터 `ALL` off 만 차단한다(문의 답장은 리마인드를 꺼둔 사용자에게도 가야 함).
+- 설정 단위는 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`)이다: `ALL`(전체 마스터) / `REMINDER`(리마인더) / `HOUSE`(집 알림) / `FEED`(피드 알림) / `MARKET`(거래소 알림) / `CHAT`(채팅 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`·`HOUSE_JOIN_REQUEST_CREATED`·`HOUSE_JOIN_REQUEST_ACCEPTED`·`HOUSE_JOIN_REQUEST_REJECTED`·`ROOM_COBWEB_CLEANED`, `FEED` ← `FEED_COMMENT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `CHAT` ← `CHAT_MESSAGE`, `SERVICE`(서비스 메시지, #348) ← `BUG_REPORT_REPLY`. `SERVICE` 는 설정 UI·API 에 노출하지 않는다 — off 행이 생길 수 없어 사실상 마스터 `ALL` off 만 차단한다(문의 답장은 리마인드를 꺼둔 사용자에게도 가야 함).
 - **행 없음 = ON**이 기본값이다. 신규 가입자는 설정 행이 0개이고 전부 켜진 것으로 조회된다. off로 바꿀 때만 행이 생긴다.
-- off 범위는 **FCM push만 차단**이다. 알림 내역(`notification`) 저장은 설정과 무관하게 항상 수행되므로 목록·읽음 API 동작은 영향받지 않는다.
+- off 범위는 **FCM push만 차단**이다. 알림 내역(`notification`) 저장은 설정과 무관하게 항상 수행되므로 목록·읽음 API 동작은 영향받지 않는다. 단 푸시 전용 타입(`CHAT_MESSAGE`)은 원래 내역을 저장하지 않으므로 off면 아무것도 남지 않는다.
 - 마스터 `all`이 off면 그룹 설정과 무관하게 모든 push가 차단된다. 이때도 그룹별 값은 보존되어, `all`을 다시 on으로 되돌리면 이전 그룹 설정이 그대로 적용된다.
-- PATCH는 부분 전송이다 — 바꿀 필드만 담아 보내고 생략한 필드는 기존 값이 유지된다. 다섯 필드가 모두 없으면 400(`VALIDATION_FAILED`).
+- PATCH는 부분 전송이다 — 바꿀 필드만 담아 보내고 생략한 필드는 기존 값이 유지된다. 여섯 필드(`all`·`reminder`·`house`·`feed`·`market`·`chat`)가 모두 없으면 400(`VALIDATION_FAILED`).
 - `me` path이므로 JWT의 userId로만 조회·변경한다(소유권 guard 자동).
 - 새 그룹이 필요해지면 `NotificationSettingType`에 상수 추가 + 응답 필드 추가만 하면 되고 table migration은 필요 없다. `NotificationType`은 소속 그룹을 생성자 인자로 받아 새 알림 타입 추가 시 그룹 지정이 컴파일 타임에 강제된다.
 - 발송 게이트는 push가 나가는 **모든 경로**에 적용된다. 공용 진입점 `NotificationService.send(...)`의 push 경로뿐 아니라, 이 진입점을 거치지 않고 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`)·주간 회고 도착(`WEEKLY_REPORT`)도 발송 직전에 같은 판정을 거친다. 즉 `REMINDER` 그룹 off와 마스터 `all` off는 리마인드·주간 회고 push에도 그대로 동작한다.
@@ -56,6 +56,7 @@
 - 등록된 토큰(`user_device_token`) 전체로 멀티캐스트 발송하고(500개 단위 청크 분할), FCM이 `UNREGISTERED`/`INVALID_ARGUMENT`로 응답한 token은 삭제한다. 멀티캐스트 호출 자체가 예외로 죽으면 그 청크 전체를 실패로 집계하되 무효 토큰 삭제는 하지 않는다.
 - iOS 발송은 FCM+APNs 릴레이 방식이다(APNs 직접 연동 없음). 발송 메시지에 `ApnsConfig`(aps `sound = "default"`)를 포함해 iOS 알림이 무음으로 도착하지 않게 한다. badge 카운트는 MVP 제외. Android 쪽 메시지 형태는 변경 없음(기존 `Notification` title/body 그대로), 디바이스 토큰 API·스키마도 변경 없음. APNs 인증 키(.p8)는 Firebase Console의 Apple 앱 구성에 등록한다(콘솔 작업, 키 파일 커밋 금지).
 - 발송 결과는 `notification.push_status`(`PENDING`/`SENT`/`BLOCKED`/`FAILED`)로 추적한다: 저장 시 `PENDING`, 발송 후 등록 토큰 중 1개 이상 실제 전송에 성공하면 `SENT`, 사용자가 알림 설정을 꺼서 발송하지 않으면 `BLOCKED`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`. `BLOCKED`는 발송 실패가 아니라 설정에 따른 정상 종결이므로 `FAILED`와 구분한다(발송 실패율 지표에 사용자 설정이 섞이지 않게 함). `FAILED` 재시도는 없다(MVP). 상태 갱신은 알림 목록 응답에 노출하지 않는다.
+- **푸시 전용 타입**: `CHAT_MESSAGE`(설정 그룹 `CHAT`)는 알림함에 저장하지 않는 푸시 전용 타입이라 위 `type` 목록·알림 목록 API에 나오지 않는다. 공용 진입점 `send(...)`는 항상 내역을 저장하므로, 이 타입은 내역 없이 보내는 별도 푸시 전용 경로를 쓴다 — `notification` 행·`push_status` 발송 상태 기록이 없다. 설정 게이트는 같은 `NotificationPushPolicy`를 거친다(`ALL` 또는 `CHAT` off면 차단). 트리거·대상·문구·FCM data는 [채팅 API](../chat/api.md) "푸시 알림" 절을 따른다.
 - firebase 서비스 계정 JSON은 환경변수(`FIREBASE_CREDENTIALS_PATH`)/외부 경로로 주입한다(커밋 금지). 발송 활성화는 프로필이 아니라 자격증명 주입 여부 기준 — 미주입 환경은 실제 발송 없이 stub으로 동작하고, 로컬도 자격증명을 주입하면 실발송된다. 단 **`prod` 프로필에서 자격증명 미주입이면 stub으로 조용히 뜨지 않고 기동에 실패**한다(fail-fast). 테스트는 항상 stub으로 고정된다.
 - 브로커(RabbitMQ/Kafka)는 아직 도입하지 않는다(다중 인스턴스·발송량 증가 시 재검토).
 
