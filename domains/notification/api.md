@@ -76,7 +76,7 @@
 
 - 판매 체결(`MARKET_SELL_FILLED`): 호가창에 대기하던 판매 주문이 체결되면 판매자에게 체결 건마다 1개. 보유분·발행 재고 판매 모두. `refId` = 판매자 주문 id.
 - 구매 체결(`MARKET_BUY_FILLED`): 호가창에 대기하던 구매 주문이 체결되면 구매자에게. `refId` = 구매자 주문 id.
-- 구매 대기 등록(`MARKET_BID_PLACED`): 구매 주문이 즉시 다 체결되지 않고 `OPEN`으로 남으면, 그 종목에 `OPEN` SELL 주문이 있는 판매자 전원(구매자 본인 제외, 중복 제거)에게. 건마다 보내며 중복 방지는 없다. `refId` = assetId.
+- 구매 대기 등록(`MARKET_BID_PLACED`): 구매 주문이 즉시 다 체결되지 않고 `OPEN`으로 남으면, 그 종목에 `OPEN` SELL 주문이 있는 판매자 전원(구매자 본인 제외, 중복 제거)에게. 같은 수신자·종목(`refId`)으로는 24시간에 1번만 보낸다 — 본문에 가격이 들어가 본문 비교 dedup 은 가격만 바꾸면 우회되므로 `refId` 기준으로 거른다. `refId` = assetId.
 - 체결 알림은 대기하던 쪽(maker)에게만 보낸다. taker는 접수 결과 조회(`GET /market/commands/{commandId}`)로 안다.
 - 엔진 처리 트랜잭션 안에서 `NotificationService.send(...)`로 내역을 저장하고(동기), push는 커밋 후(AFTER_COMMIT) best-effort로 보낸다. 롤백된 체결로는 push가 나가지 않고 알림 내역도 남지 않는다. 엔진 재시도·펜싱으로 같은 접수가 다시 처리돼도 체결이 1회이므로 알림도 1회다.
 - 문구(ko / en, 가격은 체결가 또는 구매 대기 가격)
