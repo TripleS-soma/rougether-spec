@@ -76,6 +76,8 @@
   - 늘리기: 늘린 수량만큼 접수 시 발행 재고에서 미리 차감하고(에스크로, 부족하면 `MARKET_INSUFFICIENT_SUPPLY`), 엔진이 거절하면 돌려준다. 엔진이 주문의 `engine_seq`를 수정 접수의 처리 순번으로 바꾸므로 대기 순서는 같은 가격대 맨 뒤가 되고, 엔진 재시작 후에도 유지된다.
   - `expiresAt`은 바꾸지 않는다(최초 접수 + 7일).
   - 수정 후 수량이 체결 수량 이하(남은 수량 0 이하)면 `MARKET_AMEND_BELOW_FILLED`(409). 접수 시점에 판정하고, 접수와 엔진 처리 사이 체결로 깨질 수 있으므로 엔진에서 다시 판정한다(엔진 거절 시 늘린 분 환급).
+  - 엔진 정산: 같은 주문에 수정이 연달아 들어오면 접수 시점엔 앞선 수정이 아직 반영 전일 수 있으므로, 엔진은 **처리 시점 주문 수량**으로 다시 정산한다. 돌려줄 재고 = 접수 때 미리 뺀 수량 − (새 수량 − 처리 시점 수량). 양수면 발행 재고로 돌려주고, 음수면 모자란 만큼 발행 재고에서 더 빼며 부족하면 `MARKET_INSUFFICIENT_SUPPLY`로 거절하고 미리 뺀 수량을 돌려준다. 이 규칙으로 수정이 몇 번 쌓여도 발행 재고 총량이 유지된다.
+  - '현재 수량과 같음'·'체결 수량 이하' 접수 판정은 접수 시점에 DB 에 반영된 주문 수량 기준이다(처리 전 수정은 고려하지 않음). 최종 결과는 위 엔진 정산이 정한다.
   - 엔진 처리 시 주문이 이미 종료됐으면 `MARKET_ORDER_NOT_OPEN`으로 거절하고 늘린 분을 돌려준다.
 - 응답 202: Command. 결과는 `GET /market/commands/{commandId}`로 확인한다.
 - 멱등: 주문·취소와 같은 `requestId` 규칙이다. 같은 `requestId`·같은 내용이면 기존 접수를 그대로 반환하고, 다른 내용이면 `MARKET_REQUEST_CONFLICT`(409).
@@ -87,7 +89,7 @@
 
 - 응답: `commandId`, `status`(`PENDING` / `APPLIED` / `REJECTED`), `rejectCode?`, `order?`(아래 Order)
 - 주요 오류: 없거나 본인 접수가 아님 `MARKET_COMMAND_NOT_FOUND`(404).
-- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`(취소·수량 수정), 수량 수정 후 수량이 체결 수량 이하 `MARKET_AMEND_BELOW_FILLED`(접수 후 체결로 남은 수량이 0 이하가 된 경우), 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
+- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`(취소·수량 수정), 수량 수정 후 수량이 체결 수량 이하 `MARKET_AMEND_BELOW_FILLED`(접수 후 체결로 남은 수량이 0 이하가 된 경우), 수량 수정 엔진 정산 중 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`, 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
 
 ## GET /api/v1/me/market/orders
 
