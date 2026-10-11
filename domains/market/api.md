@@ -12,6 +12,7 @@
 | GET | `/market/assets/{assetId}/trades` | 최근 체결 → 200 Page<Trade> |
 | POST | `/market/orders` | 주문 접수 → 202 Command |
 | POST | `/market/orders/{orderId}/cancel` | 주문 취소 접수 → 202 Command |
+| POST | `/market/orders/{orderId}/amend` | 발행 재고 판매 주문 수량 수정 접수 → 202 Command |
 | GET | `/market/commands/{commandId}` | 접수 결과 → 200 Command |
 | GET | `/me/market/orders` | 내 주문 목록 → 200 Page<Order> |
 
@@ -62,13 +63,31 @@
 - 멱등: 같은 `requestId`로 같은 주문 취소를 다시 보내면 기존 접수를 그대로 반환한다. 같은 `requestId`에 다른 내용(다른 주문, 또는 주문 접수에 쓴 `requestId` 재사용)이면 `MARKET_REQUEST_CONFLICT`(409).
 - 주요 오류: 본인 주문 아님 `MARKET_ORDER_NOT_FOUND`(404), 이미 종료 `MARKET_ORDER_NOT_OPEN`(409), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409).
 
+## POST /api/v1/market/orders/{orderId}/amend
+
+제작자의 발행 재고 판매 주문 수량을 늘리거나 줄인다.
+관련 table: `market_commands`, `market_orders`, `market_assets`.
+
+- 요청 body: `{ "requestId": "uuid", "quantity": 5 }`
+  - `quantity`: 수정 후 주문 전체 수량(체결분 포함), 1~10.
+- 대상: 본인의 `OPEN`이고 `source = ISSUANCE`인 판매 주문만. 보유분 판매·구매 주문은 수량 1 고정이라 `MARKET_ORDER_NOT_AMENDABLE`(409).
+- 동작
+  - 줄이기: 엔진 처리 시 줄인 수량만큼 발행 재고(`market_assets.unissued_quantity`)로 돌려준다. 대기 순서는 유지된다.
+  - 늘리기: 늘린 수량만큼 접수 시 발행 재고에서 미리 차감하고(에스크로, 부족하면 `MARKET_INSUFFICIENT_SUPPLY`), 엔진이 거절하면 돌려준다. 엔진이 주문의 `engine_seq`를 수정 접수의 처리 순번으로 바꾸므로 대기 순서는 같은 가격대 맨 뒤가 되고, 엔진 재시작 후에도 유지된다.
+  - `expiresAt`은 바꾸지 않는다(최초 접수 + 7일).
+  - 수정 후 수량이 체결 수량 이하(남은 수량 0 이하)면 `MARKET_AMEND_BELOW_FILLED`(409). 접수 시점에 판정하고, 접수와 엔진 처리 사이 체결로 깨질 수 있으므로 엔진에서 다시 판정한다(엔진 거절 시 늘린 분 환급).
+  - 엔진 처리 시 주문이 이미 종료됐으면 `MARKET_ORDER_NOT_OPEN`으로 거절하고 늘린 분을 돌려준다.
+- 응답 202: Command. 결과는 `GET /market/commands/{commandId}`로 확인한다.
+- 멱등: 주문·취소와 같은 `requestId` 규칙이다. 같은 `requestId`·같은 내용이면 기존 접수를 그대로 반환하고, 다른 내용이면 `MARKET_REQUEST_CONFLICT`(409).
+- 주요 오류: 범위 위반·현재 수량과 같음 `VALIDATION_FAILED`(400), 본인 주문 아님 `MARKET_ORDER_NOT_FOUND`(404), 수정 불가 주문(보유분 판매·구매) `MARKET_ORDER_NOT_AMENDABLE`(409), 체결 수량 이하로 수정 `MARKET_AMEND_BELOW_FILLED`(409), 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`(409), 거래 정지 `MARKET_ASSET_SUSPENDED`(409), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409).
+
 ## GET /api/v1/market/commands/{commandId}
 
-본인 접수만 조회한다. 앱은 주문·취소 후 이 API로 결과를 확인한다.
+본인 접수만 조회한다. 앱은 주문·취소·수량 수정 후 이 API로 결과를 확인한다.
 
 - 응답: `commandId`, `status`(`PENDING` / `APPLIED` / `REJECTED`), `rejectCode?`, `order?`(아래 Order)
 - 주요 오류: 없거나 본인 접수가 아님 `MARKET_COMMAND_NOT_FOUND`(404).
-- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`, 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
+- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`(취소·수량 수정), 수량 수정 후 수량이 체결 수량 이하 `MARKET_AMEND_BELOW_FILLED`(접수 후 체결로 남은 수량이 0 이하가 된 경우), 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
 
 ## GET /api/v1/me/market/orders
 
