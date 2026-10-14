@@ -82,7 +82,7 @@
 
 ### 방 (개인)
 - **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | growth_points BIGINT | highest_growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
-  - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 모루 레벨 5 보상 자격은 완료 취소 후에도 유지하며 카탈로그 준비 뒤 미지급 보정에 사용한다.
+  - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 캐릭터 뽑기·착용 교체 해금(최고 달성 레벨 10 이상) 판정에 쓰며, 완료 취소로 현재 레벨이 내려가도 해금은 유지한다(2026-10-14). 모루 레벨 5 보상 판정 용도는 모루 제거와 함께 폐지했다.
   - `growth_points`: 기본 0, 음수 불가. `growth_level`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. 다음 구간 필요량은 `20 + 2 × L`이다. `routine_logs`·`todos`의 `growth_reward_amount`는 해당 완료가 실제 적립한 포인트(기본 0)이며 취소 시 회수 근거다. 이전 완료 이력은 실제 COIN 보상액 중 미적립 차액을 소급하고, 같은 트랜잭션에서 완료별 지급 표식과 누적·최고 레벨을 반영한다.
   - `layout_format`: `SLOT_V1`(기본, 슬롯 배치 정본) / `FREE_V1`(자유배치 정본). `layout_revision`은 0부터 시작하고 배치 저장 성공마다 증가한다.
 - **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP | unique (room_user_id, slot_type)
@@ -247,7 +247,7 @@ erDiagram
 - 방 자유배치는 `room_item_placements`에 보유 아이템과 정규화 좌표·z-index·scale·rotation·flip을 저장한다. 같은 보유 아이템은 한 방에 한 번만 배치할 수 있다.
 - 배치 정본은 `personal_rooms.layout_format`이 결정한다. `SLOT_V1` 방만 자유배치 첫 저장 시 `FREE_V1`으로 지연 전환하며, surface 3종은 형식과 무관하게 `room_surface_slots`에 남는다.
 - 별도 `assets` table 없음 — 에셋 키는 `items.asset_key`, `characters.base_asset_key`, `themes.cover_image_key`, `photo_verifications.storage_key`에 분산.
-- **캐릭터 획득**: 모루(`moru`)는 개인 방 레벨 5 달성 보상으로 1회 지급하고 온보딩/뽑기에서 제외한다. 기존 캐릭터는 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 8개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
+- **캐릭터 획득**: 모루(`moru`)는 2026-10-14에 제거했다 — 레벨 5 지급을 멈추고 `characters.is_active=false`로 회수, 모루를 착용하던 계정은 고양이(`cat`)로 옮겼다(보유 기록은 남긴다). **캐릭터 뽑기와 착용 교체는 개인 방 최고 달성 레벨 10 이상에서 해금**한다. 기존 캐릭터는 온보딩에서 8개 중 기본 1개 무료 선택, 나머지는 **캐릭터 뽑기**로 획득. 캐릭터 뽑기는 테마 무관 전용 머신(`gacha.theme_id` NULL 허용)으로, 풀 엔트리는 `reward_type = CHARACTER` + `character_id`→`characters`. 비용 코인 500, 8개 균등, 중복 시 코인 100 환급. → `gacha_pool_entries.character_id` FK 추가 + `reward_type`에 `CHARACTER` 값 필요(ERDCloud 정본 반영 필요).
 - **캐릭터 악세사리 획득**: `items.placement_type = character`인 아이템은 직접 구매하지 않고 테마별 뽑기에서 `reward_type = ITEM`으로 획득한다. 풀 엔트리는 `rarity = NULL`, `weight = 1`로 균등 추첨하며 중복 시 다른 아이템과 동일하게 다이아 3을 환급한다.
 
 남은 미결정은 [open-questions.md](open-questions.md) 참고.
