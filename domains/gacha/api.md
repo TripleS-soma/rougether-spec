@@ -66,7 +66,7 @@
   - 갱신된 지갑 잔액은 **`wallets[]` 배열**로 COIN·DIAMOND 2건이 항상 포함된다(각 `currencyType`·`balance`).
 - **결과 개수**: `count=1`이면 `results` 1개, `count=6`이면 뽑은 순서대로 6개. 같은 5+1회 요청 안에서 먼저 획득한 보상이 다시 나오면 중복 전환으로 처리한다.
 - **추첨 방식**: `gacha_pool_entries.weight`는 사용하지 않는다(스키마 잔존 컬럼). 추첨 대상 풀은 보상 미리보기와 같은 활성·카테고리 필터를 쓴다. 아이템 뽑기는 **rarity 티어 롤** — `random(100)`으로 등급을 먼저 정하고(일반 70% / 희귀 25% / 전설 5%) 그 등급 풀 안에서 균등 추첨한다. 해당 등급 풀이 비어 있으면 전체 활성 풀에서 균등 추첨(fallback — 아이템 비활성화로 등급이 비어도 동일하게 적용되므로, 특정 등급을 전부 내리면 잔여 등급의 실효 배출률이 공시 확률과 달라질 수 있다. 재정규화 도입 여부는 미정 → [open-questions.md](../../open-questions.md)). `rarity` 값은 한글 문자열 `일반`/`희귀`/`전설` 3종이며, rarity가 null인 엔트리는 `일반` 티어로 묶인다.
-- **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 또는 운영 기간 밖 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`. 차감·지급·환급은 단일 쓰기 트랜잭션.
+- **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 또는 운영 기간 밖 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`, 캐릭터 보상이 든 머신을 개인 방 최고 달성 레벨 10 미만이 뽑으면 403 `GACHA_CHARACTER_LOCKED`(2026-10-14, 코인 차감 전 거부). 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 - **클라이언트 연출 경계**: 응답 시점에 지급·환급은 완료되어 있다. 영상 재생·건너뛰기·결과 확인은 추가 draw를 호출하지 않는다. 결과 아이템의 `assetKey`와 `rarity`를 등급별 공통 연출에 넣으며, 별도 아이템별 영상 필드나 연출 완료 API는 추가하지 않는다. 연출 상세는 [기능 명세](./features.md#공통-결과-연출)를 따른다.
 

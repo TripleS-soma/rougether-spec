@@ -96,7 +96,7 @@
 | `PUT /api/v1/me/characters/{userCharacterId}/accessories` | 보유 캐릭터에 악세사리 적용·같은 슬롯 교체 | req: `userItemId` → res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters`, `user_items`, `items` |
 | `DELETE /api/v1/me/characters/{userCharacterId}/accessories/{characterSlotType}` | 보유 캐릭터의 지정 악세사리 슬롯 해제 | res: `userCharacterId`, 갱신 후 `items[]` | `user_character_accessories`, `user_characters` |
 
-- 착용 교체는 **보유 캐릭터만** 가능(미보유 `CHARACTER_NOT_OWNED`). 보유 중이어도 회수(`isActive=false`)된 캐릭터는 착용 불가(`CHARACTER_NOT_FOUND`). 이전 대표 해제 + 신규 착용은 단일 트랜잭션이며, 온보딩 선택·뽑기 지급과 동일한 유저 행 비관적 락으로 직렬화해 `is_selected` 유일성과 중복 보유 방지를 보장한다. 이미 착용 중 재선택은 무해(idempotent).
+- 착용 교체는 **보유 캐릭터만** 가능(미보유 `CHARACTER_NOT_OWNED`). 보유 중이어도 회수(`isActive=false`)된 캐릭터는 착용 불가(`CHARACTER_NOT_FOUND`). 이전 대표 해제 + 신규 착용은 단일 트랜잭션이며, 온보딩 선택·뽑기 지급과 동일한 유저 행 비관적 락으로 직렬화해 `is_selected` 유일성과 중복 보유 방지를 보장한다. 이미 착용 중 재선택은 무해(idempotent). **개인 방 최고 달성 레벨 10 미만이면 다른 캐릭터로의 교체를 403 `CHARACTER_SWAP_LOCKED`로 거부**한다(2026-10-14, 해금 여부는 내 방 응답 `characterUnlocked`).
 - 악세사리 착용 상태는 `userCharacterId`별로 유지한다. 같은 보유 악세사리를 여러 보유 캐릭터의 저장된 착장에 재사용할 수 있으며, 한 캐릭터 안에서는 같은 슬롯 1개와 같은 아이템 1개만 허용한다. 대표 캐릭터를 바꿔도 다른 캐릭터의 저장된 착장은 지우지 않는다.
 - 악세사리 적용·해제의 소유권·종류 검증, 오류와 응답 정렬의 상세 계약은 [상점/아이템 API](../shop/api.md)를 따른다.
 - 회수(`isActive=false`)된 캐릭터는 보유 중이어도 **목록에서 제외**한다. 보유 레코드 자체는 유지되며 뽑기 중복 환급 판정에는 계속 사용된다.

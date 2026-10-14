@@ -74,4 +74,9 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 
 ### 레벨 달성 보상 반영
 
-내 방 조회는 모루(`moru`)의 레벨 5 미지급 보상을 보정한다. 모루는 누적 120포인트 이상 최초 달성 시 지급하며, 현재 레벨 하락 후에도 최고 달성 기록을 기준으로 보정한다. `highest_growth_level`은 내부 지급 판정용으로 응답에 추가하지 않는다. 지급 캐릭터는 `GET /api/v1/me/characters`에서 확인하고 기존 대표 선택은 유지한다.
+내 방 조회 응답은 캐릭터 해금 상태를 함께 준다 (2026-10-14).
+
+- `characterUnlocked`(boolean): 캐릭터 뽑기·착용 교체 해금 여부. 최고 달성 레벨(`highest_growth_level`과 현재 레벨 중 큰 값)이 `characterUnlockLevel` 이상이면 true. 완료 취소로 현재 레벨이 내려가도 false로 돌아가지 않는다.
+- `characterUnlockLevel`(int, 현재 10): 해금 레벨. 앱은 잠금 안내 문구에 이 값을 쓴다.
+- `highest_growth_level` 자체는 응답에 추가하지 않는다.
+- 종전의 모루 레벨 5 미지급 보정은 모루 제거와 함께 폐지했다.
