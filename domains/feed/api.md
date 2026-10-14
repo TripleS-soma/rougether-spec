@@ -70,6 +70,16 @@ POST `/posts`:
 - 위 조건 중 하나라도 어기면(남의 루틴·없는 루틴 포함) 400 `FEED_ROUTINE_COMPLETION_INVALID`. 루틴 존재 여부를 드러내지 않도록 사유를 구분하지 않는다. 형식이 틀린 날짜·`routineId` 누락은 공통 validation 400이다.
 - 응답의 루틴 제목은 **연결 시점 스냅샷**이다(계보의 현재 살아 있는 버전 제목, 모두 삭제됐으면 요청한 버전의 제목). 연결 후 루틴 이름 변경·삭제·완료 취소는 기존 글의 배지를 바꾸지 않는다. 공개되는 것은 작성자가 고른 그 루틴의 제목·날짜뿐이다.
 
+### 미니게임 기록 연결 (2026-10-14)
+
+자유게시판 글은 작성자가 끝낸 랭킹전 한 판을 **기록 카드**로 붙일 수 있다. 앱은 새 최고 기록 + 그 게임 10판 이상일 때 [자랑하기]로 제안한다(서버는 이 조건을 검사하지 않는다).
+
+- 요청: `minigameRecord: { "runId": "<UUID>" }`(선택). 자유게시판에서만 — `boardType` 생략은 이 필드가 있을 때만 `FREE`로 본다. `VERIFICATION`과 함께, 또는 `routineCompletion`과 함께 보내면 400 `FEED_INPUT_INVALID`.
+- 그 판이 작성자의 것이고 서버 리플레이 검증을 통과해 끝난 판이어야 한다. 없음·남의 판·미완료는 구분 없이 400 `FEED_MINIGAME_RECORD_INVALID`.
+- 응답 `minigameRecord`(nullable): `gameCode`, `score`(그 판의 검증 점수), `rank`(게시 시점 작성자 최고점 기준 순위 — 랭킹의 내 순위와 같은 식, 최고점 기록이 없으면 null), `personalBest`(그 판 점수 = 게시 시점 작성자 최고점), `achievedAt`(그 판 완료 시각, ISO instant). **게시 시점 스냅샷**이라 이후 랭킹이 바뀌어도 카드는 그대로다.
+- 수정으로 기록을 붙이거나 바꿀 수 없다(`FeedUpdateRequest`에 필드 없음). 기록 있는 글을 `VERIFICATION`으로 바꾸면 400 `FEED_INPUT_INVALID`. 그 밖의 수정은 기록을 유지한다.
+- 공개되는 것은 작성자 본인의 기록뿐이다(다른 회원 정보 없음). 같은 판을 여러 글에 붙이는 것은 막지 않는다.
+
 ### 게시물 수정
 
 PATCH `/posts/{postId}`의 모든 필드는 선택이며 **생략한 필드는 유지**한다. `{ "content": "..." }`만 보내는 기존 요청은 이전과 똑같이 본문만 바꾼다.
@@ -173,9 +183,10 @@ GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나�
 | HTTP | code | 의미 |
 | --- | --- | --- |
 | 401 | `AUTH_INVALID_TOKEN` 등 인증 코드 | 미인증·탈퇴·봇 접근 불가 |
-| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 사진 없는 글의 인증게시판 전환, 빈 수정 요청 |
+| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 사진 없는 글의 인증게시판 전환, 빈 수정 요청, 인증글·루틴 연결과 함께 보낸 미니게임 기록, 기록 있는 글의 인증게시판 전환 |
 | 400 | `FEED_ROUTINE_COMPLETION_REQUIRED` | 인증게시판 등록·전환에 `routineCompletion` 누락 |
 | 400 | `FEED_ROUTINE_COMPLETION_INVALID` | 본인 루틴이 아님·없음, 그 날짜 완료 기록 없음, KST 오늘~6일 전 밖·미래 날짜 |
+| 400 | `FEED_MINIGAME_RECORD_INVALID` | 붙인 미니게임 판이 없음·남의 판·미완료(검증 전) |
 | 400 | `FEED_CONTENT_BANNED` | 본문·댓글 금칙어 |
 | 400 | `FEED_IMAGE_INVALID` | 실제 JPEG/PNG 아님, 용량·화소 제한, 손상 이미지 |
 | 403 | `FEED_FORBIDDEN` | 다른 사람의 글·댓글·미게시 사진 변경 |
