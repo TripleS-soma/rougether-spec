@@ -67,7 +67,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 
 ## 연동 / 비범위 (다른 도메인)
 
-- **타인 방 조회**는 집 도메인 경로다 — `GET /api/v1/houses/{houseId}/members/{membershipId}/room`(응답은 내 방 조회와 동일 계약, 대상 방 미생성이면 404 `ROOM_NOT_FOUND` — lazy 생성 없음). 집 미리보기의 `memberRooms`는 렌더 부분집합(`RoomRenderResponse`: `growthLevel`·`layoutFormat`·`character`·`slots[]{slotType,assetKey}`·`placements[]` — `userItemId`/`layoutRevision`/`streak`/`savedAt` 의도적 제외, 방 없는 사용자는 목록에서 제외)을 쓴다.
+- **타인 방 조회**는 집 도메인 경로다 — `GET /api/v1/houses/{houseId}/members/{membershipId}/room`(응답은 내 방 조회와 동일 계약, 대상 방 미생성이면 404 `ROOM_NOT_FOUND` — lazy 생성 없음). 응답의 `ownerBio`(nullable, 2026-10-14)는 방 주인의 한 줄 소개(`users.bio`)로, 친구 방에서는 그 구성원의, 내 방 조회·저장 응답에서는 내 소개다. 같은 집 활성 구성원 guard를 통과한 요청에만 실리며, 비어 있거나 공백뿐이면 null. 집 미리보기 `memberRooms`(`RoomRenderResponse`)와 구성원 목록에는 넣지 않는다. 집 미리보기의 `memberRooms`는 렌더 부분집합(`RoomRenderResponse`: `growthLevel`·`layoutFormat`·`character`·`slots[]{slotType,assetKey}`·`placements[]` — `userItemId`/`layoutRevision`/`streak`/`savedAt` 의도적 제외, 방 없는 사용자는 목록에서 제외)을 쓴다.
 - 방명록(`room_guestbooks`) → 집(공동) 도메인.
 - 인벤토리/상점 조회·구매(`GET /api/v1/me/items`, `GET /api/v1/items`, `POST /api/v1/items/{id}/purchase`) → 상점/인벤토리 도메인. 방은 배치만.
 - 스트릭 갱신·루틴 완료 보상 지급 → 루틴/투두 도메인. 방은 `streaks` 읽기, 성장 반영 결과만 노출.
