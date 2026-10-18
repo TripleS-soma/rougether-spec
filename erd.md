@@ -287,7 +287,7 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
   - unique(storage_key), index(post_id, sort_order), index(expires_at, id). 비공개 JPEG key와 변환 후 치수다. 업로드 예약 시 row를 만들고 S3 저장 완료 후 ready=true가 된다. 게시 시 post_id와 0부터 시작하는 사진 순서를 저장한다. expires_at은 미게시 사진에만 적용한다.
 - **feed_likes**: id* BIGINT | post_id→feed_posts | user_id→users
   - unique(post_id, user_id). 개수는 활성 회원의 좋아요를 집계한다. 취소·글 삭제 시 제거한다.
-- **feed_comments**: id* BIGINT | post_id→feed_posts | author_id→users | client_comment_id VARCHAR(36) | request_hash VARCHAR(64) | content VARCHAR(500) | created_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
+- **feed_comments**: id* BIGINT | post_id→feed_posts | author_id→users | client_comment_id VARCHAR(36) | request_hash VARCHAR(64) | content VARCHAR(500) | created_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)? | parent_comment_id→feed_comments? | reply_to_comment_id→feed_comments?
   - unique(post_id, author_id, client_comment_id), index(post_id, deleted_at, id). 댓글 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. 부모 글 삭제 시 제거할 수 있다.
 
 조회 시 작성자의 users.deleted_at도 확인한다. 탈퇴 후 피드 글·댓글·좋아요·사진을 즉시 숨기고, 후속 정리에서 본문·반응·사진을 제거한다. 피드는 기존 루틴·방·집 테이블을 직접 참조하지 않는다. 상세 계약은 [피드 기능](domains/feed/features.md)을 따른다. 위 4개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다.
@@ -313,3 +313,8 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
   - 매칭 엔진 담당 인스턴스 리스(단일 행). 담당이 바뀔 때마다 `fencing_token`을 1 올리고, 엔진은 처리 트랜잭션마다 이 값을 확인해 이전 담당의 쓰기를 거부한다.
 
 위 5개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다. 동작 계약은 [가구 거래소](domains/market/features.md)를 따른다.
+
+
+### 피드 대댓글 확장 (V93)
+
+`feed_comments.parent_comment_id`는 최초 원댓글, `reply_to_comment_id`는 실제 답한 댓글이다. 일반 댓글은 둘 다 null이고 대댓글에 다시 답해도 부모는 최초 원댓글을 유지한다. 서버가 같은 게시물, 보이는 대상, 한 단계 부모를 검증하며 게시물 잠금으로 작성/삭제를 직렬화한다. 부모 FK는 물리 삭제 시 CASCADE, 실제 대상 FK는 SET NULL이며 일반 삭제는 기존 soft delete다. 인덱스는 `(post_id, parent_comment_id, deleted_at, id)`다. 기존 댓글/UUID/hash는 변경하지 않는다. 삭제된 원댓글 아래의 살아 있는 답글은 유지하며 응답에서 본문과 작성자 정보를 비운 삭제 자리로 표현한다.
