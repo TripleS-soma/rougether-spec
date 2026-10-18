@@ -16,7 +16,8 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | DELETE | `/posts/{postId}` | 본인 게시물 삭제 → 204 |
 | PUT | `/posts/{postId}/like` | 좋아요 → 204 |
 | DELETE | `/posts/{postId}/like` | 좋아요 취소 → 204 |
-| GET | `/posts/{postId}/comments` | 댓글 커서 목록 → 200 Page<Comment> |
+| GET | `/posts/{postId}/comments` | 전체 댓글 또는 원댓글 커서 목록 → 200 Page<Comment> |
+| GET | `/posts/{postId}/comments/{commentId}/replies` | 원댓글의 대댓글 커서 목록 → 200 Page<Comment> |
 | POST | `/posts/{postId}/comments` | 댓글 등록 → 201 Comment (재시도도 201) |
 | DELETE | `/posts/{postId}/comments/{commentId}` | 본인 댓글 삭제 → 204 |
 
@@ -151,30 +152,67 @@ GET `/posts?boardType=FREE&size=20&cursor=100&authorId=7`
 
 결과가 있으면 `items`에 Post 배열이 들어간다. `hasNext=true`일 때 `nextCursor`는 현재 페이지 마지막 게시물 ID다. 수정·좋아요로 글 순서가 바뀌지 않는다. 서버는 탈퇴·삭제된 글을 제외한다.
 
-## 댓글
+## 댓글과 대댓글
 
 POST `/posts/{postId}/comments`:
 
 ```json
-{ "clientCommentId": "c0e16543-cd6d-46a0-ae6e-8d82bf345c43", "content": "멋져요!" }
+{
+  "clientCommentId": "c0e16543-cd6d-46a0-ae6e-8d82bf345c43",
+  "content": "이 댓글에 대한 답글",
+  "replyToCommentId": 301
+}
 ```
 
-`clientCommentId`는 필수 UUID다. 같은 게시물·작성자·UUID와 같은 정규화 본문이면 기존 댓글을 반환하고, 본문이 다르거나 댓글을 삭제했다면 409다. `content`는 공백만으로 구성할 수 없고 최대 500자다.
+- `clientCommentId`는 필수 UUID, `content`는 앞뒤 공백 제거 후 1~500자다. `replyToCommentId`는 선택 양수 ID이며 생략/null은 기존 일반 댓글이다.
+- 지정한 대상은 같은 게시물의 삭제되지 않은 댓글이어야 한다. 없는 댓글, 다른 게시물, 탈퇴한 작성자, 요청자가 차단한 댓글/원댓글은 모두 `404 FEED_COMMENT_NOT_FOUND`다.
+- 대댓글에 다시 답할 수 있다. 화면의 들여쓰기는 한 단계이며 서버는 `parentCommentId`를 최초 원댓글로 정규화하고 실제 대상은 `replyToCommentId`에 보존한다. 클라이언트가 `parentCommentId`를 결정하지 않는다.
+- 같은 게시물, 작성자, UUID, 정규화 본문, 답글 대상이면 기존 결과를 반환한다. 본문/대상이 다르거나 등록 결과 자체가 삭제됐다면 409다. 일반 댓글의 기존 요청 hash는 유지한다. 성공한 답글을 재시도할 때 대상만 삭제/탈퇴했다면 기존 결과를 반환하며 알림을 다시 만들지 않는다.
 
 Comment:
 
 ```json
 {
-  "commentId": 301,
+  "commentId": 302,
   "postId": 100,
   "author": { "userId": 8, "nickname": "이웃", "profileImageKey": null },
-  "content": "멋져요!",
+  "content": "이 댓글에 대한 답글",
   "mine": true,
-  "createdAt": "2026-09-22T03:02:00Z"
+  "createdAt": "2026-10-18T03:02:00Z",
+  "parentCommentId": 301,
+  "replyToCommentId": 301,
+  "deleted": false,
+  "replyCount": 0
 }
 ```
 
-GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나열한다. 피드와 같은 Page 형식이며 cursor는 마지막 commentId, `size` 기본 20/최대 50이다. 댓글 작성 직후 반환된 Comment를 화면에 추가할 수 있다. 게시물 작성자도 타인의 댓글을 삭제할 수 없다. 부모 글이 삭제되면 댓글 조회·작성·삭제 모두 404다.
+일반 댓글의 두 연결 ID는 null이다. `replyCount`는 원댓글에서만 해당 대화의 보이는 답글 수를 반환하며 대댓글에서는 0이다. 게시물 `commentCount`는 요청자가 볼 수 있는 살아 있는 일반 댓글과 대댓글의 합계이며 삭제 안내 자리는 세지 않는다.
+
+- `GET /posts/{postId}/comments?size=20&cursor=301`: 기존처럼 살아 있는 댓글과 대댓글 **전체**를 오래된 ID부터 나열한다. 삭제 안내 자리는 포함하지 않는다.
+- `GET /posts/{postId}/comments?topLevelOnly=true&size=20`: 원댓글만 나열한다. 앱은 원댓글별 `replyCount`로 답글 펼치기를 제공한다.
+- `GET /posts/{postId}/comments/{commentId}/replies?size=20&cursor=302`: 지정한 **원댓글**의 모든 답글을 오래된 ID부터 나열한다. 답글에 쓴 답글도 같은 목록이며 실제 대상은 각 항목의 `replyToCommentId`다. 대댓글 ID를 원댓글 자리에 넣거나 요청자가 차단한 원댓글을 조회하면 404다.
+- 모든 목록은 기존 Page 형식이며 cursor는 각 목록의 마지막 commentId, `size` 기본 20/최대 50이다. 늦게 추가된 답글은 해당 원댓글의 답글 목록을 다시 조회한다. 등록/삭제 후 앱은 해당 답글 목록과 원댓글 개수를 갱신한다.
+
+본인 댓글만 기존 DELETE로 삭제한다. 원댓글을 지워도 다른 사람의 답글은 유지한다. 답글이 남은 삭제/탈퇴 원댓글은 `topLevelOnly=true`에서 다음 자리로 반환한다.
+
+```json
+{
+  "commentId": 301,
+  "postId": 100,
+  "author": { "userId": null, "nickname": null, "profileImageKey": null },
+  "content": "",
+  "mine": false,
+  "createdAt": "2026-10-18T03:00:00Z",
+  "parentCommentId": null,
+  "replyToCommentId": null,
+  "deleted": true,
+  "replyCount": 1
+}
+```
+
+앱은 `deleted=true`에서 삭제 안내를 표시하고 작성자 프로필 이동과 해당 원댓글에 답글 쓰기를 제공하지 않는다. 살아 있는 대댓글에는 계속 답할 수 있다. 남은 답글이 없으면 삭제 안내 자리도 제외한다. 삭제/탈퇴한 대댓글은 제외하되 다른 댓글의 대상 ID는 유지할 수 있다. 대상이 없으면 앱은 작성자/본문을 추정하지 않는다. 물리 파기 시 대상 FK는 null로 바뀔 수 있다.
+
+요청자가 차단한 원댓글의 대화는 전체 목록, 원댓글 목록, 답글 목록, 게시물 댓글 수에서 함께 숨긴다. 대댓글 작성자만 차단했다면 그 대댓글만 숨기며 모든 개수도 같은 조건을 따른다. 부모 게시물이 삭제되면 댓글 조회, 작성, 삭제와 답글 목록 모두 404다.
 
 ## 오류
 
@@ -191,7 +229,7 @@ GET `/posts/{postId}/comments?size=20&cursor=301`은 **오래된 ID부터** 나�
 | 400 | `FEED_IMAGE_INVALID` | 실제 JPEG/PNG 아님, 용량·화소 제한, 손상 이미지 |
 | 403 | `FEED_FORBIDDEN` | 다른 사람의 글·댓글·미게시 사진 변경 |
 | 404 | `FEED_POST_NOT_FOUND` | 없거나 삭제/탈퇴로 숨긴 글 |
-| 404 | `FEED_COMMENT_NOT_FOUND` | 해당 글의 댓글이 없음 |
+| 404 | `FEED_COMMENT_NOT_FOUND` | 답글 대상이 없거나 다른 글, 삭제/탈퇴/차단으로 숨겨짐, 답글 목록에 원댓글이 아닌 ID 지정 |
 | 404 | `FEED_IMAGE_NOT_FOUND` | 없음·만료·삭제·탈퇴·타인의 미게시 사진 |
 | 409 | `FEED_REQUEST_CONFLICT` | 재시도 UUID를 다른 요청/삭제 결과에 재사용 |
 | 409 | `FEED_IMAGE_UNAVAILABLE` | 사진이 본인 소유/완료/미사용/유효 상태가 아님 |
@@ -203,10 +241,15 @@ HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼�
 
 ## 댓글 알림 연동
 
-댓글 등록 성공 응답은 그대로다. 서버가 타인이 쓴 **새 댓글**에 대해 게시물 작성자에게 알림을 생성하므로 프론트가 별도 발송 API를 호출하지 않는다. 본인 댓글·등록 재시도는 제외한다.
+서버는 타인의 **새 댓글**에 대해 게시물 작성자에게 알림을 생성하고, 대댓글은 실제 대상 댓글 작성자에게도 답글 알림을 생성한다. 두 수신자가 같으면 답글 알림 하나만 저장한다. 본인 수신, 등록 재시도, 수신자가 작성자를 차단한 경우는 제외한다. 프론트는 별도 발송 API를 호출하지 않는다. 답글 알림도 기존 `FEED_COMMENT`, `FEED` 설정과 게시물 이동 경로를 사용하며 닉네임/원문을 복사하지 않는다.
 
 - `GET /api/v1/notifications`의 `type=FEED_COMMENT`, `refId=postId`를 이용해 `GET /api/v1/feed/posts/{refId}` 상세와 댓글 화면을 연다.
 - FCM data는 모든 값이 문자열이다: `{ "type": "FEED_COMMENT", "notificationId": "100", "postId": "42" }`. 알림 탭 시 로그인 상태를 복구한 뒤 게시물 42로 이동한다. `notificationId`는 기존 알림 읽음 처리에 사용한다.
 - `GET/PATCH /api/v1/users/me/notification-settings`에 `feed` boolean이 추가된다. 기본 true, PATCH 생략 시 기존 값 유지. 예: `{ "feed": false }`. `all=false`도 피드 푸시를 막는다. 두 경우 모두 알림함 내역은 저장된다.
 - 삭제·탈퇴로 게시물 상세가 404이면 삭제 안내 후 피드로 돌아간다. 이미 삭제된 댓글의 도착 알림일 수 있으므로 특정 댓글이 반드시 남아 있다고 가정하지 않는다.
 - 기기 FCM 토큰 등록·알림 권한과 위 화면 이동/설정 UI 반영은 프론트 담당이다. 좋아요 알림은 이번 추가 범위에 포함하지 않는다.
+
+
+### AI 답글의 대상 처리
+
+사람이 AI 댓글에 직접 답하면 해당 AI 계정의 응답만 우선 예약한다. AI가 자동 응답할 때는 들어온 사람 댓글의 ID를 `replyToCommentId`로 고정하고 `parentCommentId`는 기존 작성 규칙으로 정규화한다. 사람이 보낸 API 요청이나 일반 댓글 계약은 바꾸지 않는다. AI 댓글로 자동 응답 작업이 재귀 생성되지 않으며 AI가 기존 댓글을 자발적으로 선택하는 경우 실제 관찰한 대상과 같은 게시물/접근권을 다시 검증한다.
