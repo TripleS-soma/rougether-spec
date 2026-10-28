@@ -33,7 +33,12 @@
 
 ## GET /api/v1/market/assets/{assetId}
 
-- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `asks[]`, `bids[]`. `isCreator`도 요청자 기준이다.
+- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `buyPending`, `sellPending`, `asks[]`, `bids[]`. `isCreator`와 대기 여부도 요청자 기준이다.
+  - `buyPending`: 본인의 해당 종목 BUY 주문이 `OPEN`이거나 BUY PLACE 접수가 `PENDING`이면 true.
+  - `sellPending`: 본인의 해당 종목 SELL 주문이 `OPEN`이거나 SELL PLACE 접수가 `PENDING`이면 true. 보유분과 발행 재고 모두 포함한다.
+  - `owned`는 실제 인벤토리 보유 의미를 유지한다. 구매 버튼은 거래 정지, `owned`, `buyPending`, `sellPending` 중 하나라도 해당하면 비활성화한다. `buyPending`일 때 판매 버튼도 비활성화하고 내 주문으로 안내한다.
+  - 취소를 접수했어도 원래 주문이 `OPEN`이면 대기는 유지된다. 체결, 취소, 만료 또는 접수 거절 처리가 끝나면 해당 대기는 해제된다. 이 조회는 안내용이며 실제 주문 접수 시 서버가 다시 검증한다.
+  - 판매 호가가 없다고 구매 접수를 막지 않는다. 조건에 맞는 판매 주문이 들어올 때까지 구매 대기로 남으며 판매자 승인 절차는 없다.
   - `asks[]`·`bids[]`: `{ price, quantity }` 가격대별 합산, 각 최대 10단계. `asks` 가격 오름차순, `bids` 내림차순.
 - 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404).
 
