@@ -14,6 +14,7 @@
 | POST | `/market/orders/{orderId}/cancel` | 주문 취소 접수 → 202 Command |
 | POST | `/market/orders/{orderId}/amend` | 발행 재고 판매 주문 수량 수정 접수 → 202 Command |
 | GET | `/market/commands/{commandId}` | 접수 결과 → 200 Command |
+| GET | `/me/market/assets` | 내 판매 관리 가구 → 200 Page<AssetCard> |
 | GET | `/me/market/orders` | 내 주문 목록 → 200 Page<Order> |
 
 ## POST /api/v1/market/assets
@@ -23,22 +24,30 @@
 
 - 요청 body: `{ "userItemId": 77, "totalSupply": 5 }`
 - 검증: 호출자가 `userItemId`를 활성 보유하고 그 가구의 생성자여야 한다. `photo_furniture` 테마만. `totalSupply` 1~10. 가구당 1회.
-- 응답 201: 아래 종목 상세와 같은 형태. 발행 재고 `unissuedQuantity = totalSupply - 1`.
+- 응답 201: 아래 종목 상세와 같은 형태. 발행 재고 `unissuedQuantity = totalSupply - 1`. 발행 직후에는 판매 주문이 없어 거래소 목록에 노출하지 않는다.
 - 주요 오류: 미보유 `MARKET_ITEM_NOT_OWNED`(403), 제작자 아님 `MARKET_NOT_CREATOR`(403), 거래 불가 아이템 `MARKET_ITEM_NOT_TRADABLE`(409), 이미 상장 `MARKET_ASSET_ALREADY_LISTED`(409), 가구 생성·재검수 작업이 진행 중(`UPLOADING`/`QUEUED`/`PROCESSING`) `MARKET_ITEM_REVIEW_IN_PROGRESS`(409). 재검수가 실패(`FAILED`)한 가구는 남아 있으므로 발행할 수 있다.
 
 ## GET /api/v1/market/assets
 
-- 요청(query): `page`, `size`(기본 20, 최대 100). 거래 중(`ACTIVE`) 종목만, 최근 상장순.
+- 요청(query): `page`, `size`(기본 20, 최대 100). 거래 가능(`ACTIVE`)하고 `OPEN` 판매 주문이 하나 이상인 종목만, 최근 발행순. `totalElements`에도 같은 필터를 적용한다.
 - 응답 `items[]`: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`(제작자 탈퇴 시 null), `totalSupply`, `bestAskPrice?`(최저 매도가, 판매 대기 없으면 null), `askQuantity`(판매 대기 주문의 남은 수량 합계, 없으면 0), `lastTradePrice?`(체결 없으면 null), `status`
+
+## GET /api/v1/me/market/assets
+
+- 인증된 요청자가 제작했거나 활성 보유하거나 `OPEN` 판매 주문 또는 `PENDING` 판매 접수가 있는 가구를 조회한다. 판매 주문 없이 비노출 중인 가구와 거래 정지 가구도 관리 목적으로 포함한다. 거래 정지 가구의 새 주문은 계속 거절한다.
+- 요청(query): `page`, `size`(기본 20, 최대 100). 최근 발행순. 응답은 위 목록과 같은 `Page<AssetCard>`이며 `totalElements`는 본인 관리 대상만 센다.
+- 앱 ‘내 판매 관리’ 진입점에서 사용한다. 최초 발행과 판매 취소 후에도 가구를 다시 찾아 판매할 수 있다.
 
 ## GET /api/v1/market/assets/{assetId}
 
-- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `buyPending`, `sellPending`, `asks[]`, `bids[]`. `isCreator`와 대기 여부도 요청자 기준이다.
+- 응답: `assetId`, `itemId`, `name`, `assetKey`, `creatorNickname?`, `isCreator`, `totalSupply`, `unissuedQuantity`, `status`, `lastTradePrice?`, `owned`(요청자가 인벤토리에 활성 보유 중인지. 판매 등록으로 맡긴 것은 제외), `buyPending`, `sellPending`, `asks[]`, `bids[]`, `mySellOrders[]`. `isCreator`와 대기 여부도 요청자 기준이다.
   - `buyPending`: 본인의 해당 종목 BUY 주문이 `OPEN`이거나 BUY PLACE 접수가 `PENDING`이면 true.
   - `sellPending`: 본인의 해당 종목 SELL 주문이 `OPEN`이거나 SELL PLACE 접수가 `PENDING`이면 true. 보유분과 발행 재고 모두 포함한다.
-  - `owned`는 실제 인벤토리 보유 의미를 유지한다. 구매 버튼은 거래 정지, `owned`, `buyPending`, `sellPending` 중 하나라도 해당하면 비활성화한다. `buyPending`일 때 판매 버튼도 비활성화하고 내 주문으로 안내한다.
+  - `owned`는 실제 인벤토리 보유 의미를 유지한다. 구매 버튼은 거래 정지, `owned`, `buyPending`, `sellPending`, 판매 호가 없음 중 하나라도 해당하면 비활성화한다. `buyPending`일 때 판매 버튼도 비활성화하고 내 주문으로 안내한다.
   - 취소를 접수했어도 원래 주문이 `OPEN`이면 대기는 유지된다. 체결, 취소, 만료 또는 접수 거절 처리가 끝나면 해당 대기는 해제된다. 이 조회는 안내용이며 실제 주문 접수 시 서버가 다시 검증한다.
-  - 판매 호가가 없다고 구매 접수를 막지 않는다. 조건에 맞는 판매 주문이 들어올 때까지 구매 대기로 남으며 판매자 승인 절차는 없다.
+  - 판매 호가가 없으면 구매를 막는다. 판매 주문이 있으나 가격이 맞지 않을 때만 구매 대기로 남으며 판매자 승인 절차는 없다.
+  - `mySellOrders[]`: 요청자 본인의 해당 종목 `OPEN` 판매 주문을 주문 id 오름차순으로 반환한다. 아래 Order와 같은 필드이며 보유분, 발행 재고 모두 포함한다. 다른 회원의 주문은 포함하지 않는다. 잔량은 `quantity - filledQuantity`이며 주문별 취소 버튼을 제공한다.
+  - 비노출 가구의 상세는 계속 조회할 수 있다. 실제 보유분, 제작자의 발행 재고 판매를 통해 재등록할 수 있다.
   - `asks[]`·`bids[]`: `{ price, quantity }` 가격대별 합산, 각 최대 10단계. `asks` 가격 오름차순, `bids` 내림차순.
 - 주요 오류: 없는 종목 `MARKET_ASSET_NOT_FOUND`(404).
 
@@ -53,6 +62,7 @@
 - 요청 body: `{ "requestId": "uuid", "assetId": 1, "side": "BUY", "price": 30, "quantity": 1, "source": null }`
   - `side`: `BUY` / `SELL`. `SELL`이면 `source` 필수: `INVENTORY`(내 보유분, `quantity` 1) / `ISSUANCE`(제작자 발행 재고, `quantity` 1~남은 재고, 최대 10). `BUY`는 `quantity` 1.
   - `price`: 1~1,000 코인 정수.
+- 구매 전제: 해당 가구에 `OPEN` 판매 주문이 있어야 한다. 없으면 코인을 차감하지 않고 `MARKET_NO_SELL_ORDERS`(409)를 반환한다. 판매 접수만 `PENDING`인 상태로는 구매할 수 없다. 접수 후 마지막 판매가 종료되면 엔진이 같은 코드로 거절하고 이미 맡긴 코인을 전액 환불한다.
 - 동작: 검증 → 에스크로(코인 차감 / 보유분 인벤토리 숨김·방 배치 해제 / 발행 재고 차감) → 접수. 체결은 비동기.
 - 같은 가구 반대 주문 금지: 같은 가구에 내 판매 주문(`OPEN`이거나 엔진 처리 전 접수, 보유분·발행 재고 무관)이 있으면 구매할 수 없고, 내 구매 주문(`OPEN`이거나 엔진 처리 전 접수)이 있으면 발행 재고를 판매할 수 없다 → `MARKET_OWN_ORDER_CONFLICT`(409). 보유분 판매 중 구매는 기존대로 `MARKET_ALREADY_HOLDING`이다.
 - 응답 202: `{ "commandId": 10, "status": "PENDING" }`
@@ -64,6 +74,7 @@
 
 - 요청 body: `{ "requestId": "uuid" }`
 - 응답 202: Command. 환불은 엔진 처리 시 이뤄진다.
+- 마지막 판매 주문이 종료되면 해당 가구는 목록에서 내려가며 남은 구매 주문도 모두 취소, 전액 환불한다. 처리 전 구매 접수도 거절, 환불한다. 다른 판매 주문이 남아 있으면 유지한다. 이 정책은 판매 만료와 전량 체결에도 동일하게 적용한다.
 - 같은 주문에 `requestId`가 다른 취소 접수가 여러 번 들어오면 접수는 각각 받지만, 엔진은 두 번째부터 `MARKET_ORDER_NOT_OPEN`으로 거절한다. 환불은 한 번만 이뤄진다.
 - 멱등: 같은 `requestId`로 같은 주문 취소를 다시 보내면 기존 접수를 그대로 반환한다. 같은 `requestId`에 다른 내용(다른 주문, 또는 주문 접수에 쓴 `requestId` 재사용)이면 `MARKET_REQUEST_CONFLICT`(409).
 - 주요 오류: 본인 주문 아님 `MARKET_ORDER_NOT_FOUND`(404), 이미 종료 `MARKET_ORDER_NOT_OPEN`(409), 같은 `requestId`에 다른 내용 `MARKET_REQUEST_CONFLICT`(409).
@@ -94,7 +105,7 @@
 
 - 응답: `commandId`, `status`(`PENDING` / `APPLIED` / `REJECTED`), `rejectCode?`, `order?`(아래 Order)
 - 주요 오류: 없거나 본인 접수가 아님 `MARKET_COMMAND_NOT_FOUND`(404).
-- 엔진 거절 사유: 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`(취소·수량 수정), 수량 수정 후 수량이 체결 수량 이하 `MARKET_AMEND_BELOW_FILLED`(접수 후 체결로 남은 수량이 0 이하가 된 경우), 수량 수정 엔진 정산 중 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`, 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
+- 엔진 거절 사유: 판매 주문 없음 `MARKET_NO_SELL_ORDERS`, 자기 주문과 맞물림 `MARKET_SELF_TRADE`, 거래 정지 `MARKET_ASSET_SUSPENDED`, 대상 주문 종료 `MARKET_ORDER_NOT_OPEN`(취소·수량 수정), 수량 수정 후 수량이 체결 수량 이하 `MARKET_AMEND_BELOW_FILLED`(접수 후 체결로 남은 수량이 0 이하가 된 경우), 수량 수정 엔진 정산 중 발행 재고 부족 `MARKET_INSUFFICIENT_SUPPLY`, 처리 반복 실패 `MARKET_ENGINE_ERROR`(맡아 둔 것은 돌려줌), 처리 반복 실패 후 환불까지 실패 `MARKET_ENGINE_ERROR_UNREFUNDED`(자동 환불 없음, 운영자가 수동으로 대사). `MARKET_ENGINE_ERROR_UNREFUNDED`를 뺀 거절은 맡아 둔 것을 돌려준다.
 
 ## GET /api/v1/me/market/orders
 
