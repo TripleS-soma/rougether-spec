@@ -29,7 +29,7 @@
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 - **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
   - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
-  - `reason` 허용값 15종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`·`MARKET_ESCROW_REFUND`·`MARKET_SALE`·`MARKET_ROYALTY`·`FURNITURE_GENERATION_REFUND`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`·`MARKET_ORDER_ESCROW`·`FURNITURE_GENERATION`(차감). 거래소 값은 [가구 거래소](domains/market/features.md#로열티와-수수료) 참고.
+  - `reason` 허용값 16종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`·`MARKET_ESCROW_REFUND`·`MARKET_SALE`·`MARKET_ROYALTY`·`FURNITURE_GENERATION_REFUND`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`·`MARKET_ORDER_ESCROW`·`FURNITURE_GENERATION`·`MARKET_PURCHASE`(차감). 거래소 값은 [가구 거래소](domains/market/features.md#구매와-정산) 참고.
   - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN`/`MARKET_COMMAND`/`MARKET_ORDER`/`MARKET_TRADE` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 거래소 매수 에스크로 차감(`MARKET_ORDER_ESCROW`)은 주문 row가 엔진 처리 때 생기므로 `MARKET_COMMAND` + `market_commands.id`를 기록한다. 거래소 환불(`MARKET_ESCROW_REFUND`)은 주문 생성 전 거절이면 `MARKET_COMMAND` + `market_commands.id`, 주문 생성 후(체결 차액·취소·만료)면 `MARKET_ORDER` + `market_orders.id`를 기록한다. 판매 대금(`MARKET_SALE`)·로열티(`MARKET_ROYALTY`)는 `MARKET_TRADE` + `market_trades.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null). AI 가구 코인 결제와 환급은 `source_type=FURNITURE_GENERATION`, `source_id=null`이다. 작업의 문자열 UUID와 결제 수단, 금액은 `furniture_credit_reservations`에 저장한다.
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
@@ -298,7 +298,11 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 기존 `notification.type`에 `FEED_COMMENT`를 추가하고 `ref_id`에는 게시물 ID를 저장한다. 댓글과 알림은 같은 트랜잭션에서 생성하며 중복은 댓글 UUID 제약·잠금으로 방지한다(별도 알림 dedupe 테이블 없음). 기존 `notification_setting.type`에 `FEED`를 추가한다. 둘 다 VARCHAR enum 값 추가이므로 새 migration은 필요 없다. `ALL`/`FEED` off는 push만 막고 알림 내역은 유지한다.
 
 
-### 가구 거래소 (신규 5개 테이블)
+### 가구 거래소
+
+- 고정가 판매는 제작자 원본을 유지하며 무제한으로 구매자 사본을 지급한다. `market_assets.sale_price INT? (1~1000)`와 `sale_active BOOLEAN default false`로 가격과 판매 여부를 관리한다. 기존 수량 컬럼은 과거 에스크로 반환용이며 새 판매에는 쓰지 않는다.
+- **market_purchases**: id* | asset_id→market_assets | buyer_user_id→users | seller_user_id→users | request_id VARCHAR(36) | price INT | fee_amount INT | user_item_id→user_items | created_at | unique (buyer_user_id, request_id) | unique (buyer_user_id, asset_id). 구매, 코인 차감과 적립, 사본 지급을 한 트랜잭션에서 저장한다. 양쪽 원장의 `source_type=MARKET_PURCHASE`, `source_id=purchaseId`다.
+- 아래 주문과 체결 테이블은 기존 거래의 정산과 이력 조회를 위해 보존한다. 신규 주문과 되팔기는 종료한다.
 
 - **market_assets**: id* | item_id→items (unique) | creator_user_id→users? | total_supply INT (1~10) | unissued_quantity INT (0~total_supply) | status VARCHAR(20) (`ACTIVE`/`SUSPENDED`) | created_at | updated_at | index (status, id)
   - AI 가구 1개당 상장 1회. `unissued_quantity`는 제작자가 아직 팔지 않은 발행 재고다(발행 시 `total_supply - 1`). 제작자 탈퇴 시 `creator_user_id`를 null, `unissued_quantity`를 0으로 바꾼다.
