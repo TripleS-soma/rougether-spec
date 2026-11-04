@@ -73,13 +73,14 @@
 
 ## 생성권 및 가구 생성
 
-- `GET /api/v1/me/furniture-credits`: `available`, `reserved`, `purchaseAdjustmentPending`, `accountToken`. 사진 생성 UI는 잔액 두 필드를 사용한다.
+- `GET /api/v1/me/furniture-credits`: `available`, `reserved`, `purchaseAdjustmentPending`, `accountToken`. 사진 생성 UI는 생성권 잔액과 `GET /api/v1/me/wallets`의 `COIN` 잔액을 사용한다. 생성권 1회를 우선 사용하며, 없으면 100코인으로 접수할 수 있다.
 - `POST /api/v1/me/furniture-generations`: multipart의 `requestId`(UUID), `photo`(JPEG/PNG, 10MB 이하), 선택 `targetHint`(120자 이하). 202와 작업 상태를 반환한다.
 - `GET /api/v1/me/furniture-generations`: `{ "items": [...] }`, 본인 최근 작업 20개.
 - `GET /api/v1/me/furniture-generations/{id}`: 본인 작업 상세.
 - 작업 상태는 `UPLOADING`, `QUEUED`, `PROCESSING`, `SUCCEEDED`, `FAILED`. 공개 필드에는 `id`, `assetKey`, `userItemId`, `failureCode`가 포함된다. 검수 전 이미지와 원본 key는 노출하지 않는다.
 - 가구 피드백 재검수(`POST /api/v1/me/furniture-generations/{id}/feedback`)는 그 가구가 거래소에 상장돼 있으면 `FURNITURE_MARKET_LISTED`(409)로 거절한다.
-- 생성권 부족은 `FURNITURE_CREDITS_REQUIRED`, 진행 중 작업은 `FURNITURE_JOB_IN_PROGRESS`, 일일 한도는 `FURNITURE_DAILY_LIMIT`, 사용 불가는 `FURNITURE_GENERATION_UNAVAILABLE`다.
+- 생성권과 100코인이 모두 없으면 402 `FURNITURE_CREDITS_REQUIRED`다. 진행 중 작업은 `FURNITURE_JOB_IN_PROGRESS`, 사용 불가는 `FURNITURE_GENERATION_UNAVAILABLE`다. 일일 접수 한도는 없다.
+- 실패나 만료 시 접수에서 사용한 수단으로 한 번만 환급한다. 코인 차감은 지갑 원장 `reason=FURNITURE_GENERATION`, 실패 환급은 `reason=FURNITURE_GENERATION_REFUND`로 기록한다. 같은 `requestId` 재전송과 내부 재시도는 추가 차감하지 않는다.
 
 ## 출석 에러
 
