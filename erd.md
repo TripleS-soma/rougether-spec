@@ -29,8 +29,8 @@
   - `currency_type`로 **코인**(루틴 실천 보상)과 **다이아**(아이템 구매)를 구분한다.
 - **wallet_histories**: id* | user_id→users | currency_type VARCHAR(30) | amount INT | reason VARCHAR(30) | balance_after INT | source_type VARCHAR(30)? | source_id BIGINT? | created_at | index (user_id, id) | index (source_type, source_id)
   - 재화 증감 원장. 적립·차감을 한 테이블에 기록하며 `amount`는 적립 양수·차감 음수. **지급액 0 이벤트는 기록하지 않는다**(일일 상한 도달, 과거 완료 등).
-  - `reason` 허용값 13종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`·`MARKET_ESCROW_REFUND`·`MARKET_SALE`·`MARKET_ROYALTY`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`·`MARKET_ORDER_ESCROW`(차감). 거래소 값은 [가구 거래소](domains/market/features.md#로열티와-수수료) 참고.
-  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN`/`MARKET_COMMAND`/`MARKET_ORDER`/`MARKET_TRADE` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 거래소 매수 에스크로 차감(`MARKET_ORDER_ESCROW`)은 주문 row가 엔진 처리 때 생기므로 `MARKET_COMMAND` + `market_commands.id`를 기록한다. 거래소 환불(`MARKET_ESCROW_REFUND`)은 주문 생성 전 거절이면 `MARKET_COMMAND` + `market_commands.id`, 주문 생성 후(체결 차액·취소·만료)면 `MARKET_ORDER` + `market_orders.id`를 기록한다. 판매 대금(`MARKET_SALE`)·로열티(`MARKET_ROYALTY`)는 `MARKET_TRADE` + `market_trades.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null).
+  - `reason` 허용값 15종: `ROUTINE_COMPLETE`·`TODO_COMPLETE`·`SIGNUP_BONUS`·`GACHA_DUPLICATE_CONVERT`·`INVITE_REWARD`·`COBWEB_CLEAN`·`ATTENDANCE_REWARD`·`MARKET_ESCROW_REFUND`·`MARKET_SALE`·`MARKET_ROYALTY`·`FURNITURE_GENERATION_REFUND`(적립) / `GACHA_DRAW`·`SHOP_PURCHASE`·`MARKET_ORDER_ESCROW`·`FURNITURE_GENERATION`(차감). 거래소 값은 [가구 거래소](domains/market/features.md#로열티와-수수료) 참고.
+  - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN`/`MARKET_COMMAND`/`MARKET_ORDER`/`MARKET_TRADE` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 거래소 매수 에스크로 차감(`MARKET_ORDER_ESCROW`)은 주문 row가 엔진 처리 때 생기므로 `MARKET_COMMAND` + `market_commands.id`를 기록한다. 거래소 환불(`MARKET_ESCROW_REFUND`)은 주문 생성 전 거절이면 `MARKET_COMMAND` + `market_commands.id`, 주문 생성 후(체결 차액·취소·만료)면 `MARKET_ORDER` + `market_orders.id`를 기록한다. 판매 대금(`MARKET_SALE`)·로열티(`MARKET_ROYALTY`)는 `MARKET_TRADE` + `market_trades.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null). AI 가구 코인 결제와 환급은 `source_type=FURNITURE_GENERATION`, `source_id=null`이다. 작업의 문자열 UUID와 결제 수단, 금액은 `furniture_credit_reservations`에 저장한다.
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
 - **user_invite_codes**: id* | user_id→users | invite_code VARCHAR | created_at | unique (user_id), unique (invite_code)
@@ -257,8 +257,8 @@ erDiagram
 - **furniture_credit_accounts**: user_id→users (PK) | account_token VARCHAR(36) unique | balance BIGINT | reserved BIGINT | last_verification_at TIMESTAMP?
 - **furniture_credit_entries**: id* | user_id→users | reference_id VARCHAR(36) | reason VARCHAR(30) | amount BIGINT | balance_after BIGINT | created_at TIMESTAMP
   - 출석은 `reason=ATTENDANCE_REWARD`, `reference_id=attendance:{eventId}`, `amount=1`이다. 사용자 행 잠금 안에서 원장 중복과 출석 완료를 검사한다.
-- **furniture_credit_reservations**: job_id→furniture_generation_jobs (PK) | user_id→users | status VARCHAR(20) | created_at TIMESTAMP | updated_at TIMESTAMP
-  - `RESERVED` → `SPENT` 또는 `RELEASED`. 실패 시 예약량을 잔액으로 반환한다.
+- **furniture_credit_reservations**: job_id→furniture_generation_jobs (PK) | user_id→users | status VARCHAR(20) | payment_type VARCHAR(20) default CREDIT | payment_amount INT default 1 | created_at TIMESTAMP | updated_at TIMESTAMP
+  - `RESERVED` → `SPENT` 또는 `RELEASED`다. `payment_type=CREDIT`는 생성권 1회, `COIN`은 100코인이다. 실패 시 저장된 결제 수단과 금액으로 한 번만 반환한다. 기존 예약은 `CREDIT`, 1회로 유지한다. 코인 결제는 생성권 계정의 balance와 reserved를 바꾸지 않는다.
 
 ## 채팅 모델
 
