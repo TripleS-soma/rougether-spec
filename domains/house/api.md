@@ -66,7 +66,7 @@
 탐색에서 선택한 집을 참여 전에 미리보기. 로그인 회원 누구나(비구성원·강퇴 이력자 포함) 조회 가능 - 집 정보는 전체공개.
 - res: `houseId`, `name`, `description`, `coverImageKey`, `maxMembers`, `currentMemberCount`, `level`, `goals[]`(`goalId`,`code`,`name`), `isMember`, `isFull`, `myJoinRequestStatus?`, `missions[]`, `memberRooms[]`
 - 구성원 전용 필드(`myRole`·`inviteCode`·`inviteExpiresAt`)는 내려가지 않는다. `isMember` 는 요청자가 이 집의 ACTIVE 구성원인지(true 면 상세 화면으로 전환), `isFull` 은 정원 초과 여부(신청 버튼 비활성용), `myJoinRequestStatus`는 비구성원의 최근 신청 상태(`PENDING`/`REJECTED`, 이력 없으면 null)다.
-- `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다(구성원 전용 개인값 `myContribution`·`contributedToday` 는 제외). WEEKLY 진행 수치는 기여 누적 합, DAILY 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
+- `missions[]`: 입주 전에 집의 활동 방향과 진행 상황을 확인하는 읽기 전용 단체미션 목록(최신 생성순). 별도 미션 목록과 동일한 `missionId`, `title`, `missionType`, `targetValue`, `currentValue`, `status`, `startsAt`, `endsAt`, `todayClaimed`, `createdAt`을 제공한다(구성원 전용 개인값 `myContribution`·`contributedToday` 는 제외). WEEKLY 진행 수치는 기여 누적 합, DAILY_MEMBER_RATE 진행 수치는 오늘(KST) 기여한 ACTIVE 멤버 비율 %, DAILY_MEMBER_COUNT 는 오늘 기여한 ACTIVE 멤버 수다. 미션 생성·상세·기여·보상 권한은 기존대로 ACTIVE 구성원에게만 있다.
 - `memberRooms[]`: 구성원 타일에 실제 방을 렌더하기 위한 데이터(서버 #177 확정). 가입순, ACTIVE 구성원만. 항목은 `membershipId`, `nickname`(온보딩 전 null), `room`(방 미생성 구성원은 null - 기본 방 타일로 표시)
   - `room` 은 방 렌더 부분집합: `growthLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `character`(착용 캐릭터 - 마스터 데이터·assetKey·animations), `slots[]`(`slotType`, `assetKey`), `placements[]`(`assetKey`, `positionX`, `positionY`, `zIndex`, `scale`, `rotationDeg`, `flipped` - zIndex 오름차순), `cobweb?`(`assetKey`, `appearedAt`, `cleanable` - 요청자가 같은 집 ACTIVE 구성원이고 활성 거미줄이 있을 때만 제공, 비구성원 미리보기에서는 null)
   - **공개 범위(확정)**: 방 렌더 데이터(가구 배치·surface·착용 캐릭터·성장 레벨)는 미리보기를 통해 로그인 회원 전체에 공개된다(집 탐색 전체공개 정책과 일치, 방 내용물은 장식 데이터). 단 활동 정보(`streak`·`lastAccessedAt`·그날 현황·완료 내역·방명록)와 편집용 값(`layoutRevision`)·소유 리소스 식별자(`userItemId`)·배치 시각은 내려가지 않는다 — 이들은 기존대로 구성원 전용("구성원 방 방문 / 활동 열람" 계약은 불변)
@@ -232,6 +232,7 @@
 
 - `WEEKLY_MEMBER_COUNT` — **누적 카운트 미션**. 진행 수치는 전 기간 기여 누적 합, 목표 도달 시 1회 claim(+100)으로 COMPLETED 종료.
 - `DAILY_MEMBER_RATE` — **일일 달성률 미션(매일 반복)**. 진행 수치는 **오늘(KST) 기여한 멤버 수 / 집 활성 멤버 수(`current_member_count`)의 비율 %(내림)**, `target_value`는 달성률 %(1~100). 그날 달성 시 하루 1회 claim(+20)이 가능하고 COMPLETED 전환 없이 다음날 0%부터 반복. 그날 claim 하지 않으면 그날 보상은 소멸(소급 없음). 달성 판정은 정수 산술(`오늘 기여수*100 >= target*멤버수`). 달성률 분자·분모 모두 현재 ACTIVE 멤버 기준(기여 후 탈퇴·강퇴한 멤버는 제외).
+- `DAILY_MEMBER_COUNT` — **일일 인원 미션(매일 반복, 2026-11-06)**. 진행 수치는 **오늘(KST) 기여한 ACTIVE 멤버 수**, `target_value`는 목표 인원(1~집 정원 `max_members`). 판정 `오늘 기여수 >= target`. claim·보상(+20)·하루 1회·소멸 규칙은 RATE 와 같다. RATE 와 달리 멤버 수가 바뀌어도 필요한 인원이 그대로다.
 
 미션 만료(`EXPIRED`):
 
@@ -241,21 +242,21 @@
 
 ### GET /api/v1/houses/{houseId}/missions
 집 미션 목록·진행률 조회. 최신 생성순.
-- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `status`, `startsAt`, `endsAt`, `todayClaimed`(DAILY 전용 — 오늘 보상 수령 여부, WEEKLY 는 null 생략), `myContribution`(내 누적 기여 — 유형 무관 누적 체크 횟수, 참여 행 없으면 0), `contributedToday`(오늘(KST) 내가 기여했는지 — 두 유형 모두 하루 1회 기여라 앱의 "기여함" 표시 근거), `createdAt`
+- res(items[]): `missionId`, `title`, `missionType`, `targetValue`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY_MEMBER_RATE: 오늘 달성률 % / DAILY_MEMBER_COUNT: 오늘 기여 멤버 수), `status`, `startsAt`, `endsAt`, `todayClaimed`(DAILY 두 유형 전용 — 오늘 보상 수령 여부, WEEKLY 는 null 생략), `myContribution`(내 누적 기여 — 유형 무관 누적 체크 횟수, 참여 행 없으면 0), `contributedToday`(오늘(KST) 내가 기여했는지 — 두 유형 모두 하루 1회 기여라 앱의 "기여함" 표시 근거), `createdAt`
 - `myContribution`·`contributedToday` 는 **구성원 목록 전용** — 미리보기 `missions[]` 에는 내려가지 않는다(2026-09-13, mobile #373: 앱이 세션 메모리로 추적하던 "기여함"이 재시작 시 사라지던 문제)
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
 ### POST /api/v1/houses/{houseId}/missions
 미션 등록. **소유자(OWNER)만**(403 `HOUSE_NOT_OWNER`). title 은 금칙어 검사(공통 규칙, 위반 400 `HOUSE_MISSION_TITLE_BANNED`). 등록 즉시 `status=ACTIVE`. → 201
 - req: `title`(1~160자), `missionType`, `targetValue`, `startsAt?`, `endsAt?`(둘 다 지정 시 endsAt > startsAt, 위반 400 `HOUSE_MISSION_PERIOD_INVALID`)
-- `targetValue`: WEEKLY 는 기여 합산 목표(1~1000), DAILY 는 달성률 %(1~100 — 초과 시 400 `HOUSE_MISSION_TARGET_INVALID`)
-- `missionType`은 MVP에서 `DAILY_MEMBER_RATE`·`WEEKLY_MEMBER_COUNT` 2종만 허용 — `STREAK_DAYS`는 400 `HOUSE_MISSION_TYPE_NOT_SUPPORTED`
+- `targetValue`: WEEKLY 는 기여 합산 목표(1~1000), DAILY_MEMBER_RATE 는 달성률 %(1~100), DAILY_MEMBER_COUNT 는 목표 인원(1~집 정원) — 범위 밖이면 400 `HOUSE_MISSION_TARGET_INVALID`
+- `missionType`은 `DAILY_MEMBER_RATE`·`DAILY_MEMBER_COUNT`·`WEEKLY_MEMBER_COUNT` 3종 허용 — `STREAK_DAYS`는 400 `HOUSE_MISSION_TYPE_NOT_SUPPORTED`
 - res: 미션 상세와 동일 형식 (`currentValue=0`, `myContribution=0`)
 - table: `house_missions`
 
 ### GET /api/v1/houses/{houseId}/missions/{missionId}
 미션 상세·내 기여 조회.
-- res: 목록 항목(`myContribution` 포함) + `achieved`(WEEKLY: currentValue >= targetValue / DAILY: 오늘 달성률 기준)
+- res: 목록 항목(`myContribution` 포함) + `achieved`(WEEKLY: currentValue >= targetValue / DAILY: 오늘 기준 — RATE 는 달성률, COUNT 는 기여 멤버 수)
 - 참여자별 기여 목록(participants[])은 화면 요구 확정 전까지 미노출
 - table: `house_missions`, `house_mission_participants`, `house_mission_daily_contributions`, `house_mission_daily_rewards`
 
@@ -264,7 +265,7 @@
 - **연동 루틴 자동 기여**(확정 2026-07-29, server PR #234 — 2026-07-05 의 "개인 루틴 완료와 무관" 결정을 이 범위에서 변경, 직접 수행 체크 API 는 유지): 이 미션에 연동된 루틴(`routines.house_mission_id`)을 **오늘(KST) 날짜로 완료 체크**(`POST /api/v1/routines/{id}/logs`)하면 완료와 같은 트랜잭션에서 본인 기여 +1 이 자동 반영된다. 하루 1회 규칙·판정은 직접 수행 체크와 동일 이력을 공유하며, 기여 결과는 완료 응답의 `houseMissionContribution`(이 API res 와 동일 형식)으로 내려간다. 기여 불가 사유(오늘 이미 기여·미션 비활성/기간 밖/삭제·집 비구성원·과거 날짜 완료)는 예외 없이 건너뛰고(응답 null) 루틴 완료는 정상 처리된다. **루틴 완료 취소는 기여를 회수하지 않는다.**
 - 구성원 본인 기여 +1, **KST(Asia/Seoul) 기준 하루 1회** — 일별 이력(`house_mission_daily_contributions`)의 UNIQUE(mission, membership, date)가 DB 방어선(유형 공통 기록)
 - `status=ACTIVE`이고 미션 기간 내일 때만 가능(위반 409 `HOUSE_MISSION_NOT_ACTIVE`), 같은 날 재기여 409 `HOUSE_MISSION_ALREADY_CONTRIBUTED`
-- res: `missionId`, `myContribution`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY: 오늘 달성률 %), `achieved`
+- res: `missionId`, `myContribution`, `currentValue`(WEEKLY: 기여 누적 합 / DAILY_MEMBER_RATE: 오늘 달성률 % / DAILY_MEMBER_COUNT: 오늘 기여 멤버 수), `achieved`
 - table: `house_mission_participants`, `house_mission_daily_contributions`
 
 ### POST /api/v1/houses/{houseId}/missions/{missionId}/claim
@@ -273,7 +274,7 @@
   - 판정: `currentValue >= targetValue` (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 이미 COMPLETED 면 409 `HOUSE_MISSION_ALREADY_CLAIMED`
   - 처리(한 트랜잭션): `status=COMPLETED` 전환 + `house.growth_points` +100(레벨 재계산) + 참여자 `reward_claimed` 일괄 true. 미션 행·집 행 비관적 락으로 동시 claim 이중 지급 방지
 - **DAILY** — **하루(KST) 1회, 매일 반복**.
-  - 판정: 오늘 달성률 >= `targetValue`% (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 오늘 이미 수령 409 `HOUSE_MISSION_ALREADY_CLAIMED`(메시지를 "오늘은 이미 보상을 받았습니다. 내일 다시 도전할 수 있습니다."로 오버라이드해 "오늘" 기준임을 구분). `status=ACTIVE`·기간 내에서만 가능(409 `HOUSE_MISSION_NOT_ACTIVE`)
+  - 판정: 오늘 달성률 >= `targetValue`%(RATE) 또는 오늘 기여 멤버 수 >= `targetValue`(COUNT) (미달 409 `HOUSE_MISSION_NOT_ACHIEVED`), 오늘 이미 수령 409 `HOUSE_MISSION_ALREADY_CLAIMED`(메시지를 "오늘은 이미 보상을 받았습니다. 내일 다시 도전할 수 있습니다."로 오버라이드해 "오늘" 기준임을 구분). `status=ACTIVE`·기간 내에서만 가능(409 `HOUSE_MISSION_NOT_ACTIVE`)
   - 처리(한 트랜잭션): `house.growth_points` +20. COMPLETED 전환·`reward_claimed` 갱신 없음 — 다음날 다시 도전. 일별 보상 이력(`house_mission_daily_rewards`)의 UNIQUE(mission, reward_date)가 하루 1회의 DB 방어선
 - res: `missionId`, `status`(WEEKLY: COMPLETED / DAILY: ACTIVE 유지), `grantedGrowthPoints`(WEEKLY 100 / DAILY 20), `houseGrowthPoints`, `houseLevel`
 - table: `house_missions`(status), `house_mission_participants`(`reward_claimed`), `house_mission_daily_rewards`, `house`(`growth_points`, `level`)
