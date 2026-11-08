@@ -162,7 +162,7 @@
 | `GET /api/v1/invites/me` | 내 초대코드 조회(없으면 발급) | res: `inviteCode` | `user_invite_codes` |
 | `POST /api/v1/invites/redeem` | 초대코드 입력(피초대자) — 양쪽 코인 지급 | req: `inviteCode` / res: 지급 결과 | `invite_rewards`, `user_wallets` |
 
-- 보상은 **초대자 50 / 피초대자 50 코인**(50 = 가구 뽑기 단챠 2회분이자 루틴·투두 일일 보상 상한 하루치). 초대자 보상은 **10건 한도** — 초과하면 redeem 자체는 성공하되 초대자 몫만 0.
+- 보상은 **초대자 50 / 피초대자 50 코인**(50 = 가구 뽑기 단챠 2회분이며 루틴·투두 일일 원금 상한 100코인의 절반). 초대자 보상은 **10건 한도** — 초과하면 redeem 자체는 성공하되 초대자 몫만 0.
 - redeem은 계정당 **평생 1회**(`invite_rewards` unique — 피초대자 기준). 에러코드: 없는 코드 404 `INVITE_CODE_NOT_FOUND`, 자기 코드 입력 400 `INVITE_SELF_NOT_ALLOWED`, 이미 사용 409 `INVITE_ALREADY_REDEEMED`.
 - **탈퇴 계정 차단(양방향)**: 초대자가 탈퇴한 코드는 무효 코드와 동일하게 404 `INVITE_CODE_NOT_FOUND`, 본인이 탈퇴한 뒤 잔여 access token으로 redeem하면 401 `AUTH_INVALID_TOKEN` — 탈퇴 계정 지갑에 보상이 지급되는 경로를 양쪽 다 막는다. 탈퇴 시 코드 row 자체를 비활성화하지는 않는다(redeem 시점 가드로 충분).
 - 집 초대코드(`house.invite_code`)와는 별개 체계다(그쪽은 집 도메인).
