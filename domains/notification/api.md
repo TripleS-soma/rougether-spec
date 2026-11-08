@@ -104,7 +104,7 @@ summary 공통 필드:
 | `createdAt`, `createdByUsername` | 초안 생성 시각과 작성자 |
 | `approvedByUsername`, `approvedAt` | 최초 실제 승인자와 승인 시각(미승인/과거 이력은 null 허용) |
 
-회원 탈퇴 등으로 알림이 삭제되어도 수신자 처리 이력은 남고 `notification_id`는 null이 된다. 따라서 `createdCount`는 과거 저장 완료를 포함하며 현재 알림 행 수와 다를 수 있다. 푸시별 수치는 현재 연결된 알림을 분류한 것이므로 `createdCount`와 별도로 더해 총 수신자 수를 계산하지 않는다. 발송 도중 수치는 변할 수 있다. 미존재 캠페인은 404 `NOTIFICATION_CAMPAIGN_NOT_FOUND`다. 서버 V97은 캠페인/수신자 테이블과 승인 감사 필드를 추가한다. 검증은 로컬 모의 API/H2/fake FCM만 사용하며 실사용자 발송으로 테스트하지 않는다.
+회원 탈퇴 등으로 알림이 삭제되어도 수신자 처리 이력은 남고 `notification_id`는 null이 된다. 따라서 `createdCount`는 과거 저장 완료를 포함하며 현재 알림 행 수와 다를 수 있다. 푸시별 수치는 현재 연결된 알림을 분류한 것이므로 `createdCount`와 별도로 더해 총 수신자 수를 계산하지 않는다. 발송 도중 수치는 변할 수 있다. 미존재 캠페인은 404 `NOTIFICATION_CAMPAIGN_NOT_FOUND`다. 서버 V98은 캠페인/수신자 테이블과 승인 감사 필드를 추가한다. 검증은 로컬 모의 API/H2/fake FCM만 사용하며 실사용자 발송으로 테스트하지 않는다.
 
 ## 피드 댓글 알림 (`FEED_COMMENT`)
 
