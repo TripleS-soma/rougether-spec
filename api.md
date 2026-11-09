@@ -28,7 +28,8 @@
 | 공동 집 | [domains/house/api.md](domains/house/api.md) |
 | 알림 | [domains/notification/api.md](domains/notification/api.md) |
 | 운영 지원 (버그 제보) | [domains/support/api.md](domains/support/api.md) |
-| 연속 출석 이벤트 | [domains/attendance/api.md](domains/attendance/api.md) |
+| 출석 이벤트(STREAK / CUMULATIVE) | [domains/attendance/api.md](domains/attendance/api.md) |
+| 크리스마스 이벤트 | [domains/christmas/api.md](domains/christmas/api.md) |
 | 고양이 앱 아이콘 | [domains/app-icon/api.md](domains/app-icon/api.md) |
 
 공개 SNS 피드 API: [domains/feed/api.md](domains/feed/api.md).

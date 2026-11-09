@@ -112,11 +112,17 @@
 - **character_accessory_render_profiles**: id* | item_id→items | character_id→characters | render_state VARCHAR(40) | asset_key VARCHAR(255) | canvas_width INT | canvas_height INT | asset_width INT | asset_height INT | position_x DECIMAL(6,5) | position_y DECIMAL(6,5) | width_ratio DECIMAL(5,4) | rotation_deg INT | z_index INT | created_at | updated_at | unique (item_id, character_id, render_state)
   - 캐릭터 원본 캔버스 위에 단품 악세사리를 합성하기 위한 카탈로그 메타데이터. 캔버스·단품 이미지 크기는 양수이고, 좌표는 중심점 기준 정규화 값이다. `default` 상태가 있으면 해당 아이템을 해당 캐릭터에 착용할 수 있으며, 포즈별 상태는 동일한 `(item, character)`의 `default` 값을 선택적으로 대체한다.
 
-### 연속 출석 이벤트
-- **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items? | generation_credit_amount INT | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
+### 출석 이벤트
+- **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items? | generation_credit_amount INT | mode VARCHAR(20) DEFAULT STREAK | milestone_every INT DEFAULT 0 | milestone_coin_amount INT DEFAULT 0 | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
   - 새 생성권 이벤트는 `target_days=7`, `generation_credit_amount=1`, `reward_item_id=null`이다. 기본 코인 설정은 `daily_coin_amount=30`, `bonus_day=5`, `bonus_coin_amount=50`이다. 기존 가구 이벤트는 `generation_credit_amount=0`을 유지한다. `bonus_coin_amount`는 추가분이 아니라 해당 일차의 총 지급량이다.
-- **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | generation_credit_amount INT | reward_processed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
+  - V100의 `mode`는 `STREAK` / `CUMULATIVE`이며 기존 행 기본값은 STREAK다. 같은 모드 내 활성 기간 중첩만 막고 legacy 선택은 STREAK로 한정한다. CUMULATIVE 코인 전용 이벤트는 `reward_item_id=NULL`, `generation_credit_amount=0`을 허용한다. 기존 생성권은 STREAK/목표 7/생성권 1 제약을 유지한다.
+  - 크리스마스 `christmas_2026`은 누적 목표 30, 일반 30코인, `milestone_every=5`, `milestone_coin_amount=60`(추가분이 아닌 해당 누적일 총액)이다. 누적 5/10/15/20/25/30회가 60코인으로 합계 1,080코인이다. 최종 특별 보상은 NONE이며 트리/생성권을 지급하지 않는다.
+- **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | generation_credit_amount INT | reward_processed_at TIMESTAMP? | progress_completed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
   - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전 보상 상태는 null, 생성권 지급량은 0이다. 가구 완료 row는 기존 보상 3개 컬럼에 값이 있다. 생성권 완료 row는 가구 참조 없이 지급량 1과 보상 처리 시각을 기록한다.
+
+  - `streak_day`는 실제 연속일수다. 누적 진행은 이벤트/회원의 고유 출석 날짜 수로 계산하고 기존 컬럼을 누적값으로 재해석하지 않는다. `progress_completed_at`은 특별 아이템 지급과 별개의 누적 목표 완료 표식이며 `reward_processed_at` 등 기존 보상 처리 제약을 보존한다.
+- **event_popup_dismissals** (V100): id* | user_id→users | event_code VARCHAR(50) | dismissed_at TIMESTAMP | unique (user_id, event_code)
+  - user FK는 `ON DELETE CASCADE`이며 회원탈퇴 soft delete에서도 즉시 파기한다. 계정+안정적인 `christmas_2026` 코드로 안내 팝업 영구 숨김을 저장한다. 문구/이미지 수정과 무관하며 출석판/직접 진입 제한으로 쓰지 않는다. API는 [christmas/api.md](domains/christmas/api.md)를 따른다.
 
 ### 뽑기
 - **gacha**: id* | code VARCHAR(50) | name VARCHAR(120) | name_translations JSON? | cost_currency_type VARCHAR(30)? | cost_amount INT | draw_count INT | starts_at TIMESTAMP? | ends_at TIMESTAMP? | is_active BOOLEAN | created_at | updated_at | theme_id→themes?
@@ -126,6 +132,9 @@
   - `rarity`는 한글 `일반`/`희귀`/`전설` 3종(추첨은 티어 롤 70/25/5 — gacha 도메인 참고). `weight`·`currency_type`·`reward_amount`는 잔존 컬럼으로 런타임 미사용(`CURRENCY` 엔트리는 풀에서 제외됨).
   - `reward_type`로 아이템(`ITEM`) / 캐릭터(`CHARACTER`) / 재화(`CURRENCY`) 보상을 구분. 중복 아이템은 다이아로 전환, **중복 캐릭터는 코인 100 환급**.
   - 신규 3종은 실제 아이템 배치 유형에 맞는 `ITEM`만 허용한다(벽지·바닥은 해당 `surface_slot`, 가구는 `positioned`이며 `surface_slot_type=NULL`). 캐릭터·악세사리·배경은 제외하고, 미리보기와 draw에서 같은 적격성 검사를 적용한다. 기존 풀에서 상시 적격 등록을 중복 없이 복사하되 기존 머신·풀·보유 이력은 유지한다. 상세 이행 규칙은 [뽑기 기능 명세](domains/gacha/features.md#풀-등록--기존-머신-이행)를 따른다.
+
+- 크리스마스 V101 전용 머신은 `code=christmas_2026`, `theme_id`는 `snowy_christmas_202611`, `category=null`(응답에서 도출), COIN 25 / draw_count 1이다. KST 2026-11-09~12-25 기간 데이터와 비활성 seed를 추가한다. 승인 10개 asset key를 환경별 item ID로 찾아 ITEM 풀에 등록하며 트리를 포함한다. 기존 정식 3종 풀은 변경하지 않는다.
+- 크리스마스 그룹 50%/기존 정식 3종 적격 활성 합집합 그룹 50%는 별도 그룹 컬럼 없이 코드에서 구성한다. itemId dedup, 다른 출석 전용 보상 제외, 그룹별 70/25/5 티어와 fail-closed는 [gacha/api.md](domains/gacha/api.md#크리스마스-전용-뽑기-christmas_2026)를 따른다. 공개 플래그 기본 OFF이며 가격/풀 데이터만으로 오픈하지 않는다.
 
 ### 알림
 - **user_device_token**: id* | user_id→users | token VARCHAR(255) UNIQUE | platform VARCHAR(20) | created_at | updated_at
