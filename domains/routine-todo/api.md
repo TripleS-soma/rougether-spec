@@ -106,7 +106,7 @@
 - 배치 판정은 방의 `layout_format` 정본만 읽는다. `FREE_V1`은 `room_item_placements`, `SLOT_V1`은 가구용 `room_surface_slots`만 사용한다. 자유배치 전환 후 남은 옛 슬롯 행을 합산하지 않는다. 본인 소유이며 미삭제인 `user_items`와 연결된 `positioned` / `furniture` 아이템만 센다. 보유 가구이므로 카탈로그 판매 활성 여부는 조건이 아니다.
 - DB `base_reward_amount`에는 원금, `reward_amount`에는 원금+보너스 **실지급 스냅샷**을 저장한다. 기존 응답 `rewardAmount`는 실지급액을 유지하며 원금 분리용 신규 응답 필드는 추가하지 않는다. 성장 포인트는 원금만 기준으로 적립하며 이벤트 보너스로 늘지 않는다.
 - 완료 취소는 완료 당시 `reward_amount`와 `growth_reward_amount`를 회수한다. 이후 가구 배치, 소유권, 이벤트 기간이 바뀌어도 보너스를 다시 계산하지 않는다. 원금 한도 복구도 저장한 원금 기준이다. 취소 뒤 다시 완료하면 그 시점의 조건으로 새로 계산한다.
-- 서버 V99은 `routine_logs`와 `todos`에 nullable `base_reward_amount`만 추가하며 기존 행은 null로 유지한다. null이면 `reward_amount`를 원금으로 취급한다. 추가 코인이 없는 완료와 취소는 원금 필드를 null로 유지해 구버전의 총액 변경을 따라간다. 추가 코인이 있는 완료만 명시적 원금 스냅샷을 저장하며, 보너스 활성화 후에는 구버전 writer나 단순 롤백을 허용하지 않는다. `CHRISTMAS_COIN_BONUS_ENABLED`(`christmas.coin-bonus.enabled`)는 기본 **false**이며, 모든 API 인스턴스가 원금 분리 코드로 전환된 뒤 이벤트 공개 시에만 true로 켠다. 기간과 구현 완료만으로 운영 오픈 상태를 뜻하지 않는다.
+- 서버 V99은 `routine_logs`와 `todos`에 nullable `base_reward_amount`만 추가하며 기존 행은 null로 유지한다. null이면 `reward_amount`를 원금으로 취급한다. 추가 코인이 없는 완료와 취소는 원금 필드를 null로 유지해 구버전의 총액 변경을 따라간다. 추가 코인이 있는 완료만 명시적 원금 스냅샷을 저장하며, 보너스 활성화 후에는 구버전 writer나 단순 롤백을 허용하지 않는다. `CHRISTMAS_EVENT_ENABLED`(`christmas.event.enabled`)와 `CHRISTMAS_COIN_BONUS_ENABLED`(`christmas.coin-bonus.enabled`)가 **모두 true**일 때만 가구 보너스를 적용한다. 두 설정의 기본값은 false이며 공통 이벤트 플래그 OFF는 보너스도 중단한다. 일일 원금 100코인 한도는 이벤트 플래그와 무관하게 유지한다. 모든 API 인스턴스가 원금 분리 코드로 전환된 뒤 이벤트 공개 시에만 true로 켠다. 기간과 구현 완료만으로 운영 오픈 상태를 뜻하지 않는다.
 - 이 보너스 계약은 크리스마스 뽑기 50:50, 누적 30일 출석, 접속 팝업의 구현이나 오픈 완료를 뜻하지 않는다.
 
 ## 유사 루틴·투두 비교 (`routines`, `todos` — 기기 캘린더 임포트 힌트)

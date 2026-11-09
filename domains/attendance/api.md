@@ -1,8 +1,8 @@
-# 연속 출석 이벤트 API
+# 출석 이벤트 API
 
 사용자 API는 JWT, 운영 API는 관리자 세션 인증이다. 날짜와 하루 경계는 `Asia/Seoul`이다.
 
-## 이벤트 생성
+## 기존 STREAK 이벤트 생성
 
 `POST /admin/attendance-events`
 
@@ -24,9 +24,9 @@
 
 기존 가구 이벤트 요청도 지원한다. `rewardItemId`가 있으면 가구 보상이고 `generationCreditAmount=0`이다. `rewardItemId`는 양수이며 존재하는 활성 `positioned` 가구여야 한다.
 
-기존 검증은 유지한다: 코드 `[A-Z0-9_]{1,50}`, 제목 1~120자, 목표 2~365일, 코인 0~1,000,000, 보너스 일차 1~목표일, 기간 최소 목표일. 기간 중첩·코드 중복은 409다.
+기존 검증은 유지한다: 코드 `[A-Z0-9_]{1,50}`, 제목 1~120자, 목표 2~365일, 코인 0~1,000,000, 보너스 일차 1~목표일, 기간 최소 목표일. 같은 모드 내 활성 기간 중첩·코드 중복은 409다. 기존 관리자 생성 요청은 STREAK로 유지하며 CUMULATIVE 생성용 필드는 추가하지 않는다.
 
-## 출석 상태
+## 기존 STREAK 출석 상태
 
 `GET /api/v1/events/attendance`
 
@@ -63,13 +63,44 @@
 }
 ```
 
+기존 두 legacy API는 활성 `STREAK`만 선택하며 크리스마스 누적 출석을 자동 선택하지 않는다. 상태 응답에는 하위 호환 필드 `mode`, `progressDays`, `active`, `availableToday`가 추가된다. STREAK의 `progressDays`는 `currentStreak`와 같다.
+
 가구 이벤트는 `reward.type=FURNITURE`, `generationCreditAmount=0`이며 기존 item 필드를 유지한다. 생성권 보상에서 item 필드는 null이므로 앱은 보상 타입을 구분해야 한다.
 
-## 오늘 출석
+## 기존 STREAK 오늘 출석
 
 `POST /api/v1/events/attendance/check-ins` — body 없음.
 
 응답 필드는 `newCheckIn`, `coinRewardAmount`, `coinBalance`, `rewardGrantedNow`, `status`다. `status`는 위 상태 응답이다. `rewardGrantedNow`는 이번 요청에서 **완료 보상(가구 또는 생성권)**을 새로 지급했는지 뜻한다. 중복 호출·완료 후 호출에서는 false이고 코인 지급량은 0이다.
+
+## 이벤트 ID 지정 조회와 출석 (크리스마스 CUMULATIVE)
+
+| method · path | 목적 | 응답 |
+| --- | --- | --- |
+| `GET /api/v1/events/attendance/{eventId}` | 본인 이벤트 진행도와 보상 이력 | 기존 상태 + 아래 추가 필드. 시작 전/종료 후/비활성 상태도 조회 허용 |
+| `POST /api/v1/events/attendance/{eventId}/check-ins` | 지정 이벤트에 KST 오늘 출석 | body 없음. 기존 `AttendanceCheckInResponse`와 같은 필드 |
+
+크리스마스 실제 `attendanceEventId`는 [크리스마스 metadata](../christmas/api.md)로 받는다. 숫자 ID를 앱에 고정하지 않는다.
+
+| 필드 | 계약 |
+| --- | --- |
+| `mode` | `STREAK` / `CUMULATIVE` |
+| `progressDays` | CUMULATIVE는 `min(targetDays, 서로 다른 출석 날짜 수)`, STREAK는 `currentStreak` |
+| `currentStreak` | 실제 연속일수 의미 유지. 누적 횟수로 재해석하지 않음 |
+| `active` | 이벤트 활성 플래그, KST 기간, 크리스마스 공개 플래그가 모두 유효한지 |
+| `availableToday` | `active && !completed && !checkedInToday` |
+| `dailyRewards[].claimed` | CUMULATIVE는 누적 `progressDays`까지 수령, STREAK는 현재 연속 진행 기준 |
+| `completed` | 목표 진척 완료 여부. 특별 아이템 지급 여부와 별개 |
+
+크리스마스 운영값은 `code=christmas_2026`, `mode=CUMULATIVE`, `targetDays=30`, **2026-11-09~12-25(KST 양 끝 포함)**다. 일반 출석은 30코인, 누적 **5/10/15/20/25/30회째는 그날 총 60코인**이다. 30회 합계는 `24×30 + 6×60 = 1,080`코인이다. `dailyRewards[].day`는 달력 날짜가 아니라 누적 출석 순번이며 서버 보상표를 화면에 바인딩한다.
+
+완료 특별 보상은 **NONE**이다. `reward`는 `{"itemId":null,"name":null,"assetKey":null,"userItemId":null,"received":false,"type":"NONE","generationCreditAmount":0}`이며, 누적 30회를 달성해도 `rewardGrantedNow=false`다. 코인 지급 성공과 `completed=true`로 완주를 표시한다. 트리 지급, 생성권, 기보유 대체 보상은 없다. 트리는 크리스마스 뽑기 보상에 포함한다.
+
+- 빠진 날이 있어도 누적 진행은 초기화하지 않으며 하루 한 번, 당일만 출석한다. 소급/미래 날짜 입력은 받지 않는다.
+- 활성 기간 안의 같은 날/완료 후 재요청은 `newCheckIn=false`, `coinRewardAmount=0`, `rewardGrantedNow=false`인 멱등 성공이다. 사용자 잠금과 unique `(event_id,user_id,attendance_date)` 아래 출석, 코인, 원장, 완료 표식을 같은 트랜잭션으로 처리한다. 지급 실패면 모두 롤백한다.
+- 기간 밖/비활성/크리스마스 플래그 OFF POST는 기존 중복 출석이라도 **409 `ATTENDANCE_EVENT_NOT_ACTIVE`**다. 종료 뒤 응답 유실 복구는 GET으로 진행도와 지갑을 재조회한다. 없는 ID는 404 `ATTENDANCE_EVENT_NOT_FOUND`다.
+- 기존 STREAK와 CUMULATIVE는 병행할 수 있다. legacy 조회/체크인은 STREAK만 선택하고 신규 앱의 크리스마스 화면은 반드시 ID 지정 API를 쓴다. 기존 루틴/투두 완료 후 STREAK 자동 출석 동작은 보존하며 크리스마스를 대신 자동 체크하지 않는다.
+- 출석 코인은 루틴/투두 일일 원금 100코인 한도 밖이며 크리스마스 가구 배치 10% 보너스 적용 대상도 아니다.
 
 ## 생성권 및 가구 생성
 
@@ -86,7 +117,8 @@
 
 | status | code | 의미 |
 | --- | --- | --- |
-| 404 | ATTENDANCE_EVENT_NOT_FOUND | 오늘 유효한 이벤트 없음 |
+| 404 | ATTENDANCE_EVENT_NOT_FOUND | legacy의 오늘 유효한 STREAK 없음 또는 지정 ID 없음 |
+| 409 | ATTENDANCE_EVENT_NOT_ACTIVE | 지정 이벤트 기간 밖/비활성 또는 크리스마스 공개 플래그 OFF |
 | 500 | ATTENDANCE_EVENT_CONFIGURATION_INVALID | 활성 이벤트 중복 |
 | 400 | ATTENDANCE_EVENT_PERIOD_TOO_SHORT | 기간 부족 |
 | 400 | ATTENDANCE_EVENT_BONUS_DAY_INVALID | 보너스 일차 초과 |

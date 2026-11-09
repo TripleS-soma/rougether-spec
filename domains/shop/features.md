@@ -39,6 +39,7 @@
 다이아로 방 꾸미기 아이템을 구매한다. 관련 table: `items`, `user_items`, `user_wallets`.
 
 - **구매 가능 판정**: 대상 아이템이 활성(`is_active`)이고 다이아 구매 정보(`purchase_currency_type`=다이아, `price_amount` 존재)를 가질 때만 구매 가능. 캐릭터 악세사리 등 뽑기 전용 아이템은 구매 불가.
+- **크리스마스 예외**: `snowy_christmas_202611` 테마는 전용 이벤트 뽑기 획득 대상이며 트리를 포함해 직접 구매를 차단한다. 가격 정보나 활성 풀을 잘못 등록해도 일반 머신/상점으로 우회 획득하지 않는다. 이미 보유한 아이템의 인벤토리/배치는 유지하며 트리를 출석 전용 보상으로 예약하지 않는다.
 - **잔액 확인**: 구매 전 `items.price_amount`와 user의 다이아 `user_wallets.balance`(해당 `currency_type` row)를 비교. 부족하면 예외 처리(구매 차단).
 - **구매 처리(트랜잭션)**: 다이아 `user_wallets.balance` 차감 + `user_items` row 생성(`acquired_at` 기록)을 하나의 쓰기 트랜잭션으로 묶는다.
   - 중복 보유 처리(이미 보유한 아이템 재구매 허용 여부)는 **미정**.

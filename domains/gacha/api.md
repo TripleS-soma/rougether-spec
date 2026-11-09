@@ -32,7 +32,7 @@
 단일 머신 상세 조회.
 
 - **목적**: 비용·구성 요약. 신규·기존 머신 모두 기존 ID로 직접 조회할 수 있다. 상세 조회는 활성·운영 기간을 검사하지 않으며, 없는 머신이면 404 `GACHA_NOT_FOUND`다.
-- **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `category`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active`, `giftBoxAssetKey` — 기간 미노출). `giftBoxAssetKey` 사용 규칙은 목록 조회와 같다. 보상 항목은 아래 `/rewards`에서 조회하며, 확률은 현재 노출하지 않는다.
+- **응답 핵심 필드**: 목록과 동일 형태(`gachaId`, `code`, `name`, `category`, `themeId`, `costCurrencyType`, `costAmount`, `drawCount`, `active`, `giftBoxAssetKey` — 기간 미노출). `giftBoxAssetKey` 사용 규칙은 목록 조회와 같다. 보상 항목은 아래 `/rewards`에서 조회하며, 일반 머신 확률은 노출하지 않으며 크리스마스 이벤트는 아래 `probabilityPercent` 예외를 따른다.
 - **관련 table**: `gacha`, `gacha_pool_entries`.
 
 ## GET /api/v1/gacha/{id}/rewards
@@ -47,8 +47,8 @@
   - `owned`는 인증 사용자가 해당 아이템 또는 캐릭터를 현재 보유 중인지 나타낸다.
   - 활성 풀 엔트리(`gacha_pool_entries.is_active=true`) 중 실제 보상 참조가 있는 항목만 내려주며, **보상 참조가 비활성이면 함께 제외한다** — `ITEM`은 `items.is_active`와 소속 테마 `themes.is_active`까지, `CHARACTER`는 `characters.is_active`를 검사한다. admin 카탈로그 사용/미사용 토글([shop/api.md](../shop/api.md) 어드민 섹션)이 별도 풀 조작 없이 다음 조회부터 반영된다.
   - 정식 3종은 여기에 **아이템 배치 유형과 머신 카테고리 일치 조건**을 추가한다. 벽지는 `surface_slot`+`wallpaper`, 바닥은 `surface_slot`+`floor`, 가구는 `positioned`+`surfaceSlotType=null`이다. `characterSlotType`이 있거나 `categoryCode`가 `character_accessory`·`background`이면 제외한다. `CHARACTER`와 다른 종류의 `ITEM`도 해당 3종 풀에서 제외한다. 미리보기와 draw의 적격성 조건은 같다.
-  - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 계산 확률은 응답하지 않는다.
-  - 적격 보상이 없으면 `items: []`를 반환한다. 빈 풀로 실제 추첨을 시도할 때만 `GACHA_EMPTY_POOL` 오류다.
+  - 목록은 풀 엔트리 ID 오름차순으로 고정하되, `weight`와 일반 머신 계산 확률은 응답하지 않는다. 크리스마스 이벤트의 optional `probabilityPercent`는 아래 예외를 따른다.
+  - 일반 머신은 적격 보상이 없으면 `items: []`를 반환한다(크리스마스는 양 그룹/티어 검증 실패 시 `GACHA_EMPTY_POOL`). 빈 풀로 실제 추첨을 시도할 때만 `GACHA_EMPTY_POOL` 오류다.
 - **검증/예외**: 없는 머신이면 `GACHA_NOT_FOUND`(404), `is_active=false`이거나 운영 기간 밖이면 `GACHA_INACTIVE`(409).
 - **관련 table**: `gacha`, `gacha_pool_entries`, `items`, `characters`, `user_items`, `user_characters`.
 
@@ -69,6 +69,17 @@
 - **검증/예외**(전부 서버 에러코드): 머신 없음 404 `GACHA_NOT_FOUND`, `is_active=false` 또는 운영 기간 밖 409 `GACHA_INACTIVE`, `count` 1/6/10 외 400 `GACHA_INVALID_DRAW_COUNT`, 보유 코인 부족 409 `GACHA_INSUFFICIENT_COIN`, 활성 풀 비어있음 409 `GACHA_EMPTY_POOL`, 캐릭터 보상이 든 머신을 개인 방 최고 달성 레벨 10 미만이 뽑으면 403 `GACHA_CHARACTER_LOCKED`(2026-10-14, 코인 차감 전 거부). 차감·지급·환급은 단일 쓰기 트랜잭션.
 - **관련 table**: `gacha`, `gacha_pool_entries`, (의존) `user_items`, `user_characters`, `user_wallets`.
 - **클라이언트 연출 경계**: 응답 시점에 지급·환급은 완료되어 있다. 영상 재생·건너뛰기·결과 확인은 추가 draw를 호출하지 않는다. 결과 아이템의 `assetKey`와 `rarity`를 등급별 공통 연출에 넣으며, 별도 아이템별 영상 필드나 연출 완료 API는 추가하지 않는다. 연출 상세는 [기능 명세](./features.md#공통-결과-연출)를 따른다.
+
+### 크리스마스 전용 뽑기 (`christmas_2026`)
+
+- **기존 endpoint를 그대로 쓴다**: `GET /api/v1/gacha`(catalog 생략), `GET /api/v1/gacha/{id}`, `GET /api/v1/gacha/{id}/rewards`, `POST /api/v1/gacha/{id}/draw`. 이벤트 전용 draw URL은 없다. metadata의 실제 `gachaId` 또는 정확한 `code=christmas_2026`로 식별한다. `category=null`이며 캐릭터 머신으로 오분류하지 않는다. `catalog=category`는 기존 WALLPAPER/FLOOR/FURNITURE 3종만 반환하고 이 머신을 포함하지 않는다.
+- 테마 `snowy_christmas_202611`, 단챠 COIN 25, `count=6`(5+1) COIN 125, 결과 6개다. 기존 count=10 호환과 중복 아이템 다이아 3 전환은 유지한다.
+- 각 결과마다 **크리스마스 그룹 50% / 일반 그룹 50%**를 독립 선택한 뒤 그 그룹 안에서 일반/희귀/전설을 **70/25/5%**, 해당 티어 안에서 균등 추첨한다. 그룹 크기와 미보유 여부는 그룹 확률을 바꾸지 않는다. 중복 다이아 전환도 원래 뽑힌 그룹 당첨이므로 “새 미보유 크리스마스 가구 50%”라고 표현하지 않는다.
+- 크리스마스 그룹은 전용 활성 풀 중 승인된 10개 asset key와 테마가 일치하는 방 꾸미기 아이템이다. **트리 포함 가구 8종 + 벽지 1종 + 바닥 1종**이며 캐릭터/악세사리/배경은 제외한다. 일반 그룹은 활성·기간 내 기존 정식 벽지/바닥/가구 3종 머신의 적격 활성 풀 **합집합을 itemId로 중복 제거**한다. 크리스마스 테마, 다른 출석 전용 보상(`attendance_events.reward_item_id`), 캐릭터/악세사리/배경은 제외한다.
+- 양 그룹 모두 활성 엔트리/아이템/테마와 배치 유형 필터를 적용하며 미리보기와 실제 draw는 같은 후보 집합이다. **양 그룹의 모든 양수 확률 티어(일반/희귀/전설)가 비어 있지 않아야 한다**. 빈 그룹/티어 또는 지원하지 않는 rarity는 **409 `GACHA_EMPTY_POOL`**로 닫힌 실패 처리한다. 차감 전 검증하며 다른 그룹/전체 풀로 fallback하지 않는다. 기존 일반 머신의 빈 티어 fallback 정책은 변경하지 않는다.
+- `/rewards`는 두 그룹 후보를 함께 `items[]`로 반환하며 이벤트 항목에만 optional `probabilityPercent`(0~100)를 추가한다. 아이템별 확률은 `50% × 티어 확률 ÷ 해당 그룹/티어의 아이템 수`다. 일반 머신은 이 필드를 생략한다. 동일한 보유 여부/아이템 렌더링 필드는 유지한다.
+- 운영 기간은 **2026-11-09~12-25(KST, 양 끝 날짜 포함)**이며 12/26 00:00 KST부터 새 뽑기를 거절한다. `CHRISTMAS_EVENT_ENABLED=false`, 비활성 머신/테마 또는 기간 밖이면 목록에서 제외하고 rewards/draw는 `GACHA_INACTIVE`다. 상세 GET은 일반 머신과 달리 실제 이벤트 가용 상태를 `active`에 반영하되 기존 필드 모양은 같다. 종료 후 이미 지급한 인벤토리는 보존한다.
+- 서버 V101은 환경별 theme code와 asset key로 전용 머신과 10개 풀 엔트리를 준비하고 머신은 **비활성**으로 둔다. 상시 풀을 수정하지 않는다. 모든 서버와 새 앱 검증 후 승인된 운영 공개 절차에서만 플래그/운영 데이터를 활성화한다. 크리스마스 아이템은 다른 머신과 직접 구매에서 차단한다.
 
 ### 캐릭터 악세사리 뽑기 (테마별 아이템 머신)
 
