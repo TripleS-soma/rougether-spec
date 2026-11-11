@@ -280,10 +280,11 @@ erDiagram
 
 ## 채팅 모델
 
-기존 확정 table 수와 별개인 신규 3개 table입니다. 상세는 [채팅 데이터](domains/chat/data.md), 동작은 [채팅 API](domains/chat/api.md)를 따릅니다.
+기존 확정 table 수와 별개인 신규 4개 table입니다. 상세는 [채팅 데이터](domains/chat/data.md), 동작은 [채팅 API](domains/chat/api.md)를 따릅니다.
 
 - **chat_rooms**: id* | room_type VARCHAR(20) | house_id? →house, UNIQUE | last_sequence BIGINT default 0
-- **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6). UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id).
+- **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6) | message_type VARCHAR(20) default 'TEXT' | deleted_at TIMESTAMP(6)?. UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id). `message_type`은 `TEXT`/`IMAGE`, `deleted_at`은 운영자 삭제 시각.
+- **chat_images**: id* | room_id →chat_rooms | owner_id →users | message_id? →chat_messages, UNIQUE | storage_key VARCHAR(255), UNIQUE | width INT | height INT | ready BOOLEAN default false | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6). INDEX(owner_id,created_at), INDEX(room_id), INDEX(expires_at,id). 비공개 JPEG key와 변환 후 치수. `message_id`가 null이면 미전송 업로드이며 `expires_at`은 미전송 사진에만 적용.
 - **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0 | push_muted BOOLEAN default false. UNIQUE(room_id,user_id). `push_muted`는 사용자별 방 푸시 음소거 여부.
 
 ## 다국어·개인 알림 시간대 확장
