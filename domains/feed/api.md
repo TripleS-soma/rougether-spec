@@ -271,7 +271,7 @@ Comment:
 | 409 | `FEED_REQUEST_CONFLICT` | 재시도 UUID를 다른 요청/삭제 결과에 재사용 |
 | 409 | `FEED_IMAGE_UNAVAILABLE` | 사진이 본인 소유/완료/미사용/유효 상태가 아님 |
 | 429 | `FEED_UPLOAD_LIMIT` | 미사용 업로드 30개 상한. 취소·만료 정리 후 재시도 |
-| 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류 |
+| 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류, 사진 디코딩 차례를 5초 안에 얻지 못함(서버 프로세스당 동시 1개, 채팅 업로드와 공유) |
 
 HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼저 거절될 수 있다. 삭제·탈퇴·재시도 세부 정책은 [기능 계약](features.md)을 따른다.
 
