@@ -341,3 +341,9 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 ### 피드 대댓글 확장 (V93)
 
 `feed_comments.parent_comment_id`는 최초 원댓글, `reply_to_comment_id`는 실제 답한 댓글이다. 일반 댓글은 둘 다 null이고 대댓글에 다시 답해도 부모는 최초 원댓글을 유지한다. 서버가 같은 게시물, 보이는 대상, 한 단계 부모를 검증하며 게시물 잠금으로 작성/삭제를 직렬화한다. 부모 FK는 물리 삭제 시 CASCADE, 실제 대상 FK는 SET NULL이며 일반 삭제는 기존 soft delete다. 인덱스는 `(post_id, parent_comment_id, deleted_at, id)`다. 기존 댓글/UUID/hash는 변경하지 않는다. 삭제된 원댓글 아래의 살아 있는 답글은 유지하며 응답에서 본문과 작성자 정보를 비운 삭제 자리로 표현한다.
+
+## 건의와 앱 업데이트 (2026-11-11)
+
+- **suggestions**: id* | user_id→users (ON DELETE CASCADE) | title VARCHAR(100) | content VARCHAR(2000) | created_at | updated_at
+- **app_updates**: id* | title VARCHAR(100) | content VARCHAR(5000) | created_at | updated_at
+- 회원 탈퇴의 soft delete 시 suggestions를 동기 삭제한다. 상세 계약은 [건의하기와 업데이트](domains/member/feedback-updates.md)를 따른다.
