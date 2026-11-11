@@ -8,7 +8,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 
 ### `GET /api/v1/rooms/me`
 - 목적: 내 방의 성장 레벨 + 착용 캐릭터 + 배치 형식·revision + 슬롯·자유배치 + 스트릭을 한 번에 조회.
-- 응답 핵심: `roomUserId`, `growthLevel`, `growthPoints`, `pointsToNextLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `layoutRevision`, `character?`, `slots[]`, `placements[]`, `streak`(`currentCount`, `longestCount`), `cobweb?`(`assetKey`, `appearedAt`, `cleanable`), `updatedAt`.
+- 응답 핵심: `roomUserId`, `growthLevel`, `growthPoints`, `pointsToNextLevel`, `layoutFormat`(`SLOT_V1`/`FREE_V1`), `layoutRevision`, `characterScale`(기본 1.00), `character?`, `slots[]`, `placements[]`, `streak`(`currentCount`, `longestCount`), `cobweb?`(`assetKey`, `appearedAt`, `cleanable`), `updatedAt`.
 - **lazy 생성**: 방 row가 없으면 첫 조회·배치 저장·성장 포인트를 지급하는 첫 완료에서 생성한다(`growthLevel 0`·`growthPoints 0`·`SLOT_V1`·`layoutRevision 0`). 동시 생성은 PK upsert로 보호하며 첫 완료로 이미 생성된 방은 누적된 성장을 그대로 반환한다. 조회도 생성 가능성이 있어 쓰기 트랜잭션이다.
 - **성장 값**: `growthPoints`는 누적 정수 포인트, `growthLevel`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. `pointsToNextLevel = T(L + 1) - growthPoints`이며 구간 필요량은 20 → 22 → 24 → …으로 증가한다. 예: 30포인트 → 레벨 1, 다음 레벨까지 12포인트. 50포인트 → 레벨 2, 다음 레벨까지 16포인트. 문턱을 넘은 포인트는 다음 구간에 유지한다. 두 포인트 필드는 64비트 정수다. 완료·취소 후 이 API를 다시 조회해 반영 결과를 확인한다. 완료/취소 API 응답 형태는 유지한다. 성장 변화만으로 `layoutRevision`은 증가하지 않는다.
 - **타인 방**: 같은 응답을 쓰는 인가된 방 방문 경로도 성장 3개 값을 반환한다. 집 공개 미리보기의 렌더 부분집합은 기존 `growthLevel`만 유지한다.
@@ -45,6 +45,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 - 목적: surface 슬롯과 가구 자유배치를 단일 트랜잭션으로 저장한다. 첫 저장 시 해당 방만 `SLOT_V1`에서 `FREE_V1`으로 전환한다 — **`placements[]`가 빈 배열이어도 저장이 성공하면 전환**되며(내용물 유무 무관), 전환은 비가역이라 이후 구버전 positioned 슬롯 저장이 영구 차단된다.
 - 요청 핵심:
   - `baseRevision`(필수): 마지막 조회에서 받은 `layoutRevision`. 방이 아직 생성되지 않았으면 0. 현재 서버 값과 다르면 409 `ROOM_LAYOUT_REVISION_CONFLICT`.
+  - `characterScale`(선택): 0.70~1.30 배율. 생략/null이면 기존 값을 보존한다. 범위 검증 후 소수 둘째 자리 HALF_UP으로 저장한다. 가구와 같은 트랜잭션 및 revision을 사용한다.
   - `surfaceSlots[]`(필수): `{ slotType, userItemId | null }`. surface 3종만 허용하며, 요청에 포함된 슬롯만 갱신한다.
   - `placements[]`(필수): `{ userItemId, positionX, positionY, zIndex, scale, rotationDeg, flipped }`. 전체 교체 방식으로 요청에 없는 기존 자유배치는 삭제한다.
 - 값 범위: `positionX`·`positionY`는 0.0~1.0, `scale`은 0.1~5.0, `rotationDeg`는 -360~360. 좌표는 방 렌더 영역 전체 기준이며 캐릭터 영역을 포함한 겹침·충돌은 서버가 검증하지 않는다.
@@ -55,7 +56,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 - 전환 호환: 기존 positioned 슬롯 row는 삭제하지 않고 구버전 표시 fallback으로 남긴다. 이후 정본은 `layoutFormat`이 결정한다.
 - 응답 핵심: `GET /api/v1/rooms/me`와 동일한 갱신 후 방 상태. 성공 시 `layoutRevision`을 1 증가시킨다.
 - 주요 오류: 잘못된 배치값 `ROOM_INVALID_PLACEMENT`(400), 중복 보유 아이템 `ROOM_DUPLICATE_PLACEMENT_ITEM`(400), `surfaceSlots`에 positioned·미지 slotType `ROOM_INVALID_SLOT_TYPE`(400), `surfaceSlots` 내 같은 slotType 중복 `ROOM_DUPLICATE_SLOT_TYPE`(400), 미보유 아이템 `ROOM_ITEM_NOT_OWNED`(403), revision 불일치 `ROOM_LAYOUT_REVISION_CONFLICT`(409).
-- table: `personal_rooms`(`layout_format`, `layout_revision`), `room_surface_slots`, `room_item_placements`, `user_items`.
+- table: `personal_rooms`(`layout_format`, `layout_revision`, `character_scale`), `room_surface_slots`, `room_item_placements`, `user_items`.
 
 ## 방 스냅샷 공유 (**미구현 — 초안**)
 
@@ -67,7 +68,7 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 
 ## 연동 / 비범위 (다른 도메인)
 
-- **타인 방 조회**는 집 도메인 경로다 — `GET /api/v1/houses/{houseId}/members/{membershipId}/room`(응답은 내 방 조회와 동일 계약, 대상 방 미생성이면 404 `ROOM_NOT_FOUND` — lazy 생성 없음). 응답의 `ownerBio`(nullable, 2026-10-14)는 방 주인의 한 줄 소개(`users.bio`)로, 친구 방에서는 그 구성원의, 내 방 조회·저장 응답에서는 내 소개다. 같은 집 활성 구성원 guard를 통과한 요청에만 실리며, 비어 있거나 공백뿐이면 null. 집 미리보기 `memberRooms`(`RoomRenderResponse`)와 구성원 목록에는 넣지 않는다. 집 미리보기의 `memberRooms`는 렌더 부분집합(`RoomRenderResponse`: `growthLevel`·`layoutFormat`·`character`·`slots[]{slotType,assetKey}`·`placements[]` — `userItemId`/`layoutRevision`/`streak`/`savedAt` 의도적 제외, 방 없는 사용자는 목록에서 제외)을 쓴다.
+- **타인 방 조회**는 집 도메인 경로다 — `GET /api/v1/houses/{houseId}/members/{membershipId}/room`(응답은 내 방 조회와 동일 계약, 대상 방 미생성이면 404 `ROOM_NOT_FOUND` — lazy 생성 없음). 응답의 `ownerBio`(nullable, 2026-10-14)는 방 주인의 한 줄 소개(`users.bio`)로, 친구 방에서는 그 구성원의, 내 방 조회·저장 응답에서는 내 소개다. 같은 집 활성 구성원 guard를 통과한 요청에만 실리며, 비어 있거나 공백뿐이면 null. 집 미리보기 `memberRooms`(`RoomRenderResponse`)와 구성원 목록에는 넣지 않는다. 집 미리보기의 `memberRooms`는 렌더 부분집합(`RoomRenderResponse`: `growthLevel`·`layoutFormat`·`characterScale`·`character`·`slots[]{slotType,assetKey}`·`placements[]` — `userItemId`/`layoutRevision`/`streak`/`savedAt` 의도적 제외, 방 없는 사용자는 목록에서 제외)을 쓴다.
 - 방명록(`room_guestbooks`) → 집(공동) 도메인.
 - 인벤토리/상점 조회·구매(`GET /api/v1/me/items`, `GET /api/v1/items`, `POST /api/v1/items/{id}/purchase`) → 상점/인벤토리 도메인. 방은 배치만.
 - 스트릭 갱신·루틴 완료 보상 지급 → 루틴/투두 도메인. 방은 `streaks` 읽기, 성장 반영 결과만 노출.
@@ -80,3 +81,11 @@ prefix `/api/v1`. 공통 규칙은 [api.md](../../api.md)를 따른다. `me`는 
 - `characterUnlockLevel`(int, 현재 10): 해금 레벨. 앱은 잠금 안내 문구에 이 값을 쓴다.
 - `highest_growth_level` 자체는 응답에 추가하지 않는다.
 - 종전의 모루 레벨 5 미지급 보정은 모루 제거와 함께 폐지했다.
+
+## 캐릭터 크기 렌더링
+
+- 꾸미기에서 캐릭터를 누르면 70~130% 슬라이더와 기본 크기(100%) 복원 버튼을 제공한다. 1% 단위로 미리보기하고 적용 시 저장한다.
+- 가로 중앙과 발의 바닥 기준점을 고정한다. 좌우로 같은 비율로 확대·축소하며 투명 이미지 여백은 렌더러에서 보정한다.
+- 크기 편집은 실행 취소/다시 실행, 미저장 확인, 취소 대상이다. 드래그 한 번을 실행 취소 한 단계로 취급한다.
+- 내 방, 방문 화면, 집 미리보기에 동일한 배율을 적용한다. 서버가 필드를 주지 않는 이전 버전은 1.00으로 표시한다.
+- 기존 앱의 `characterScale` 생략 요청은 저장된 배율을 지우지 않는다. 서버 배포 후 앱을 배포한다.
