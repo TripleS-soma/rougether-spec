@@ -1,18 +1,18 @@
 # 채팅 API
 
-집 구성원 텍스트 채팅, 기록, 재접속 복구와 읽음 표시를 제공합니다. 첫 배포는 기존 user-api 인스턴스에서 운영합니다. 전체 채팅과 모바일 연동은 별도 작업입니다.
+집 구성원 글·사진 채팅, 기록, 재접속 복구와 읽음 표시를 제공합니다. 첫 배포는 기존 user-api 인스턴스에서 운영합니다. 전체 채팅과 모바일 연동은 별도 작업입니다.
 
 ## 범위와 기본 정책
 
 - 집마다 채팅방을 하나 두며 현재 ACTIVE인 일반 회원만 접근합니다. 집 공개 여부와 무관하게 비구성원은 차단합니다.
-- 텍스트 전송, 기록 조회, 재접속 복구, 사용자별 마지막 읽은 위치, 메시지별 안 읽은 구성원 수를 제공합니다.
+- 글·사진 메시지 전송, 기록 조회, 재접속 복구, 사용자별 마지막 읽은 위치, 메시지별 안 읽은 구성원 수, 메시지 신고와 운영자 삭제를 제공합니다.
 - 현재 구성원은 입주 전 기록도 조회할 수 있습니다. 집에서 나가면 접근이 차단되며 재입주 시 읽음 위치를 유지합니다. 새 구성원의 초기 읽음 위치는 0입니다.
 - 봇과 탈퇴 계정은 채팅 참여 및 읽음 집계에서 제외합니다. 발신자 본인은 본인이 보낸 메시지의 안 읽은 수에 포함하지 않습니다.
 - 조회·소켓 연결·발신 자체로는 읽음 처리하지 않습니다. 클라이언트가 실제로 화면에 표시한 메시지의 순서를 명시적으로 보냅니다.
 - 전체 채팅은 미구현입니다. 채팅방 유형, 메시지, 읽음 상태, 전송 프로토콜은 별도 채팅 도메인이 소유하며 HOUSE 접근 권한만 집 멤버십을 사용합니다.
 - 새 메시지 FCM 푸시와 방별 푸시 음소거를 제공합니다(아래 "푸시 알림" 절). 알림 도메인에는 설정 그룹 `CHAT`과 푸시 전용 타입 `CHAT_MESSAGE`를 추가합니다([알림 API](../notification/api.md)).
-- 메시지 수정·삭제·첨부·타이핑·온라인 상태·신고/차단은 이번 범위에 포함하지 않습니다.
-- 계정 탈퇴 후 기존 메시지 본문은 방명록과 같은 공동 기록으로 유지하고 발신자 닉네임·프로필 키는 노출하지 않습니다. 본문 보존기간/삭제 정책은 후속 결정 항목입니다.
+- 사용자의 메시지 수정·삭제, 사진 외 첨부, 타이핑, 온라인 상태, 사용자 차단, 자동 유해 판정은 이번 범위에 포함하지 않습니다.
+- 메시지 글과 사진은 계속 보관합니다. 계정 탈퇴 후 기존 메시지 본문은 방명록과 같은 공동 기록으로 유지하고 발신자 닉네임·프로필 키는 노출하지 않습니다. 사진의 정리 조건은 아래 "사진 보관과 정리" 절을 따릅니다.
 
 ## HTTP API
 
@@ -22,20 +22,34 @@
 | --- | --- | --- |
 | POST | `/api/v1/houses/{houseId}/chat-room` | 집 채팅방 생성 또는 기존 방 반환, 반복 호출해도 같은 방 |
 | GET | `/api/v1/chat/rooms/{roomId}` | 방 상태와 현재 구성원의 읽음 위치 |
-| POST | `/api/v1/chat/rooms/{roomId}/messages` | 텍스트 전송, 재시도 시 기존 메시지 반환 |
+| POST | `/api/v1/chat/rooms/{roomId}/images` | 사진 한 장 업로드(multipart `file`), 201 |
+| GET | `/api/v1/chat/images/{imageId}` | 권한 확인 후 JPEG 바이너리 반환 |
+| DELETE | `/api/v1/chat/images/{imageId}` | 본인의 미전송 업로드 취소, 204 |
+| POST | `/api/v1/chat/rooms/{roomId}/messages` | 글 또는 사진 메시지 전송, 재시도 시 기존 메시지 반환 |
 | GET | `/api/v1/chat/rooms/{roomId}/messages` | 메시지 기록/누락 복구 |
+| POST | `/api/v1/chat/rooms/{roomId}/messages/{messageId}/reports` | 메시지 신고, 201, 재신고 시 기존 신고 반환 |
 | PUT | `/api/v1/chat/rooms/{roomId}/read` | 본인의 읽음 위치를 앞으로 이동 |
 | GET | `/api/v1/chat/rooms/{roomId}/notification` | 본인의 이 방 푸시 음소거 여부 조회 |
 | PUT | `/api/v1/chat/rooms/{roomId}/notification` | 본인의 이 방 푸시 음소거 변경 |
 
 ### 전송
 
+글 메시지:
+
 ```json
 {"clientMessageId":"2496d9e7-4a56-4c6b-8a1f-e5c93288dd1e","content":"오늘 루틴 완료했어요!"}
 ```
 
-- `clientMessageId`: 클라이언트가 생성한 UUID. 같은 방·발신자·UUID로 재전송하면 같은 메시지를 반환합니다. 내용이 달라지면 409입니다.
+사진 메시지:
+
+```json
+{"clientMessageId":"7c1a4f52-3b7e-4a89-9d20-6e5b1f8c2a47","imageId":12}
+```
+
+- `content`와 `imageId` 중 정확히 하나만 보냅니다. 둘 다 있거나 둘 다 없으면 400 `CHAT_INPUT_INVALID`입니다. 사진 1장이 메시지 1개이며 글은 따로 보냅니다. 여러 장을 선택하면 앱이 여러 메시지로 나눠 보냅니다.
+- `clientMessageId`: 클라이언트가 생성한 UUID. 같은 방·발신자·UUID로 재전송하면 같은 메시지를 반환합니다. 글은 `content`, 사진은 `imageId`가 달라지면 409 `CHAT_MESSAGE_CONFLICT`입니다. 사진이 이미 정리돼 비교할 행이 없으면 기존 메시지를 반환합니다.
 - `content`: 공백만인 메시지 불가, 최대 2,000 UTF-16 code unit(서버의 `String.length`/`@Size` 기준), 기존 금칙어 검사 적용. 입력한 공백·줄바꿈은 유지합니다.
+- `imageId`: [사진 업로드](#사진-업로드와-조회) 응답의 값입니다. 본인 업로드·같은 방·저장 완료·미만료·미사용 사진만 허용하며, 아니면 409 `CHAT_IMAGE_UNAVAILABLE`입니다. 금칙어 검사는 글 메시지에만 적용하고 AI 사용자 이벤트는 사진 메시지에 보내지 않습니다.
 - 발신자 ID는 요청에서 받지 않고 JWT로 결정합니다.
 - 응답은 신규·재시도 모두 200입니다. 저장 성공이 실시간 수신 완료까지 보장하는 것은 아닙니다.
 
@@ -44,11 +58,46 @@
   "messageId":120,"roomId":5,"sequence":31,
   "clientMessageId":"2496d9e7-4a56-4c6b-8a1f-e5c93288dd1e",
   "senderUserId":7,"senderNickname":"이웃","senderProfileImageKey":null,
-  "content":"오늘 루틴 완료했어요!","createdAt":"2026-09-21T13:00:00Z","unreadCount":2
+  "content":"오늘 루틴 완료했어요!","createdAt":"2026-09-21T13:00:00Z","unreadCount":2,
+  "messageType":"TEXT","image":null
 }
 ```
 
+```json
+{
+  "messageId":122,"roomId":5,"sequence":33,
+  "clientMessageId":"7c1a4f52-3b7e-4a89-9d20-6e5b1f8c2a47",
+  "senderUserId":7,"senderNickname":"이웃","senderProfileImageKey":null,
+  "content":"사진을 보냈어요","createdAt":"2026-09-21T13:01:00Z","unreadCount":2,
+  "messageType":"IMAGE","image":{"imageId":12,"width":1600,"height":1200}
+}
+```
+
+- `messageType`: `TEXT` 또는 `IMAGE`. 기존 메시지는 `TEXT`입니다.
+- `image`: 사진 메시지의 `{imageId, width, height}`입니다. 글 메시지, 운영자가 삭제한 메시지, 탈퇴한 회원의 사진이면 null입니다.
+- `content`는 계속 non-null입니다. 사진 메시지에는 구버전 앱 표시용으로 `사진을 보냈어요`를 저장합니다.
+- 두 필드는 전송 응답·기록 조회·소켓 `MESSAGE_CREATED`에 공통으로 포함됩니다. 사진 메시지의 열람 범위는 글 메시지와 같습니다.
+
 `sequence`는 방별 1부터 시작하는 순서입니다. 메시지 식별/중복 제거는 `(roomId, sequence)` 또는 `messageId`로 처리합니다. 동시에 전송해도 순서와 저장 커밋 순서가 뒤집히지 않습니다.
+
+### 사진 업로드와 조회
+
+1. `POST /api/v1/chat/rooms/{roomId}/images`의 multipart `file`로 사진을 한 장씩 올립니다. 그 방의 현재 ACTIVE 일반 회원만 올릴 수 있습니다.
+2. 응답의 `imageId`를 메시지 전송에 사용합니다. 보내지 않은 업로드는 24시간 뒤 만료됩니다. 보내지 않기로 했으면 `DELETE /api/v1/chat/images/{imageId}`로 취소합니다.
+3. 사진은 `GET /api/v1/chat/images/{imageId}`에 `Authorization` 헤더를 넣어 표시합니다.
+
+```json
+{"imageId":12,"width":1600,"height":1200,"contentType":"image/jpeg"}
+```
+
+업로드 응답은 201입니다. `width`·`height`는 변환 후 값이고 `contentType`은 항상 `image/jpeg`입니다.
+
+- 규격: JPEG·PNG, 파일당 10MiB 이하입니다. 원본이 가로·세로 8,192px 또는 3,200만 화소를 넘으면 거부합니다. 회전 보정 후 긴 변 1,600px JPEG로 다시 저장하고 EXIF·위치 정보를 제거합니다([피드 사진](../feed/features.md#사진과-삭제)과 같은 규칙).
+- 저장: 비공개 key `private/chat/<uuid>.jpg`를 DB에만 저장하고 응답에 내보내지 않습니다. CDN URL로 조합하지 않습니다.
+- 한도: 사용자당 KST 하루 50장(업로드 기준), 미전송 업로드 30개까지이며 넘으면 429 `CHAT_IMAGE_LIMIT`입니다. 취소했거나 저장에 실패한 업로드는 미전송 30개에서 바로 빠지지만 하루 50장 집계에는 남습니다.
+- 동시 처리: 사진 디코딩은 서버 프로세스당 동시 1개까지이며 5초 안에 차례를 얻지 못하면 503 `CHAT_STORAGE_UNAVAILABLE`입니다. 피드 업로드와 같은 제한을 공유합니다.
+- 조회: 전송 전에는 업로더만, 전송 후에는 그 방의 현재 ACTIVE 일반 회원만 200입니다. 그 외(없음·만료·삭제·탈퇴·권한 없음)는 404 `CHAT_IMAGE_NOT_FOUND`입니다. 응답 헤더는 `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`입니다.
+- 취소: 본인의 미전송 업로드만 204입니다. 다른 사람의 사진은 404 `CHAT_IMAGE_NOT_FOUND`, 저장이 끝나지 않았거나 이미 보낸 사진은 409 `CHAT_IMAGE_UNAVAILABLE`입니다.
 
 ### 목록과 누락 복구
 
@@ -92,6 +141,39 @@
 - 음소거는 이 방의 새 메시지 푸시만 막습니다. 메시지 수신·소켓 전달·읽음 상태에는 영향이 없습니다.
 - 방 상태 응답(`room`, `readers`)에는 넣지 않습니다. 방 상태는 구성원 전원에게 같은 내용이 가는 공용 스냅샷이라 다른 구성원의 음소거 여부가 노출되기 때문입니다.
 
+### 메시지 신고
+
+```json
+{"reason":"ABUSE","detail":"욕설이 포함돼 있어요"}
+```
+
+- 대상은 글·사진 메시지 전부이며 신고 대상 유형은 `CHAT_MESSAGE`입니다.
+- 그 방의 현재 ACTIVE 일반 회원만 신고할 수 있습니다. 본인 메시지는 400 `REPORT_SELF_TARGET`, 없거나 삭제됐거나 다른 방의 메시지는 404 `CHAT_MESSAGE_NOT_FOUND`입니다.
+- 요청·응답·사유는 피드 신고와 같습니다. `reason`은 필수이며 `SPAM`(스팸·광고), `ABUSE`(욕설·괴롭힘), `SEXUAL`(선정적), `VIOLENCE`(폭력·위협), `PERSONAL_INFO`(개인정보 노출), `COPYRIGHT`(저작권 침해), `OTHER`(기타) 중 하나입니다. `detail`은 선택이며 최대 500자입니다. 앞뒤 공백을 제거하고 빈 값은 저장하지 않습니다.
+- 응답은 201 `{"reportId":12,"status":"RECEIVED"}` 형태입니다. `status`는 `RECEIVED`(검토 대기), `ACTIONED`(숨김 조치), `DISMISSED`(조치 없음 종료)입니다. 같은 신고자가 다시 신고하면 새로 저장하지 않고 처음 신고를 201로 반환합니다(사유·설명은 처음 값 유지).
+- 신고만으로 메시지가 숨겨지지 않고 운영자가 검토합니다.
+
+## 운영자 삭제
+
+운영자는 신고 대기열(admin-api `/admin/reports`)에서 신고를 처리합니다. `POST /admin/reports/{id}/resolve`의 `HIDE`가 메시지를 삭제하고, `DISMISS`는 메시지를 건드리지 않고 신고만 닫습니다.
+
+- HIDE는 `chat_messages.deleted_at`을 설정하고 같은 메시지의 대기 신고를 함께 닫습니다. 복구는 없습니다.
+- 삭제된 메시지 응답: `content`는 `삭제된 메시지예요`, `image`는 null입니다. `sequence`와 `messageType`은 유지합니다.
+- 사진 조회는 삭제 즉시 404 `CHAT_IMAGE_NOT_FOUND`가 되고, S3 파일은 정리 작업이 지웁니다.
+- 이미 받아 둔 화면은 다음 기록 조회부터 반영됩니다.
+- 삭제된 메시지는 AI 사용자 컨텍스트와 기억 근거에서 제외합니다.
+- 운영자는 대기열 항목의 `target.chatImageId`로 `GET /admin/reports/chat-images/{imageId}`를 호출해 신고된 사진을 봅니다. 신고된 메시지의 사진만 볼 수 있고 그 외에는 404 `REPORT_IMAGE_NOT_FOUND`입니다. 응답은 캐시하지 않습니다.
+
+## 사진 보관과 정리
+
+- 사진은 글처럼 계속 보관합니다. 집을 나간 사람이 올린 사진은 유지합니다.
+- 탈퇴: 그 회원이 올린 사진의 조회는 즉시 404가 되고 메시지의 `image`는 null이 됩니다. `content`는 유지합니다. 사진 파일과 행은 정리 작업이 지웁니다.
+- 집 해체(`house.deleted_at`): 그 방의 사진을 전부 지웁니다. 방 접근은 이미 차단됩니다.
+- 운영자가 삭제한 메시지의 사진도 정리 작업이 지웁니다.
+- 미전송 업로드는 24시간 뒤 만료되고 정리합니다. 취소했거나 저장에 실패해 일찍 만료된 행도 그날의 하루 한도 집계에 남아야 하므로, 올린 날의 다음 KST 날짜부터 정리합니다.
+- 저장이 끝나지 않은 업로드(`ready=false`)는 탈퇴·해체여도 바로 지우지 않고 만료 후 정리합니다. 진행 중인 S3 저장이 끝난 뒤 파일만 남는 것을 막기 위해서입니다.
+- 정리 작업은 실행 완료 후 5분 간격으로 돕니다. S3 실패 시 행을 남겨 재시도하며, S3 객체는 버전과 삭제 marker까지 제거합니다.
+
 ## 푸시 알림
 
 새 채팅 메시지를 채팅을 보고 있지 않은 집 구성원에게 FCM 푸시로 알립니다.
@@ -105,7 +187,7 @@
 - 알림함(`notification`)에는 저장하지 않고 푸시만 보냅니다. 알림 목록 API에 나타나지 않으며 발송 상태도 기록하지 않습니다.
 - 메시지 저장 커밋 후 알림 전용 executor에서 비동기로 보냅니다. `clientMessageId` 재전송으로 기존 메시지를 돌려주는 경우와 저장이 롤백된 경우는 보내지 않습니다. 푸시 실패는 전송 응답에 영향을 주지 않습니다.
 - 설정: 알림 설정 그룹 `CHAT`(설정 API `chat` 필드, 기본 ON)이 off이거나 마스터 `all`이 off면 보내지 않습니다.
-- 문구: 제목은 집 이름, 본문은 `{닉네임}: {메시지 앞 100자}`입니다. 100자를 넘으면 `…`를 붙입니다. 닉네임이 없으면 `이웃`/`A neighbor`를 사용합니다.
+- 문구: 제목은 집 이름, 본문은 `{닉네임}: {메시지 앞 100자}`입니다. 100자를 넘으면 `…`를 붙입니다. 사진 메시지의 본문은 `{닉네임}: 사진을 보냈어요` / `{nickname}: sent a photo`입니다. 닉네임이 없으면 `이웃`/`A neighbor`를 사용합니다.
 - FCM data: `{ "type": "CHAT_MESSAGE", "roomId": "5", "houseId": "20", "groupKey": "chat-house-20" }`.
 
 ## WebSocket
@@ -139,7 +221,8 @@
     "messageId":121,"roomId":5,"sequence":32,
     "clientMessageId":"f0e8d3a2-902a-4b76-bb50-1ca73b277709",
     "senderUserId":7,"senderNickname":"이웃","senderProfileImageKey":null,
-    "content":"오늘 루틴 완료했어요!","createdAt":"2026-10-02T08:00:00Z","unreadCount":2
+    "content":"오늘 루틴 완료했어요!","createdAt":"2026-10-02T08:00:00Z","unreadCount":2,
+    "messageType":"TEXT","image":null
   }
 }
 ```
@@ -184,8 +267,15 @@
 | --- | --- | --- |
 | CHAT_ROOM_NOT_FOUND | 404 | 채팅방 없음 |
 | CHAT_FORBIDDEN | 403 | 비구성원·탈퇴/강퇴·봇·삭제 집 등 접근 불가 |
-| CHAT_INPUT_INVALID | 400 | 커서 범위·조합·읽음 위치·본문 오류 |
+| CHAT_INPUT_INVALID | 400 | 커서 범위·조합·읽음 위치·본문 오류, `content`·`imageId` 조합 오류 |
 | CHAT_CONTENT_BANNED | 400 | 금칙어 포함, 해당 단어는 응답 미노출 |
-| CHAT_MESSAGE_CONFLICT | 409 | 같은 멱등키로 다른 본문 요청 |
+| CHAT_MESSAGE_CONFLICT | 409 | 같은 멱등키로 다른 본문·사진 요청 |
+| CHAT_MESSAGE_NOT_FOUND | 404 | 신고 대상 메시지가 없거나 삭제됐거나 다른 방의 메시지 |
+| CHAT_IMAGE_INVALID | 400 | 실제 JPEG/PNG 아님, 용량·화소 제한, 손상 이미지 |
+| CHAT_IMAGE_NOT_FOUND | 404 | 없음·만료·삭제·탈퇴·조회 권한 없음, 다른 사람의 사진 취소 |
+| CHAT_IMAGE_UNAVAILABLE | 409 | 전송할 사진이 본인 소유·같은 방·저장 완료·미만료·미사용 상태가 아님, 저장 중이거나 이미 보낸 사진 취소 |
+| CHAT_IMAGE_LIMIT | 429 | 사용자당 KST 하루 50장 또는 미전송 업로드 30개 초과 |
+| CHAT_STORAGE_UNAVAILABLE | 503 | 사진 저장소 일시 오류, 사진 디코딩 차례를 5초 안에 얻지 못함 |
+| REPORT_SELF_TARGET | 400 | 본인 메시지 신고 |
 
 DTO validation·인증 오류는 기존 공통 규약을 따릅니다.

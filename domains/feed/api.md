@@ -10,18 +10,20 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | GET | `/images/{imageId}` | 권한 확인 후 JPEG 바이너리 → 200 |
 | DELETE | `/images/{imageId}` | 본인의 미게시 업로드 취소 → 204 |
 | POST | `/posts` | 게시물 등록 → 201 Post (재시도도 201) |
-| GET | `/posts` | 전체/게시판별/작성자별 커서 목록 → 200 Page<Post> |
+| GET | `/posts` | 전체/게시판별/작성자별/집별 커서 목록 → 200 Page<Post> |
 | GET | `/posts/{postId}` | 게시물 상세 → 200 Post |
 | GET | `/posts/{postId}/houses` | 작성자가 참여 중인 집 선택 목록 → 200 `{ items }` |
 | POST | `/posts/{postId}/houses/{houseId}/join` | 설정에 따른 즉시입주 또는 승인 대기 신청 → 200 HouseJoinResponse |
 | PATCH | `/posts/{postId}` | 본인 본문·게시판·연결 루틴 수정 → 200 Post |
-| DELETE | `/posts/{postId}` | 본인 게시물 삭제 → 204 |
+| DELETE | `/posts/{postId}` | 본인 게시물 삭제(집 글은 그 집의 현재 방장도 가능) → 204 |
 | PUT | `/posts/{postId}/like` | 좋아요 → 204 |
 | DELETE | `/posts/{postId}/like` | 좋아요 취소 → 204 |
 | GET | `/posts/{postId}/comments` | 전체 댓글 또는 원댓글 커서 목록 → 200 Page<Comment> |
 | GET | `/posts/{postId}/comments/{commentId}/replies` | 원댓글의 대댓글 커서 목록 → 200 Page<Comment> |
 | POST | `/posts/{postId}/comments` | 댓글 등록 → 201 Comment (재시도도 201) |
-| DELETE | `/posts/{postId}/comments/{commentId}` | 본인 댓글 삭제 → 204 |
+| DELETE | `/posts/{postId}/comments/{commentId}` | 본인 댓글 삭제(집 글의 댓글은 그 집의 현재 방장도 가능) → 204 |
+
+집별 새 글 푸시 설정은 prefix가 다른 `/api/v1/houses/{houseId}/feed/notification`을 쓴다. [집 피드 새 글 푸시와 집별 알림 설정](#집-피드-새-글-푸시와-집별-알림-설정)을 따른다.
 
 ## 게시물에서 작성자의 집에 참여 (2026-11-11)
 
@@ -49,7 +51,7 @@ POST `/posts/{postId}/houses/{houseId}/join`은 요청 본문 없이 인증된 �
 | HTTP | code | 의미 |
 | --- | --- | --- |
 | 401 | `AUTH_INVALID_TOKEN` | 미인증, 탈퇴 회원 또는 동거 봇 |
-| 404 | `FEED_POST_NOT_FOUND` | 없는 게시물, 삭제, 작성자 탈퇴, 요청자가 작성자를 차단 |
+| 404 | `FEED_POST_NOT_FOUND` | 없는 게시물, 삭제, 작성자 탈퇴, 요청자가 작성자를 차단, [집 글](#집-글-집-구성원-한정)(요청자가 그 집 구성원이어도 동일) |
 | 404 | `HOUSE_NOT_FOUND` | 없는 집, 삭제된 집 또는 작성자가 현재 ACTIVE 구성원이 아님 |
 | 409 | `HOUSE_FULL` | 실사용자로 만석 |
 | 409 | `HOUSE_KICKED_MEMBER` | 신청자 강퇴 이력 |
@@ -63,7 +65,7 @@ POST `/posts/{postId}/houses/{houseId}/join`은 요청 본문 없이 인증된 �
 1. JPEG/PNG 사진을 한 장씩 `POST /images`의 `file`에 전송한다. 파일당 최대 **10MiB**. 서버가 JPEG로 변환하므로 반환된 치수/형식을 사용한다.
 2. 응답의 `imageId`를 원하는 표시 순서대로 게시 요청에 담는다. `storageKey`를 클라이언트가 만들어 보내지 않는다.
 3. 업로드 완료 후 24시간 안에 게시한다. 작성 취소 시 `DELETE /images/{imageId}`로 만료 처리할 수 있다. 정리가 끝나기 전까지 업로드 30개 한도에 포함된다.
-4. 사진은 `GET /images/{imageId}`에 Authorization 헤더를 넣어 표시한다. 게시 전에는 본인만, 게시 후에는 활성 일반 회원이 볼 수 있다.
+4. 사진은 `GET /images/{imageId}`에 Authorization 헤더를 넣어 표시한다. 게시 전에는 본인만, 게시 후에는 활성 일반 회원이 볼 수 있다. [집 글](#집-글-집-구성원-한정)에 연결된 사진은 그 집 구성원만 볼 수 있다.
 
 Image:
 
@@ -93,10 +95,11 @@ POST `/posts`:
 
 - `clientPostId`: 필수 UUID. 같은 등록 작업의 네트워크 재시도에는 같은 값, 새 글에는 새 값.
 - `boardType`: `FREE` 또는 `VERIFICATION`. 생략/null은 구버전 호환을 위해 `VERIFICATION`. 다른 값은 400.
-- `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 사진이 있으면 생략/null/빈 문자열 허용.
-- `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 필수 1–10개. 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
+- `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 인증게시판이거나 사진이 있으면 생략/null/빈 문자열 허용.
+- `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 0–10개(선택). 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
 - `routineCompletion`: 인증게시판 **필수**, 자유게시판 **금지**(보내면 400 `FEED_INPUT_INVALID`). 아래 [루틴 완료 연결](#루틴-완료-연결) 규칙을 따른다.
-- 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서·연결 루틴(`routineId`+`date`)이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`. 재시도 판정이 연결 필수 검사보다 먼저이므로, 이 규칙 이전에 연결 없이 등록된 인증글의 재시도도 원래 글을 돌려받는다.
+- `houseId`: 선택, 양수. 지정하면 그 집 구성원만 보는 집 글로 등록하고 생략/null이면 공개 글로 등록한다. 등록 뒤에는 바꿀 수 없다. [집 글](#집-글-집-구성원-한정) 규칙을 따른다.
+- 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서·연결 루틴(`routineId`+`date`)·`houseId`이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`. 재시도 판정이 연결 필수 검사보다 먼저이므로, 이 규칙 이전에 연결 없이 등록된 인증글의 재시도도 원래 글을 돌려받는다.
 
 ### 루틴 완료 연결
 
@@ -131,8 +134,8 @@ PATCH `/posts/{postId}`의 모든 필드는 선택이며 **생략한 필드는 �
 ```
 
 - `content`: 최대 2,000자. 결과 게시판이 인증게시판이거나 사진이 있는 글에만 빈 문자열을 허용한다. 세 필드를 모두 생략하면 400 `FEED_INPUT_INVALID`.
-- `boardType` → `VERIFICATION`(자유글에서 전환): 사진이 1장 이상 있는 글만 가능하다(사진은 수정 불가, 없으면 400 `FEED_INPUT_INVALID`). 유효한 `routineCompletion`이 필요하다(없으면 400 `FEED_ROUTINE_COMPLETION_REQUIRED`).
-- `boardType` → `FREE`(인증글에서 전환): 루틴 연결을 해제하고 응답 `routine`이 null이 된다. 사진 없는 글이 되는 경우는 없지만, 결과가 사진 없는 자유글이면 비어 있지 않은 본문이 필요하다.
+- `boardType` → `VERIFICATION`(자유글에서 전환): 유효한 `routineCompletion`이 필요하다(없으면 400 `FEED_ROUTINE_COMPLETION_REQUIRED`).
+- `boardType` → `FREE`(인증글에서 전환): 루틴 연결을 해제하고 응답 `routine`이 null이 된다. 결과가 사진 없는 자유글이면 비어 있지 않은 본문이 필요하다.
 - 인증글로 남는 수정: `routineCompletion`을 보내면 검증 후 교체, 생략하면 기존 연결(또는 연결 없음)을 유지한다. 기간 제한은 수정 요청 시점 KST 기준이다.
 - 결과가 자유게시판인데 `routineCompletion`을 보내면 400 `FEED_INPUT_INVALID`.
 - 게시판을 바꾼 글에 원래 등록 요청을 같은 `clientPostId`로 재전송하면 게시판이 달라 409다. 본문·연결 루틴만 바꾼 경우는 기존처럼 현재 글을 반환한다.
@@ -144,6 +147,7 @@ Post:
   "postId": 100,
   "author": { "userId": 7, "nickname": "루틴친구", "profileImageKey": null },
   "boardType": "VERIFICATION",
+  "houseId": null,
   "content": "오늘 루틴 완료!",
   "routine": { "routineId": 15, "title": "아침 스트레칭", "date": "2026-10-04" },
   "images": [
@@ -153,12 +157,13 @@ Post:
   "commentCount": 1,
   "likedByMe": false,
   "mine": true,
+  "deletable": true,
   "createdAt": "2026-09-22T03:00:00Z",
   "updatedAt": "2026-09-22T03:00:00Z"
 }
 ```
 
-`images`는 요청한 순서다. `routine`은 인증글의 연결 루틴이며 자유글과 연결 없는 기존 인증글은 `null`이다(필드는 항상 존재). `nickname`, `profileImageKey`는 null 가능하므로 앱 기본 표시를 사용한다. `mine`/`likedByMe`는 요청자 기준이다. 본인 글에도 좋아요·댓글을 달 수 있다.
+`images`는 요청한 순서다. `routine`은 인증글의 연결 루틴이며 자유글과 연결 없는 기존 인증글은 `null`이다(필드는 항상 존재). `houseId`는 글이 속한 집 ID이며 공개 글은 `null`이다(필드는 항상 존재). `nickname`, `profileImageKey`는 null 가능하므로 앱 기본 표시를 사용한다. `mine`/`likedByMe`/`deletable`은 요청자 기준이다. `deletable`은 요청자가 이 글을 지울 수 있는지이며, 본인 글이거나 [집 글](#집-글-집-구성원-한정)에서 요청자가 그 집의 현재 방장이면 true다. 공개 글에서는 `mine`과 같다. 수정은 본인만 할 수 있으므로 수정 가능 여부는 기존 `mine`으로 판단한다. 본인 글에도 좋아요·댓글을 달 수 있다.
 
 자유글 등록 예시(사진 업로드 없이 요청):
 
@@ -180,6 +185,7 @@ GET `/posts?boardType=FREE&size=20&cursor=100&authorId=7`
 - `boardType`: `FREE` 또는 `VERIFICATION`. 생략하면 통합 피드다. 작성자·커서 조건과 함께 적용하며 잘못된 값은 400이다. 게시판 전환 시 cursor 없이 첫 페이지부터 조회한다.
 
 - `authorId` 생략: 전체 피드, 지정: 해당 사용자 공개 게시물. 내 ID를 넣으면 내 목록이다. 존재하지 않거나 탈퇴한 작성자는 빈 목록이다.
+- `houseId`: 선택, 양수. 생략하면 공개 글만 조회한다(집 글은 전체·게시판별·작성자별 목록에 섞이지 않는다). 지정하면 구성원 검사 후 그 집 글만 조회하며 `boardType`·`authorId`·`cursor`·`size`를 그대로 조합할 수 있다. 구성원이 아니면 403 `HOUSE_NOT_MEMBER`, 없는 집·삭제된 집이면 404 `HOUSE_NOT_FOUND`다.
 - `size`: 기본 20, 1–50.
 - `cursor`: 첫 페이지 생략. 이후 `nextCursor`를 그대로 전달한다(양수 postId, ID 내림차순).
 
@@ -188,6 +194,83 @@ GET `/posts?boardType=FREE&size=20&cursor=100&authorId=7`
 ```
 
 결과가 있으면 `items`에 Post 배열이 들어간다. `hasNext=true`일 때 `nextCursor`는 현재 페이지 마지막 게시물 ID다. 수정·좋아요로 글 순서가 바뀌지 않는다. 서버는 탈퇴·삭제된 글을 제외한다.
+
+## 집 글 (집 구성원 한정)
+
+글·댓글·좋아요·사진에는 새 경로가 없다. 기존 `/api/v1/feed` 경로에 집 범위를 더한다. 집별 새 글 푸시 설정만 [별도 경로](#집-피드-새-글-푸시와-집별-알림-설정)를 쓴다. `houseId`가 있는 글은 그 집 구성원만 읽고 쓰는 집 글이고, `houseId`가 null인 글은 기존 공개 글이다. 한 글은 한 집에만 속하며 등록 뒤 범위를 바꿀 수 없다(PATCH 요청에 `houseId` 필드가 없다).
+
+집 글 등록 예시:
+
+```json
+{
+  "clientPostId": "5d0b8a4e-3f0c-4f0e-9a43-0a3a6d1f2b77",
+  "boardType": "FREE",
+  "content": "이번 주 청소 당번 정해요",
+  "imageIds": [],
+  "houseId": 12
+}
+```
+
+- **참여 대상**: 삭제되지 않은 집의 ACTIVE 구성원인 활성 일반 회원이다. 집을 나갔거나(LEFT) 강퇴된(KICKED) 회원, 동거 봇, AI 계정은 구성원이 아닌 것으로 응답한다.
+- **글 종류·제한**: 공개 글과 같은 요청 필드와 검증을 쓴다(`boardType`, `content`, `imageIds`, `routineCompletion`, `minigameRecord`). 응답도 같은 Post이며 `houseId`만 채워진다.
+- **집을 직접 지정한 요청** — `POST /posts`의 `houseId`, `GET /posts?houseId=`:
+  - 집이 없거나 삭제됐으면 404 `HOUSE_NOT_FOUND`.
+  - 집은 있지만 요청자가 참여 대상이 아니면 403 `HOUSE_NOT_MEMBER`.
+  - 등록에서는 이 검사가 재시도 판정보다 먼저다. 집을 나간 뒤 같은 `clientPostId`로 재시도해도 기존 글을 돌려받지 않고 403이다.
+- **글 ID로 접근하는 요청** — `GET·PATCH·DELETE /posts/{postId}`, `PUT·DELETE /posts/{postId}/like`, `GET·POST /posts/{postId}/comments`, `GET /posts/{postId}/comments/{commentId}/replies`, `DELETE /posts/{postId}/comments/{commentId}`: 집 글인데 요청자가 참여 대상이 아니거나 집이 삭제됐으면 404 `FEED_POST_NOT_FOUND`다. 없는 글과 같은 응답으로 집 글의 존재를 숨긴다. 본인이 쓴 글·댓글이어도 집을 나간 뒤에는 같은 404이며 재입주하면 다시 접근할 수 있다.
+- **사진** — `GET /images/{imageId}`: 집 글에 연결된 사진은 참여 대상만 조회한다. 그 외에는 404 `FEED_IMAGE_NOT_FOUND`(집을 나간 업로더 본인 포함).
+- **신고** — `POST /posts/{postId}/reports`, `POST /posts/{postId}/comments/{commentId}/reports`: 집 글과 그 댓글은 참여 대상만 신고할 수 있다. 그 외에는 404 `FEED_POST_NOT_FOUND`.
+- **입주 신청** — `GET /posts/{postId}/houses`, `POST /posts/{postId}/houses/{houseId}/join`: 집 글이면 요청자가 그 집 구성원이어도 404 `FEED_POST_NOT_FOUND`다.
+- **수정 권한**: 공개 글과 같이 작성자 본인만 수정한다. 방장을 포함해 다른 사람의 글을 수정하면 403 `FEED_FORBIDDEN`이다.
+- **삭제 권한** — `DELETE /posts/{postId}`, `DELETE /posts/{postId}/comments/{commentId}`: 집 글과 그 글의 댓글·답글은 작성자 본인 또는 그 집의 현재 방장이 삭제한다.
+  - 방장은 요청 시점에 그 집의 방장 역할(`OWNER`)인 참여 대상이다. 방장이 바뀌면 새 방장만 이 권한을 갖는다.
+  - 방장이 아닌 구성원이 다른 사람의 글·댓글을 삭제하면 403 `FEED_FORBIDDEN`이다. 참여 대상이 아니면 위 규칙대로 404 `FEED_POST_NOT_FOUND`다.
+  - 공개 글과 그 댓글에는 방장 권한이 없다. 기존대로 본인만 삭제한다.
+  - 방장 삭제의 효과는 본인 삭제와 같다. 글은 본문·연결 루틴·미니게임 기록을 비우고 댓글·좋아요를 제거하며 사진은 비동기 정리한다. 댓글은 본문을 비우는 삭제이며 다른 사람의 답글은 유지한다.
+  - 방장이 지워도 작성자에게 알림을 보내지 않는다.
+  - 요청자가 지울 수 있는지는 글·댓글 응답의 `deletable`로 알린다.
+- **재시도**: 같은 `clientPostId`를 다른 `houseId`로 보내거나, 집 글로 올린 값을 `houseId` 없이(또는 공개 글로 올린 값을 `houseId`와 함께) 다시 보내면 409 `FEED_REQUEST_CONFLICT`다.
+- **차단**: 요청자가 차단한 작성자의 글·댓글은 같은 집 안에서도 기존 규칙대로 숨긴다(목록 제외, 상세 404).
+- 나간·강퇴된 구성원이 쓴 글·댓글·사진은 남은 구성원에게 계속 보이고, 새로 입주한 구성원은 입주 전에 올라온 글도 조회한다. 스스로 나가는 구성원은 집 나가기 요청의 `deleteFeedContent=true`로 그 집에 남긴 자기 글·댓글을 함께 지울 수 있다([집 API](../house/api.md)). 그 밖의 규칙은 [기능 계약](features.md#집-피드-집-구성원-한정)을 따른다.
+
+## 집 피드 새 글 푸시와 집별 알림 설정
+
+집에 새 글이 올라오면 그 집 구성원에게 FCM 푸시를 보낸다. 구성원은 집마다 자유글·인증글 푸시를 따로 켜고 끈다. 이 설정만 `/api/v1/feed`가 아닌 집 경로를 쓴다.
+
+| Method | Path | 결과 |
+| --- | --- | --- |
+| GET | `/api/v1/houses/{houseId}/feed/notification` | 본인의 이 집 새 글 푸시 설정 조회 → 200 HouseFeedNotification |
+| PUT | `/api/v1/houses/{houseId}/feed/notification` | 본인의 이 집 새 글 푸시 설정 변경 → 200 HouseFeedNotification |
+
+HouseFeedNotification:
+
+```json
+{ "houseId": 12, "freePostPush": true, "verificationPostPush": false }
+```
+
+- `freePostPush`: 이 집의 자유글 새 글 푸시를 받을지. 기본 true.
+- `verificationPostPush`: 이 집의 인증글 새 글 푸시를 받을지. 기본 false.
+- 한 번도 바꾸지 않았으면 기본값을 응답한다. 조회만으로는 설정을 저장하지 않는다.
+- PUT 요청은 `{ "verificationPostPush": true }`처럼 바꿀 필드만 보낸다. 두 필드 모두 선택 boolean이며 생략/null인 쪽은 기존 값을 유지한다. 둘 다 생략하면 400 `FEED_INPUT_INVALID`다. 응답은 변경이 반영된 전체 설정이며 GET과 같은 형태다.
+- 권한: 그 집의 [참여 대상](#집-글-집-구성원-한정)만 조회·변경한다. 집이 없거나 삭제됐으면 404 `HOUSE_NOT_FOUND`, 집은 있지만 참여 대상이 아니면 403 `HOUSE_NOT_MEMBER`다.
+- 설정은 집마다 따로 저장한다. 집을 나가도 값은 남아 재입주하면 그대로 적용된다. 집 채팅의 방별 음소거와는 독립이다.
+
+### 새 글 푸시
+
+- 발송 시점: 집 글이 새로 등록돼 커밋된 뒤 비동기로 보낸다. 같은 `clientPostId` 재시도로 기존 글을 돌려주는 경우, 수정, 게시판 전환에는 보내지 않는다. 공개 글에는 보내지 않는다. 푸시 실패는 글 등록 응답에 영향을 주지 않으며 자동 재발송하지 않는다(best-effort).
+- 푸시 전용이다. 알림함(`notification`)에는 저장하지 않으므로 `GET /api/v1/notifications`에 나타나지 않고 `notificationId`도 없다. 알림 타입은 `HOUSE_FEED_POST`, 설정 그룹은 `FEED`다(집 채팅의 `CHAT_MESSAGE`와 같은 방식).
+- 수신 대상: 그 집의 ACTIVE 구성원 중 작성자 본인, 동거 봇, AI 계정, 탈퇴 회원을 제외한 인원이다. 그중 다음에 해당하면 보내지 않는다.
+  - 그 글 종류의 집별 설정이 꺼져 있음(자유글은 `freePostPush`, 인증글은 `verificationPostPush`). 설정을 바꾼 적이 없으면 기본값으로 판정하므로 자유글은 받고 인증글은 받지 않는다.
+  - 수신자가 작성자를 차단함.
+  - 수신자가 알림 설정(`/api/v1/users/me/notification-settings`)의 마스터 `all` 또는 `feed`를 끔.
+- 발송 직전에 글이 삭제됐거나 작성자가 탈퇴했거나 집이 삭제됐으면 보내지 않는다.
+- 문구는 수신자의 저장 언어를 따른다. 제목은 집 이름이고 본문에 글 내용은 싣지 않는다.
+  - 자유글: `{닉네임}님이 새 글을 올렸어요` / `{nickname} shared a new post`
+  - 인증글: `{닉네임}님이 '{루틴 제목}' 인증글을 올렸어요` / `{nickname} shared a check-in for '{routine}'`. 루틴 제목은 글에 연결된 스냅샷이다.
+  - 연결 루틴이 없는 인증글: `{닉네임}님이 인증글을 올렸어요` / `{nickname} shared a check-in`
+  - 작성자 닉네임이 없으면 `이웃` / `A neighbor`를 쓴다.
+- FCM data는 모든 값이 문자열이다: `{ "type": "HOUSE_FEED_POST", "houseId": "12", "postId": "42", "boardType": "FREE" }`. `boardType`은 `FREE` 또는 `VERIFICATION`이다.
+- 배포 후 유예: 집 피드 화면이 없는 구버전 앱에 열 수 없는 푸시가 가지 않도록, 집별 설정 테이블(`house_feed_notification_settings`)의 migration이 서버에 적용된 시각부터 24시간 동안은 새 글 푸시를 아무에게도 보내지 않는다. 유예 시간은 서버 설정 `feed.house-post-push.grace`(기본 `24h`, `0s`면 유예 없음)다. 적용 시각을 읽지 못하면 보내지 않는다. 글 등록·조회와 위 설정 API는 유예와 무관하게 동작한다.
 
 ## 댓글과 대댓글
 
@@ -219,18 +302,19 @@ Comment:
   "parentCommentId": 301,
   "replyToCommentId": 301,
   "deleted": false,
-  "replyCount": 0
+  "replyCount": 0,
+  "deletable": true
 }
 ```
 
-일반 댓글의 두 연결 ID는 null이다. `replyCount`는 원댓글에서만 해당 대화의 보이는 답글 수를 반환하며 대댓글에서는 0이다. 게시물 `commentCount`는 요청자가 볼 수 있는 살아 있는 일반 댓글과 대댓글의 합계이며 삭제 안내 자리는 세지 않는다.
+일반 댓글의 두 연결 ID는 null이다. `replyCount`는 원댓글에서만 해당 대화의 보이는 답글 수를 반환하며 대댓글에서는 0이다. 게시물 `commentCount`는 요청자가 볼 수 있는 살아 있는 일반 댓글과 대댓글의 합계이며 삭제 안내 자리는 세지 않는다. `deletable`은 요청자가 이 댓글을 지울 수 있는지이며, 본인 댓글이거나 [집 글](#집-글-집-구성원-한정)의 댓글에서 요청자가 그 집의 현재 방장이면 true다. 삭제 안내 자리는 항상 false다.
 
 - `GET /posts/{postId}/comments?size=20&cursor=301`: 기존처럼 살아 있는 댓글과 대댓글 **전체**를 오래된 ID부터 나열한다. 삭제 안내 자리는 포함하지 않는다.
 - `GET /posts/{postId}/comments?topLevelOnly=true&size=20`: 원댓글만 나열한다. 앱은 원댓글별 `replyCount`로 답글 펼치기를 제공한다.
 - `GET /posts/{postId}/comments/{commentId}/replies?size=20&cursor=302`: 지정한 **원댓글**의 모든 답글을 오래된 ID부터 나열한다. 답글에 쓴 답글도 같은 목록이며 실제 대상은 각 항목의 `replyToCommentId`다. 대댓글 ID를 원댓글 자리에 넣거나 요청자가 차단한 원댓글을 조회하면 404다.
 - 모든 목록은 기존 Page 형식이며 cursor는 각 목록의 마지막 commentId, `size` 기본 20/최대 50이다. 늦게 추가된 답글은 해당 원댓글의 답글 목록을 다시 조회한다. 등록/삭제 후 앱은 해당 답글 목록과 원댓글 개수를 갱신한다.
 
-본인 댓글만 기존 DELETE로 삭제한다. 원댓글을 지워도 다른 사람의 답글은 유지한다. 답글이 남은 삭제/탈퇴 원댓글은 `topLevelOnly=true`에서 다음 자리로 반환한다.
+댓글은 작성자 본인이 기존 DELETE로 삭제한다. [집 글](#집-글-집-구성원-한정)의 댓글은 그 집의 현재 방장도 삭제할 수 있고, 그 밖의 요청자는 403 `FEED_FORBIDDEN`이다. 원댓글을 지워도 다른 사람의 답글은 유지한다. 답글이 남은 삭제/탈퇴 원댓글은 `topLevelOnly=true`에서 다음 자리로 반환한다.
 
 ```json
 {
@@ -243,7 +327,8 @@ Comment:
   "parentCommentId": null,
   "replyToCommentId": null,
   "deleted": true,
-  "replyCount": 1
+  "replyCount": 1,
+  "deletable": false
 }
 ```
 
@@ -258,20 +343,22 @@ Comment:
 | HTTP | code | 의미 |
 | --- | --- | --- |
 | 401 | `AUTH_INVALID_TOKEN` 등 인증 코드 | 미인증·탈퇴·봇 접근 불가 |
-| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 사진 없는 글의 인증게시판 전환, 빈 수정 요청, 인증글·루틴 연결과 함께 보낸 미니게임 기록, 기록 있는 글의 인증게시판 전환 |
+| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 빈 수정 요청, 인증글·루틴 연결과 함께 보낸 미니게임 기록, 기록 있는 글의 인증게시판 전환, 집별 새 글 푸시 설정 변경에 두 필드 모두 생략 |
 | 400 | `FEED_ROUTINE_COMPLETION_REQUIRED` | 인증게시판 등록·전환에 `routineCompletion` 누락 |
 | 400 | `FEED_ROUTINE_COMPLETION_INVALID` | 본인 루틴이 아님·없음, 그 날짜 완료 기록 없음, KST 오늘~6일 전 밖·미래 날짜 |
 | 400 | `FEED_MINIGAME_RECORD_INVALID` | 붙인 미니게임 판이 없음·남의 판·미완료(검증 전) |
 | 400 | `FEED_CONTENT_BANNED` | 본문·댓글 금칙어 |
 | 400 | `FEED_IMAGE_INVALID` | 실제 JPEG/PNG 아님, 용량·화소 제한, 손상 이미지 |
-| 403 | `FEED_FORBIDDEN` | 다른 사람의 글·댓글·미게시 사진 변경 |
-| 404 | `FEED_POST_NOT_FOUND` | 없거나 삭제/탈퇴로 숨긴 글 |
+| 403 | `FEED_FORBIDDEN` | 다른 사람의 글·댓글·미게시 사진 변경. 단 집 글과 그 댓글의 삭제는 그 집의 현재 방장에게 허용 |
+| 403 | `HOUSE_NOT_MEMBER` | `houseId`를 지정한 등록·목록과 집별 새 글 푸시 설정에서 요청자가 그 집 ACTIVE 구성원(일반 회원)이 아님 |
+| 404 | `HOUSE_NOT_FOUND` | `houseId`를 지정한 등록·목록과 집별 새 글 푸시 설정에서 없는 집·삭제된 집 |
+| 404 | `FEED_POST_NOT_FOUND` | 없거나 삭제/탈퇴로 숨긴 글, 요청자가 구성원이 아닌 집의 글·삭제된 집의 글 |
 | 404 | `FEED_COMMENT_NOT_FOUND` | 답글 대상이 없거나 다른 글, 삭제/탈퇴/차단으로 숨겨짐, 답글 목록에 원댓글이 아닌 ID 지정 |
-| 404 | `FEED_IMAGE_NOT_FOUND` | 없음·만료·삭제·탈퇴·타인의 미게시 사진 |
-| 409 | `FEED_REQUEST_CONFLICT` | 재시도 UUID를 다른 요청/삭제 결과에 재사용 |
+| 404 | `FEED_IMAGE_NOT_FOUND` | 없음·만료·삭제·탈퇴·타인의 미게시 사진, 요청자가 구성원이 아닌 집 글의 사진 |
+| 409 | `FEED_REQUEST_CONFLICT` | 재시도 UUID를 다른 요청/삭제 결과에 재사용(다른 `houseId` 포함) |
 | 409 | `FEED_IMAGE_UNAVAILABLE` | 사진이 본인 소유/완료/미사용/유효 상태가 아님 |
 | 429 | `FEED_UPLOAD_LIMIT` | 미사용 업로드 30개 상한. 취소·만료 정리 후 재시도 |
-| 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류 |
+| 503 | `FEED_STORAGE_UNAVAILABLE` | 사진 저장소 일시 오류, 사진 디코딩 차례를 5초 안에 얻지 못함(서버 프로세스당 동시 1개, 채팅 업로드와 공유) |
 
 HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼저 거절될 수 있다. 삭제·탈퇴·재시도 세부 정책은 [기능 계약](features.md)을 따른다.
 
@@ -283,10 +370,12 @@ HTTP multipart 전역 상한을 넘는 요청은 공통 업로드 오류로 먼�
 - `GET /api/v1/notifications`의 `type=FEED_COMMENT`, `refId=postId`를 이용해 `GET /api/v1/feed/posts/{refId}` 상세와 댓글 화면을 연다.
 - FCM data는 모든 값이 문자열이다: `{ "type": "FEED_COMMENT", "notificationId": "100", "postId": "42" }`. 알림 탭 시 로그인 상태를 복구한 뒤 게시물 42로 이동한다. `notificationId`는 기존 알림 읽음 처리에 사용한다.
 - `GET/PATCH /api/v1/users/me/notification-settings`에 `feed` boolean이 추가된다. 기본 true, PATCH 생략 시 기존 값 유지. 예: `{ "feed": false }`. `all=false`도 피드 푸시를 막는다. 두 경우 모두 알림함 내역은 저장된다.
+- `feed=false`와 `all=false`는 [집 피드 새 글 푸시](#새-글-푸시)도 막는다. 새 글 푸시는 알림함에 저장하지 않으므로 이때는 아무것도 남지 않는다.
 - 삭제·탈퇴로 게시물 상세가 404이면 삭제 안내 후 피드로 돌아간다. 이미 삭제된 댓글의 도착 알림일 수 있으므로 특정 댓글이 반드시 남아 있다고 가정하지 않는다.
+- [집 글](#집-글-집-구성원-한정)의 댓글도 같은 `FEED_COMMENT`와 `postId`를 쓴다. 수신자(글 작성자·답글 대상)가 그 집의 ACTIVE 구성원이 아니면 알림을 생성하지 않는다. 알림을 받은 뒤 집을 나갔다면 상세가 404이므로 위와 같이 처리한다.
 - 기기 FCM 토큰 등록·알림 권한과 위 화면 이동/설정 UI 반영은 프론트 담당이다. 좋아요 알림은 이번 추가 범위에 포함하지 않는다.
 
 
 ### AI 답글의 대상 처리
 
-사람이 AI 댓글에 직접 답하면 해당 AI 계정의 응답만 우선 예약한다. AI가 자동 응답할 때는 들어온 사람 댓글의 ID를 `replyToCommentId`로 고정하고 `parentCommentId`는 기존 작성 규칙으로 정규화한다. 사람이 보낸 API 요청이나 일반 댓글 계약은 바꾸지 않는다. AI 댓글로 자동 응답 작업이 재귀 생성되지 않으며 AI가 기존 댓글을 자발적으로 선택하는 경우 실제 관찰한 대상과 같은 게시물/접근권을 다시 검증한다.
+사람이 AI 댓글에 직접 답하면 해당 AI 계정의 응답만 우선 예약한다. AI가 자동 응답할 때는 들어온 사람 댓글의 ID를 `replyToCommentId`로 고정하고 `parentCommentId`는 기존 작성 규칙으로 정규화한다. 사람이 보낸 API 요청이나 일반 댓글 계약은 바꾸지 않는다. AI 댓글로 자동 응답 작업이 재귀 생성되지 않으며 AI가 기존 댓글을 자발적으로 선택하는 경우 실제 관찰한 대상과 같은 게시물/접근권을 다시 검증한다. [집 글](#집-글-집-구성원-한정)과 그 댓글에는 AI 자동 응답을 예약하지 않으며 AI 계정은 집 글을 읽거나 쓸 수 없다.
