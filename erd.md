@@ -82,9 +82,10 @@
   - `viewed_at`: 상세 최초 조회 시각(null = 미열람). 상세 조회 API가 최초 열람에만 기록하고 재조회는 덮어쓰지 않는다 — admin 관측의 열람 건수·열람률 분자.
 
 ### 방 (개인)
-- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | growth_points BIGINT | highest_growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
+- **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | growth_points BIGINT | highest_growth_level INT | layout_format VARCHAR(20) | layout_revision INT | character_scale DECIMAL(3,2) | updated_at
   - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 캐릭터 뽑기·착용 교체 해금(최고 달성 레벨 10 이상) 판정에 쓰며, 완료 취소로 현재 레벨이 내려가도 해금은 유지한다(2026-10-14). 모루 레벨 5 보상 판정 용도는 모루 제거와 함께 폐지했다.
   - `growth_points`: 기본 0, 음수 불가. `growth_level`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. 다음 구간 필요량은 `20 + 2 × L`이다. `routine_logs`·`todos`의 `growth_reward_amount`는 해당 완료가 실제 적립한 포인트(기본 0)이며 취소 시 회수 근거다. 이전 완료 이력은 COIN 원금(기존 `base_reward_amount` null이면 `reward_amount`) 중 미적립 차액을 소급한다. 이벤트 추가 코인은 성장에 반영하지 않으며, 같은 트랜잭션에서 완료별 지급 표식과 누적·최고 레벨을 반영한다.
+  - `character_scale`: 기본 1.00, 허용 범위 0.70~1.30. 개인 방 꾸미기 설정이며 가구와 같은 layout revision으로 저장한다.
   - `layout_format`: `SLOT_V1`(기본, 슬롯 배치 정본) / `FREE_V1`(자유배치 정본). `layout_revision`은 0부터 시작하고 배치 저장 성공마다 증가한다.
 - **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP | unique (room_user_id, slot_type)
   - unique는 슬롯 upsert 정합의 최후 방어선. 해제는 null 대입이 아니라 row 삭제다(빈 슬롯 row 없음).
