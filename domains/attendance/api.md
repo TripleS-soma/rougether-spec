@@ -102,6 +102,37 @@
 - 기존 STREAK와 CUMULATIVE는 병행할 수 있다. legacy 조회/체크인은 STREAK만 선택하고 신규 앱의 크리스마스 화면은 반드시 ID 지정 API를 쓴다. 기존 루틴/투두 완료 후 STREAK 자동 출석 동작은 보존하며 크리스마스를 대신 자동 체크하지 않는다.
 - 출석 코인은 루틴/투두 일일 원금 100코인 한도 밖이며 크리스마스 가구 배치 10% 보너스 적용 대상도 아니다.
 
+## 크리스마스 누적 3일차 여우 (2026-11-11)
+
+누적 **3회째** 출석에 기존 30코인과 여우 캐릭터를 함께 지급한다. 코인 보상표와 30회 최종 완료 보상 `NONE`은 유지한다. 여우는 출석 보상 전용이며 온보딩 무료 선택, 캐릭터 뽑기, 봇 기본 캐릭터 지급에서 제외한다.
+
+상태 응답에는 다음 additive 필드를 추가한다. 캐릭터 보상 설정이 없거나 캐릭터가 비활성이면 `characterReward=null`이다.
+
+```json
+"characterReward": {
+  "day": 3,
+  "characterId": 11,
+  "name": "여우",
+  "assetKey": "characters/fox/base-v1.webp",
+  "received": false,
+  "claimable": true
+}
+```
+
+ID 11은 예시다. 실제 ID는 응답을 사용한다. `received`는 이 이벤트의 코인 수령 여부와 다르게, 해당 캐릭터를 한 번이라도 보유한 이력이다. 삭제된 보유 이력도 다시 지급하지 않는다. `claimable`은 이벤트 기간/활성 플래그, 크리스마스 공개 플래그, 캐릭터 활성, 누적 3일 이상, 미보유 이력을 모두 만족할 때만 true다.
+
+출석 POST는 누적 3회 이상이고 미보유일 때 캐릭터를 자동 지급한다. 응답에 `characterGrantedNow`를 추가하며 기존 `rewardGrantedNow`는 최종 가구/생성권 보상 의미를 유지한다. 코인, 출석, 캐릭터와 원장을 같은 트랜잭션에서 처리하고 실패 시 모두 롤백한다. 비활성 캐릭터는 코인 출석을 막지 않고 지급을 보류한다.
+
+`POST /api/v1/events/attendance/{eventId}/character-reward`는 body 없이 본인의 이미 달성한 캐릭터 보상을 수령한다. 응답은 `{ "grantedNow": true, "status": <출석 상태> }`다. 이미 3일차를 받은 사용자도 이 경로로 받을 수 있으며 오늘 출석이나 코인을 추가하지 않는다. 계정별 user 행 잠금 안에서 보유 이력을 검사하므로 출석, 별도 수령, 관리자 지급, 온보딩과 뽑기가 경합해도 중복 보유를 만들지 않는다. 이미 보유한 캐릭터는 재화로 환산하지 않으며 `grantedNow=false`다. 선택 중인 기존 대표 캐릭터는 보존한다.
+
+- 아직 3회 미달: 409 `ATTENDANCE_CHARACTER_REWARD_LOCKED`.
+- 캐릭터 보상 미설정/비활성: 409 `ATTENDANCE_CHARACTER_REWARD_NOT_AVAILABLE`.
+- 이벤트 기간 밖/비활성/공개 플래그 OFF: 409 `ATTENDANCE_EVENT_NOT_ACTIVE`.
+- 인증되지 않은 요청은 기존 JWT 인증 정책에 따라 거부한다. 사용자 ID를 body/query에서 받지 않는다.
+- GET은 지급하지 않는다. 앱이 상태의 `claimable`을 보고 별도 수령 POST를 요청하며, 같은 세션에서 실패한 POST를 자동 반복하지 않는다. 응답 유실은 GET 재조회로 복구하고 보유 캐릭터 캐시를 갱신한다. 수동 재시도는 가능하다.
+- 앱은 기존에 3회 이상 달성한 계정도 홈 진입 시 수령을 한 번 시도한다. 이 요청은 오늘 출석을 대신하지 않는다. 실패 시 출석 화면에서 수동으로 수령할 수 있다.
+- 캐릭터 교체는 모든 보유 활성 캐릭터에 대해 레벨 제한이 없다. 캐릭터 뽑기는 레벨 10 해금을 유지한다.
+
 ## 생성권 및 가구 생성
 
 - `GET /api/v1/me/furniture-credits`: `available`, `reserved`, `purchaseAdjustmentPending`, `accountToken`. 사진 생성 UI는 생성권 잔액과 `GET /api/v1/me/wallets`의 `COIN` 잔액을 사용한다. 생성권 1회를 우선 사용하며, 없으면 100코인으로 접수할 수 있다.

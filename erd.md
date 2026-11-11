@@ -39,7 +39,7 @@
   - 친구 초대 redeem 기록 — unique(invitee)로 계정당 평생 1회 보장. 보상 각 50코인, 초대자 한도 10건(초과 시 inviter_amount 0) → [member/api.md](domains/member/api.md) "친구 초대 보상".
 
 ### 캐릭터 (온보딩 · 방)
-- **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN
+- **characters**: id* | code VARCHAR(50) | name VARCHAR(100) | name_translations JSON? | base_asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN | is_attendance_reward BOOLEAN default FALSE
 - **character_poses**: id* | character_id→characters | code VARCHAR(40) | asset_key VARCHAR(255) | sort_order INT | is_active BOOLEAN | created_at | updated_at | unique (character_id, code) | index (character_id, is_active, sort_order)
   - 캐릭터별 추가 포즈 에셋 카탈로그. 표준 애니메이션(idle/pose-cycle/wave)은 기존 code 파생 key 규칙을 유지하고, 추가 포즈만 이 테이블로 동적 관리한다(admin 등록·수정·삭제).
 - **user_characters**: id* | user_id→users | character_id→characters | is_selected BOOLEAN | acquired_at | created_at | updated_at | deleted_at?
@@ -83,7 +83,7 @@
 
 ### 방 (개인)
 - **personal_rooms**: **user_id*** (PK이자 →users, 1:1) | growth_level INT | growth_points BIGINT | highest_growth_level INT | layout_format VARCHAR(20) | layout_revision INT | updated_at
-  - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 캐릭터 뽑기·착용 교체 해금(최고 달성 레벨 10 이상) 판정에 쓰며, 완료 취소로 현재 레벨이 내려가도 해금은 유지한다(2026-10-14). 모루 레벨 5 보상 판정 용도는 모루 제거와 함께 폐지했다.
+  - `highest_growth_level`: 기본 0, 최고 달성 레벨을 보존한다. 기존 데이터는 현재 `growth_level`로 초기화한다. 캐릭터 뽑기 해금(최고 달성 레벨 10 이상) 판정에 쓰며, 완료 취소로 현재 레벨이 내려가도 해금은 유지한다(2026-10-14). 모루 레벨 5 보상 판정 용도는 모루 제거와 함께 폐지했다.
   - `growth_points`: 기본 0, 음수 불가. `growth_level`은 `T(L) = L × (L + 19)`가 누적 포인트 이하인 최대 정수 L이다. 다음 구간 필요량은 `20 + 2 × L`이다. `routine_logs`·`todos`의 `growth_reward_amount`는 해당 완료가 실제 적립한 포인트(기본 0)이며 취소 시 회수 근거다. 이전 완료 이력은 COIN 원금(기존 `base_reward_amount` null이면 `reward_amount`) 중 미적립 차액을 소급한다. 이벤트 추가 코인은 성장에 반영하지 않으며, 같은 트랜잭션에서 완료별 지급 표식과 누적·최고 레벨을 반영한다.
   - `layout_format`: `SLOT_V1`(기본, 슬롯 배치 정본) / `FREE_V1`(자유배치 정본). `layout_revision`은 0부터 시작하고 배치 저장 성공마다 증가한다.
 - **room_surface_slots**: id* | room_user_id→personal_rooms | slot_type VARCHAR(40) | user_item_id→user_items? | saved_at TIMESTAMP | unique (room_user_id, slot_type)
@@ -116,7 +116,8 @@
 - **attendance_events**: id* | code VARCHAR(50) | title VARCHAR(120) | starts_on DATE | ends_on DATE | target_days INT | daily_coin_amount INT | bonus_day INT | bonus_coin_amount INT | reward_item_id→items? | generation_credit_amount INT | mode VARCHAR(20) DEFAULT STREAK | milestone_every INT DEFAULT 0 | milestone_coin_amount INT DEFAULT 0 | is_active BOOLEAN | created_at | unique (code) | index (is_active, starts_on, ends_on)
   - 새 생성권 이벤트는 `target_days=7`, `generation_credit_amount=1`, `reward_item_id=null`이다. 기본 코인 설정은 `daily_coin_amount=30`, `bonus_day=5`, `bonus_coin_amount=50`이다. 기존 가구 이벤트는 `generation_credit_amount=0`을 유지한다. `bonus_coin_amount`는 추가분이 아니라 해당 일차의 총 지급량이다.
   - V100의 `mode`는 `STREAK` / `CUMULATIVE`이며 기존 행 기본값은 STREAK다. 같은 모드 내 활성 기간 중첩만 막고 legacy 선택은 STREAK로 한정한다. CUMULATIVE 코인 전용 이벤트는 `reward_item_id=NULL`, `generation_credit_amount=0`을 허용한다. 기존 생성권은 STREAK/목표 7/생성권 1 제약을 유지한다.
-  - 크리스마스 `christmas_2026`은 누적 목표 30, 일반 30코인, `milestone_every=5`, `milestone_coin_amount=60`(추가분이 아닌 해당 누적일 총액)이다. 누적 5/10/15/20/25/30회가 60코인으로 합계 1,080코인이다. 최종 특별 보상은 NONE이며 트리/생성권을 지급하지 않는다.
+  - 크리스마스 `christmas_2026`은 누적 목표 30, 일반 30코인, `milestone_every=5`, `milestone_coin_amount=60`(추가분이 아닌 해당 누적일 총액)이다. 누적 5/10/15/20/25/30회가 60코인으로 합계 1,080코인이다. 최종 특별 보상은 NONE이며 트리/생성권을 지급하지 않는다. V102의 `reward_character_id`와 `character_reward_day=3`은 별도 중간 여우 보상이다. `user_characters`의 삭제 이력을 포함한 보유 여부를 일회성 지급 판정으로 사용하며 user 행 잠금으로 다른 획득 경로와 직렬화한다.
+- V102: `attendance_events.reward_character_id`는 `characters.id` FK, `character_reward_day`는 기본 0이다. 캐릭터 미설정이면 0이고, 설정 시 CUMULATIVE의 1~target_days 범위다. 여우는 출석 전용 플래그로 무료 선택/뽑기/봇 기본 지급에서 제외한다.
 - **attendance_check_ins**: id* | event_id→attendance_events | user_id→users | attendance_date DATE | streak_day INT | coin_reward_amount INT | reward_user_item_id→user_items? | reward_newly_granted BOOLEAN? | generation_credit_amount INT | reward_processed_at TIMESTAMP? | progress_completed_at TIMESTAMP? | created_at | unique (event_id, user_id, attendance_date) | index (user_id, event_id, attendance_date)
   - 출석일은 KST 서버 날짜다. `coin_reward_amount`에는 실제 지급한 코인을 저장한다. 목표 전 보상 상태는 null, 생성권 지급량은 0이다. 가구 완료 row는 기존 보상 3개 컬럼에 값이 있다. 생성권 완료 row는 가구 참조 없이 지급량 1과 보상 처리 시각을 기록한다.
 
