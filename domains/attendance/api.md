@@ -112,7 +112,7 @@
 "characterReward": {
   "day": 3,
   "characterId": 11,
-  "name": "여우",
+  "name": "여루",
   "assetKey": "characters/fox/base-v1.webp",
   "received": false,
   "claimable": true
@@ -158,3 +158,5 @@ ID 11은 예시다. 실제 ID는 응답을 사용한다. `received`는 이 이�
 | 409 | ATTENDANCE_EVENT_PERIOD_OVERLAPPED | 활성 기간 중첩 |
 | 404 | ATTENDANCE_REWARD_ITEM_NOT_FOUND | 기존 방식 보상 아이템 없음 |
 | 400 | ATTENDANCE_REWARD_ITEM_INVALID | 기존 방식 보상 가구가 비활성 또는 배치 불가 |
+
+이미 크리스마스 출석을 누른 계정도 누적 3회 이상이면 여루 수령 대상이다. 오늘 출석 완료 여부나 30회 완주 여부는 캐릭터 소급 수령을 막지 않는다. 이벤트가 활성 상태인 다음 접속에서 캐릭터만 수령하며 기존 코인과 출석 기록은 변경하지 않는다.
