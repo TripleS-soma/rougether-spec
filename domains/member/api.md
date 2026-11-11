@@ -177,3 +177,7 @@
 
 - 에러 응답 형태·응답 envelope 사용 여부는 공통 미결정 ([open-questions.md](../../open-questions.md)).
 - 시각 필드(`lastAccessedAt` 등) 직렬화가 현재 UTC `Z` 표기다 — 공통 규약("ISO-8601 + offset, Asia/Seoul 기준")과의 정합은 공통 미결정 ([open-questions.md](../../open-questions.md)).
+
+## 건의하기와 업데이트
+
+내 정보 및 관리자 연동은 [건의하기와 업데이트](feedback-updates.md)를 따른다.
