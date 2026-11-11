@@ -12,6 +12,8 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | POST | `/posts` | 게시물 등록 → 201 Post (재시도도 201) |
 | GET | `/posts` | 전체/게시판별/작성자별 커서 목록 → 200 Page<Post> |
 | GET | `/posts/{postId}` | 게시물 상세 → 200 Post |
+| GET | `/posts/{postId}/houses` | 작성자가 참여 중인 집 선택 목록 → 200 `{ items }` |
+| POST | `/posts/{postId}/houses/{houseId}/join` | 설정에 따른 즉시입주 또는 승인 대기 신청 → 200 HouseJoinResponse |
 | PATCH | `/posts/{postId}` | 본인 본문·게시판·연결 루틴 수정 → 200 Post |
 | DELETE | `/posts/{postId}` | 본인 게시물 삭제 → 204 |
 | PUT | `/posts/{postId}/like` | 좋아요 → 204 |
@@ -20,6 +22,41 @@ Prefix: `/api/v1/feed`. 모든 경로는 활성 일반 회원의 `Authorization:
 | GET | `/posts/{postId}/comments/{commentId}/replies` | 원댓글의 대댓글 커서 목록 → 200 Page<Comment> |
 | POST | `/posts/{postId}/comments` | 댓글 등록 → 201 Comment (재시도도 201) |
 | DELETE | `/posts/{postId}/comments/{commentId}` | 본인 댓글 삭제 → 204 |
+
+## 게시물에서 작성자의 집에 참여 (2026-11-11)
+
+게시물의 버튼 문구는 **입주 신청**으로 통일합니다. 누르면 작성자가 현재 ACTIVE 구성원인 집을 최신 생성순으로 보여주고 사용자가 어느 집에 신청할지 선택합니다. 작성자가 방장인 집뿐 아니라 일반 구성원으로 참여한 집도 포함하며 **비공개 집도 포함**합니다. 삭제된 집과 작성자가 탈퇴 또는 강퇴된 집은 제외합니다. 집이 없으면 `items=[]`입니다.
+
+GET `/posts/{postId}/houses`의 항목 필드:
+
+- `houseId`, `name`, `coverImageKey`, `level`, `displayMode`(`DIORAMA` 또는 `CLASSIC`), `isPublic`
+- `requiresApproval`: 기존 [자동 입주 설정](../house/api.md#온보딩-자동-입주-허용-설정)이 꺼져 있으면 true, 켜져 있으면 false입니다. 공개 여부와 독립적으로 판정합니다.
+- `currentMemberCount`: 동거 봇을 제외한 실사용자 수. `maxMembers=null`은 무제한입니다.
+- `isMember`, `isFull`, `myMembershipStatus`(ACTIVE, LEFT, KICKED 또는 이력 없으면 null)
+- `myJoinRequestStatus`: PENDING, REJECTED 또는 null. 이미 구성원이면 null입니다.
+- `canJoin`: 구성원, 강퇴 이력, 실사용자로 만석인 집은 false입니다. 승인 필요 집의 PENDING도 false이며, 바로 입주 설정 집의 PENDING은 true입니다.
+
+초대코드와 구성원 활동 정보는 반환하지 않습니다. 집별 안내 문구로 승인 후 입주와 신청 즉시 입주를 구분하되 참여 버튼은 입주 신청으로 표시합니다. 이미 구성원인 집은 집으로 가기를 제공합니다.
+
+POST `/posts/{postId}/houses/{houseId}/join`은 요청 본문 없이 인증된 사용자로 참여합니다. 서버는 집 행 락 아래 작성자가 해당 집의 ACTIVE 구성원인지, 정원과 신청자 강퇴 이력을 다시 확인합니다. 임의의 비공개 집 ID만으로 참여할 수 없습니다.
+
+- **바로 입주 설정이 켜진 집**: 즉시 MEMBER, ACTIVE 구성원으로 입주하고 구성원 수를 증가시킵니다. LEFT 이력은 재활성화하며 기존 PENDING 신청은 ACCEPTED로 종결합니다. 응답은 `{ membershipId, houseId, status: "ACTIVE", pendingApproval: false, joinRequestId: null }`입니다.
+- **설정이 꺼진 집**: 공개 여부와 무관하게 방장 승인 대기 신청을 생성하고 실제 방장에게 신청 도착 알림을 저장합니다. 거절된 신청은 재오픈합니다. 멤버십과 구성원 수는 변경하지 않습니다. 응답은 `{ membershipId: null, houseId, status: null, pendingApproval: true, joinRequestId }`입니다. 기존 집 신청 수락 및 거절 API를 사용합니다.
+- 즉시입주와 신청 모두 코드 입력이 필요 없습니다. 동거 봇이 채운 자리는 신청할 수 있으며 실제 입주 때 봇이 양보합니다. 정원 검사, 가입 상태 변경, 신청 종결, 입주 알림 저장은 한 트랜잭션으로 처리합니다.
+
+오류:
+
+| HTTP | code | 의미 |
+| --- | --- | --- |
+| 401 | `AUTH_INVALID_TOKEN` | 미인증, 탈퇴 회원 또는 동거 봇 |
+| 404 | `FEED_POST_NOT_FOUND` | 없는 게시물, 삭제, 작성자 탈퇴, 요청자가 작성자를 차단 |
+| 404 | `HOUSE_NOT_FOUND` | 없는 집, 삭제된 집 또는 작성자가 현재 ACTIVE 구성원이 아님 |
+| 409 | `HOUSE_FULL` | 실사용자로 만석 |
+| 409 | `HOUSE_KICKED_MEMBER` | 신청자 강퇴 이력 |
+| 409 | `HOUSE_ALREADY_MEMBER` | 이미 구성원. 앱은 해당 집으로 이동할 수 있음 |
+| 409 | `HOUSE_JOIN_REQUEST_ALREADY_PENDING` | 승인 필요 집에 이미 신청 중 |
+
+비공개 집의 기존 preview는 비구성원에게 열지 않습니다. 목록 카드에서 집을 선택하며, 실제 입주 확정 후 기존 집 상세를 조회합니다. 기존 탐색의 공개 집 필터와 초대코드의 계약은 유지합니다.
 
 ## 사진 업로드 → 게시
 
