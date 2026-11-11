@@ -37,9 +37,9 @@
 | `GET /api/v1/users/me/notification-settings` | 내 알림 설정 조회 | resp: `all`, `reminder`, `house`, `feed`, `market`, `chat` (전부 boolean) | `notification_setting` |
 | `PATCH /api/v1/users/me/notification-settings` | 내 알림 설정 부분 변경 | req: `all`?, `reminder`?, `house`?, `feed`?, `market`?, `chat`? (전부 optional boolean) / resp: 변경 반영된 전체 설정(GET과 동일 형태) | `notification_setting` |
 
-- 설정 단위는 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`)이다: `ALL`(전체 마스터) / `REMINDER`(리마인더) / `HOUSE`(집 알림) / `FEED`(피드 알림) / `MARKET`(거래소 알림) / `CHAT`(채팅 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`·`HOUSE_JOIN_REQUEST_CREATED`·`HOUSE_JOIN_REQUEST_ACCEPTED`·`HOUSE_JOIN_REQUEST_REJECTED`·`ROOM_COBWEB_CLEANED`, `FEED` ← `FEED_COMMENT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `CHAT` ← `CHAT_MESSAGE`, `SERVICE`(서비스 메시지) ← `BUG_REPORT_REPLY`·`ADMIN_NOTICE`. `SERVICE` 는 설정 UI·API 에 노출하지 않는다 — off 행이 생길 수 없어 사실상 마스터 `ALL` off 만 차단한다(문의 답장은 리마인드를 꺼둔 사용자에게도 가야 함).
+- 설정 단위는 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`)이다: `ALL`(전체 마스터) / `REMINDER`(리마인더) / `HOUSE`(집 알림) / `FEED`(피드 알림) / `MARKET`(거래소 알림) / `CHAT`(채팅 알림). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`·`HOUSE_JOIN_REQUEST_CREATED`·`HOUSE_JOIN_REQUEST_ACCEPTED`·`HOUSE_JOIN_REQUEST_REJECTED`·`ROOM_COBWEB_CLEANED`, `FEED` ← `FEED_COMMENT`·`HOUSE_FEED_POST`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `CHAT` ← `CHAT_MESSAGE`, `SERVICE`(서비스 메시지) ← `BUG_REPORT_REPLY`·`ADMIN_NOTICE`. `SERVICE` 는 설정 UI·API 에 노출하지 않는다 — off 행이 생길 수 없어 사실상 마스터 `ALL` off 만 차단한다(문의 답장은 리마인드를 꺼둔 사용자에게도 가야 함).
 - **행 없음 = ON**이 기본값이다. 신규 가입자는 설정 행이 0개이고 전부 켜진 것으로 조회된다. off로 바꿀 때만 행이 생긴다.
-- off 범위는 **FCM push만 차단**이다. 알림 내역(`notification`) 저장은 설정과 무관하게 항상 수행되므로 목록·읽음 API 동작은 영향받지 않는다. 단 푸시 전용 타입(`CHAT_MESSAGE`)은 원래 내역을 저장하지 않으므로 off면 아무것도 남지 않는다.
+- off 범위는 **FCM push만 차단**이다. 알림 내역(`notification`) 저장은 설정과 무관하게 항상 수행되므로 목록·읽음 API 동작은 영향받지 않는다. 단 푸시 전용 타입(`CHAT_MESSAGE`·`HOUSE_FEED_POST`)은 원래 내역을 저장하지 않으므로 off면 아무것도 남지 않는다.
 - 마스터 `all`이 off면 그룹 설정과 무관하게 모든 push가 차단된다. 이때도 그룹별 값은 보존되어, `all`을 다시 on으로 되돌리면 이전 그룹 설정이 그대로 적용된다.
 - PATCH는 부분 전송이다 — 바꿀 필드만 담아 보내고 생략한 필드는 기존 값이 유지된다. 여섯 필드(`all`·`reminder`·`house`·`feed`·`market`·`chat`)가 모두 없으면 400(`VALIDATION_FAILED`).
 - `me` path이므로 JWT의 userId로만 조회·변경한다(소유권 guard 자동).
@@ -56,7 +56,7 @@
 - 등록된 토큰(`user_device_token`) 전체로 멀티캐스트 발송하고(500개 단위 청크 분할), FCM이 `UNREGISTERED`/`INVALID_ARGUMENT`로 응답한 token은 삭제한다. 멀티캐스트 호출 자체가 예외로 죽으면 그 청크 전체를 실패로 집계하되 무효 토큰 삭제는 하지 않는다.
 - iOS 발송은 FCM+APNs 릴레이 방식이다(APNs 직접 연동 없음). 발송 메시지에 `ApnsConfig`(aps `sound = "default"`)를 포함해 iOS 알림이 무음으로 도착하지 않게 한다. badge 카운트는 MVP 제외. Android 쪽 메시지 형태는 변경 없음(기존 `Notification` title/body 그대로), 디바이스 토큰 API·스키마도 변경 없음. APNs 인증 키(.p8)는 Firebase Console의 Apple 앱 구성에 등록한다(콘솔 작업, 키 파일 커밋 금지).
 - 발송 결과는 `notification.push_status`(`NOT_REQUESTED`/`PENDING`/`SENT`/`BLOCKED`/`FAILED`)로 추적한다: 푸시를 요청하지 않은 운영자 알림은 `NOT_REQUESTED`로 저장하고 FCM을 호출하지 않는다. 푸시 요청이 있으면 저장 시 `PENDING`, 등록 토큰 중 1개 이상 FCM 접수에 성공하면 `SENT`, 사용자가 알림 설정을 꺼서 발송하지 않으면 `BLOCKED`, 전부 실패·발송 중 예외·등록된 토큰 없음이면 `FAILED`. `BLOCKED`는 발송 실패가 아니라 설정에 따른 정상 종결이므로 `FAILED`와 구분한다(발송 실패율 지표에 사용자 설정이 섞이지 않게 함). `SENT`는 기기 수신이나 사용자 열람을 보장하지 않는다. `FAILED` 푸시 재시도는 없다(MVP). 상태 갱신은 알림 목록 응답에 노출하지 않는다.
-- **푸시 전용 타입**: `CHAT_MESSAGE`(설정 그룹 `CHAT`)는 알림함에 저장하지 않는 푸시 전용 타입이라 위 `type` 목록·알림 목록 API에 나오지 않는다. 공용 진입점 `send(...)`는 항상 내역을 저장하므로, 이 타입은 내역 없이 보내는 별도 푸시 전용 경로를 쓴다 — `notification` 행·`push_status` 발송 상태 기록이 없다. 설정 게이트는 같은 `NotificationPushPolicy`를 거친다(`ALL` 또는 `CHAT` off면 차단). 트리거·대상·문구·FCM data는 [채팅 API](../chat/api.md) "푸시 알림" 절을 따른다.
+- **푸시 전용 타입**: `CHAT_MESSAGE`(설정 그룹 `CHAT`)는 알림함에 저장하지 않는 푸시 전용 타입이라 위 `type` 목록·알림 목록 API에 나오지 않는다. 공용 진입점 `send(...)`는 항상 내역을 저장하므로, 이 타입은 내역 없이 보내는 별도 푸시 전용 경로를 쓴다 — `notification` 행·`push_status` 발송 상태 기록이 없다. 설정 게이트는 같은 `NotificationPushPolicy`를 거친다(`ALL` 또는 `CHAT` off면 차단). 트리거·대상·문구·FCM data는 [채팅 API](../chat/api.md) "푸시 알림" 절을 따른다. 집 피드 새 글 푸시 `HOUSE_FEED_POST`(설정 그룹 `FEED`)도 같은 푸시 전용 경로를 쓰며 `ALL` 또는 `FEED` off면 차단한다. 아래 "집 피드 새 글 푸시" 절을 따른다.
 - firebase 서비스 계정 JSON은 환경변수(`FIREBASE_CREDENTIALS_PATH`)/외부 경로로 주입한다(커밋 금지). 발송 활성화는 프로필이 아니라 자격증명 주입 여부 기준 — 미주입 환경은 실제 발송 없이 stub으로 동작하고, 로컬도 자격증명을 주입하면 실발송된다. 단 **`prod` 프로필에서 자격증명 미주입이면 stub으로 조용히 뜨지 않고 기동에 실패**한다(fail-fast). 테스트는 항상 stub으로 고정된다.
 - 브로커(RabbitMQ/Kafka)는 아직 도입하지 않는다(다중 인스턴스·발송량 증가 시 재검토).
 
@@ -116,6 +116,16 @@ summary 공통 필드:
 - 수신자의 `users.language` 기준: 한국어 `새 댓글이 달렸어요` / `내 게시물에 새 댓글이 달렸어요. 확인해 보세요!`, 영어 `New comment` / `Someone commented on your post. Take a look!`.
 - 닉네임·댓글 원문은 복사하지 않는다. 삭제/탈퇴 후 이미 생성된 일반 안내와 ID는 남을 수 있고, 이동 시 게시물이 404이면 피드 목록으로 돌아간다. 기기에서 이미 수신한 푸시는 회수하지 않는다.
 - 새 DB 컬럼은 필요 없다. `notification.type`에 `FEED_COMMENT`, `notification_setting.type`에 `FEED`를 저장한다.
+
+## 집 피드 새 글 푸시 (`HOUSE_FEED_POST`)
+
+집 구성원만 보는 집 글이 새로 등록되면 그 집 구성원에게 보내는 푸시다. 트리거·수신 대상·문구·배포 후 유예의 정본은 [피드 API](../feed/api.md#집-피드-새-글-푸시와-집별-알림-설정)다.
+
+- 푸시 전용 타입이다. 알림함(`notification`)에 저장하지 않으므로 알림 목록 API에 나오지 않고 `refId`·`push_status` 기록이 없다.
+- 설정 그룹은 `FEED`다. 설정 API의 `feed` 필드는 피드 댓글·답글 알림과 집 피드 새 글 푸시를 함께 켜고 끈다. `ALL` 또는 `FEED` off면 새 글 푸시를 보내지 않으며 내역이 없으므로 아무것도 남지 않는다. `HOUSE`·`CHAT` off는 차단하지 않는다.
+- 그룹 설정과 별개로 집마다 자유글·인증글 푸시를 켜고 끄는 집별 설정이 있다(`GET/PUT /api/v1/houses/{houseId}/feed/notification`, 기본값 자유글 ON·인증글 OFF). 이 값은 `notification_setting`이 아니라 `house_feed_notification_settings`에 저장하며 "행 없음 = ON" 규칙을 따르지 않는다. 집별 설정과 그룹 설정을 모두 통과해야 발송한다.
+- FCM data: `{ "type": "HOUSE_FEED_POST", "houseId": "12", "postId": "42", "boardType": "FREE" }` (문자열 값). `notificationId`는 없다.
+- 제목은 집 이름, 본문은 수신자의 `users.language` 기준이다: 한국어 `{닉네임}님이 새 글을 올렸어요` / `{닉네임}님이 '{루틴 제목}' 인증글을 올렸어요`, 영어 `{nickname} shared a new post` / `{nickname} shared a check-in for '{routine}'`. 연결 루틴이 없는 인증글은 `{닉네임}님이 인증글을 올렸어요` / `{nickname} shared a check-in`이다. 닉네임이 없으면 `이웃` / `A neighbor`를 쓰고 글 내용은 싣지 않는다.
 
 ## 거래소 알림 (`MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`)
 

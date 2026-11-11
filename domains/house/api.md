@@ -156,6 +156,7 @@
 - res: 204 / 예외: 비구성원·중복 탈퇴 `HOUSE_NOT_MEMBER`(403) · 없는/삭제 집 404
 - table: `house_members`(`left_at`), `house`
 - **회원탈퇴(`DELETE /api/v1/me`) 경로**: 탈퇴 트랜잭션에서 모든 ACTIVE 멤버십이 같은 규칙(LEFT·`left_at`·정원 감소·미션 루틴/카테고리 연동 해제)으로 정리된다. 단 이 API 와 달리 소유자도 양도 선행 없이 진행 — 소유 집은 **가입일 최선임 ACTIVE 멤버에게 자동 승계**(동률 시 membership id 오름차순), 남은 멤버가 없으면 집 soft delete(마지막 1인 탈퇴와 동일). 탈퇴자의 `PENDING` 입주 신청도 함께 `REJECTED` 철회. 상세는 [member/api.md](../member/api.md) "회원탈퇴".
+- **집 soft delete 시 집 피드**: 그 집에 올라온 집 글은 즉시 누구에게도 열리지 않고, 이후 피드 정리 작업이 글·댓글·좋아요·사진을 정리한다. 승계된 집은 삭제되지 않으므로 글이 그대로 남는다. 상세는 [feed/features.md](../feed/features.md#집-해체-시-정리).
 
 ### POST /api/v1/houses/{houseId}/transfer-ownership
 소유권 양도. **소유자만**. 대상 구성원을 `owner`로 승격 + 기존 소유자는 `member`로 + `house.owner_user_id` 갱신 - 단일 트랜잭션.

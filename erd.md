@@ -153,7 +153,7 @@
 - `ROOM_COBWEB_CLEANED`는 같은 집 구성원이 거미줄을 청소했을 때 방 주인에게 저장·push하며 `ref_id`는 방 주인 user id다.
 - `WEEKLY_REPORT`는 AI 주간 회고 도착 알림 — 주간 배치(`weeklyReportPushJob`)가 회고 생성 배치(일요일 00:30 KST)와 **분리된 발송 시각**(일요일 20:00 KST) 이후 저장·push하며, `ref_id`는 주간 회고(`weekly_reports` — 위 "루틴 / 투두" 참고) id로 중복 발송을 막는다. 대상은 항상 가장 최근 끝난 주뿐(뒤늦은 지난 주 push 없음). 설정 그룹은 `REMINDER`.
 - **notification_setting**: id* | user_id→users | type VARCHAR(30) | enabled BOOLEAN | created_at | updated_at
-  - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림)/`FEED`(피드 알림)/`MARKET`(거래소 알림)/`CHAT`(채팅 알림)/`SERVICE`(서비스 메시지, 설정 UI/API 비노출). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `SERVICE` ← `BUG_REPORT_REPLY`·`ADMIN_NOTICE`, `CHAT` ← `CHAT_MESSAGE`(푸시 전용 — `notification`에 저장하지 않으므로 아래 push_status 규칙 대상 아님). **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
+  - 사용자별 알림 설정. `UNIQUE(user_id, type)`. `type`은 개별 `NotificationType`이 아니라 **설정 그룹**(`NotificationSettingType`): `ALL`(전체 마스터)/`REMINDER`(리마인더)/`HOUSE`(집 알림)/`FEED`(피드 알림)/`MARKET`(거래소 알림)/`CHAT`(채팅 알림)/`SERVICE`(서비스 메시지, 설정 UI/API 비노출). 그룹 매핑은 `REMINDER` ← `ROUTINE_REMINDER`·`TODO_REMINDER`·`WEEKLY_REPORT`·`APP_INACTIVITY_REMINDER`, `HOUSE` ← `HOUSE_KICK`·`FRIEND_CHEER`·`HOUSE_MISSION_ACHIEVED`·`HOUSE_MEMBER_JOINED`·`HOUSE_MEMBER_LEFT`, `MARKET` ← `MARKET_SELL_FILLED`·`MARKET_BUY_FILLED`·`MARKET_BID_PLACED`, `SERVICE` ← `BUG_REPORT_REPLY`·`ADMIN_NOTICE`, `CHAT` ← `CHAT_MESSAGE`(푸시 전용 — `notification`에 저장하지 않으므로 아래 push_status 규칙 대상 아님), `FEED` ← `FEED_COMMENT`·`HOUSE_FEED_POST`(`HOUSE_FEED_POST`는 `CHAT_MESSAGE`와 같은 푸시 전용). **행이 없으면 ON**이 기본값이라 off로 바꿀 때만 행이 생긴다(신규 가입자는 행 0개). off는 FCM push만 차단하고 `notification` 저장은 항상 수행한다(차단된 건은 `notification.push_status`가 `BLOCKED`로 종결된다). 게이트는 push가 나가는 모든 경로에 적용된다 — 공용 진입점 `NotificationService.send(...)`뿐 아니라 batch worker가 직접 발송하는 리마인드(`ROUTINE_REMINDER`·`TODO_REMINDER`) 경로도 포함하며, 판정 규칙은 domain 모듈의 `NotificationPushPolicy` 하나를 공유한다. 마스터(`ALL`) off면 그룹 값과 무관하게 모든 push가 차단되며, 그룹별 값은 보존되어 마스터를 다시 켜면 이전 설정이 복원된다.
 
 ### 집 (공동)
 - **house**: id* | owner_user_id→users | name VARCHAR(120) | description TEXT? | cover_image_key VARCHAR(255)? | display_mode VARCHAR(16) NOT NULL DEFAULT 'DIORAMA' | max_members INT? | current_member_count INT | level INT | growth_points INT | invite_code VARCHAR(50)? | invite_expires_at TIMESTAMP? | created_at | updated_at | deleted_at? | is_public BOOLEAN | onboarding_auto_join_enabled BOOLEAN DEFAULT FALSE
@@ -300,8 +300,9 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 
 ### 공개 SNS 피드 (신규 4개 테이블)
 
-- **feed_posts**: id* BIGINT | author_id→users | client_post_id VARCHAR(36) | request_hash VARCHAR(64) | board_type VARCHAR(20) NOT NULL DEFAULT 'VERIFICATION' | content VARCHAR(2000) | routine_id BIGINT? | routine_date DATE? | routine_title VARCHAR(160)? | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
-  - unique(author_id, client_post_id), index(deleted_at, id), index(author_id, deleted_at, id), index(board_type, deleted_at, id), index(board_type, author_id, deleted_at, id). board_type은 FREE/VERIFICATION이며 기존 글은 VERIFICATION이다. 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. routine_id·routine_date·routine_title은 인증글이 연결한 루틴 완료 기록(KST 날짜)과 연결 시점 제목 스냅샷이다. 루틴 버전 분기·삭제와 무관하게 남도록 FK를 두지 않으며, 연결 없는 기존 글은 NULL이다. 글 삭제·탈퇴 정리 시 비운다.
+- **feed_posts**: id* BIGINT | author_id→users | client_post_id VARCHAR(36) | request_hash VARCHAR(64) | board_type VARCHAR(20) NOT NULL DEFAULT 'VERIFICATION' | content VARCHAR(2000) | house_id BIGINT? | routine_id BIGINT? | routine_date DATE? | routine_title VARCHAR(160)? | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)?
+  - unique(author_id, client_post_id), index(deleted_at, id), index(author_id, deleted_at, id), index(board_type, deleted_at, id), index(board_type, author_id, deleted_at, id), index(house_id, id). board_type은 FREE/VERIFICATION이며 기존 글은 VERIFICATION이다. 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. routine_id·routine_date·routine_title은 인증글이 연결한 루틴 완료 기록(KST 날짜)과 연결 시점 제목 스냅샷이다. 루틴 버전 분기·삭제와 무관하게 남도록 FK를 두지 않으며, 연결 없는 기존 글은 NULL이다. 글 삭제·탈퇴 정리 시 비운다.
+  - house_id는 집 글이 속한 집(`house.id`)이다. NULL이면 공개 글이고 값이 있으면 그 집의 ACTIVE 구성원만 조회한다. 기존 글은 NULL로 남기며 백필하지 않는다. 등록할 때만 정하고 이후 바꾸지 않는다. routine_id와 같이 FK 없이 ID만 보관한다 — FK가 있으면 글 등록이 집 행에 공유 락을 잡아 집 참여 흐름(집 → 회원 잠금)과 교착할 수 있기 때문이다. 없는 집·삭제된 집을 가리키는 글은 등록 시 구성원 검사로 막는다.
 - **feed_images**: id* BIGINT | owner_id→users | post_id→feed_posts? | storage_key VARCHAR(255) | width INT | height INT | ready BOOLEAN | sort_order INT? | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6)
   - unique(storage_key), index(post_id, sort_order), index(expires_at, id). 비공개 JPEG key와 변환 후 치수다. 업로드 예약 시 row를 만들고 S3 저장 완료 후 ready=true가 된다. 게시 시 post_id와 0부터 시작하는 사진 순서를 저장한다. expires_at은 미게시 사진에만 적용한다.
 - **feed_likes**: id* BIGINT | post_id→feed_posts | user_id→users
@@ -309,12 +310,20 @@ API와 배치 정책은 [다국어·시간대](global-localization.md)를 따른
 - **feed_comments**: id* BIGINT | post_id→feed_posts | author_id→users | client_comment_id VARCHAR(36) | request_hash VARCHAR(64) | content VARCHAR(500) | created_at TIMESTAMP(6) | deleted_at TIMESTAMP(6)? | parent_comment_id→feed_comments? | reply_to_comment_id→feed_comments?
   - unique(post_id, author_id, client_comment_id), index(post_id, deleted_at, id). 댓글 삭제 시 본문을 비우고 재시도 방지 기록을 유지한다. 부모 글 삭제 시 제거할 수 있다.
 
-조회 시 작성자의 users.deleted_at도 확인한다. 탈퇴 후 피드 글·댓글·좋아요·사진을 즉시 숨기고, 후속 정리에서 본문·반응·사진을 제거한다. 피드는 기존 루틴·방·집 테이블을 직접 참조하지 않는다. 상세 계약은 [피드 기능](domains/feed/features.md)을 따른다. 위 4개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다.
+조회 시 작성자의 users.deleted_at도 확인한다. 탈퇴 후 피드 글·댓글·좋아요·사진을 즉시 숨기고, 후속 정리에서 본문·반응·사진을 제거한다. 피드는 기존 루틴·방·집 테이블에 FK를 두지 않는다. 루틴 완료 연결(`routine_id`)과 집 글의 집(`house_id`)은 FK 없이 ID만 보관하고 서버가 등록·조회 시 검증한다. 댓글·대댓글·좋아요·사진 테이블은 집 글에도 그대로 쓰며 집 범위는 글(`feed_posts.house_id`)로만 판정한다. 상세 계약은 [피드 기능](domains/feed/features.md)을 따른다. 위 4개 테이블은 문서 상단의 기존 table 집계에 포함되지 않으며 ERDCloud 반영이 필요하다.
 
 
 ### 피드 댓글 알림 연결
 
 기존 `notification.type`에 `FEED_COMMENT`를 추가하고 `ref_id`에는 게시물 ID를 저장한다. 댓글과 알림은 같은 트랜잭션에서 생성하며 중복은 댓글 UUID 제약·잠금으로 방지한다(별도 알림 dedupe 테이블 없음). 기존 `notification_setting.type`에 `FEED`를 추가한다. 둘 다 VARCHAR enum 값 추가이므로 새 migration은 필요 없다. `ALL`/`FEED` off는 push만 막고 알림 내역은 유지한다.
+
+
+### 집 피드 새 글 푸시 설정
+
+- **house_feed_notification_settings**: id* BIGINT | house_id BIGINT | user_id BIGINT | free_post_push BOOLEAN NOT NULL DEFAULT TRUE | verification_post_push BOOLEAN NOT NULL DEFAULT FALSE | created_at TIMESTAMP(6) | updated_at TIMESTAMP(6)
+  - unique(house_id, user_id). 구성원이 집마다 집 피드 새 글 푸시를 자유글·인증글로 나눠 켜고 끈 값이다. 행이 없으면 기본값(자유글 켜짐, 인증글 꺼짐)으로 본다. 조회만으로는 행을 만들지 않고 처음 변경할 때 만든다. 집을 나가도 행을 남겨 재입주하면 그대로 쓰며, 집이 해체돼도 지우지 않는다. `feed_posts.house_id`와 같은 방식으로 집·회원 FK를 두지 않는다 — 설정 저장이 집·회원 행에 공유 락을 잡지 않게 하고, 집은 soft delete·회원 행은 탈퇴 뒤에도 남아 참조가 깨지지 않는다. `chat_read_states.push_muted`(집 채팅 방별 음소거)와는 독립이다.
+
+새 글 푸시의 알림 타입 `HOUSE_FEED_POST`는 푸시 전용이라 `notification`에 저장하지 않는다. 설정 그룹은 기존 `FEED`를 쓰므로 `notification_setting`에는 변경이 없다. 이 테이블을 만드는 migration의 적용 시각은 새 글 푸시의 배포 후 유예(기본 24시간) 기준으로 쓴다. 상세 계약은 [피드 API](domains/feed/api.md#집-피드-새-글-푸시와-집별-알림-설정)를 따른다. 이 테이블은 문서 상단의 기존 table 집계에 포함되지 않는다.
 
 
 ### 가구 거래소
