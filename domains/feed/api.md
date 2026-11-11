@@ -93,8 +93,8 @@ POST `/posts`:
 
 - `clientPostId`: 필수 UUID. 같은 등록 작업의 네트워크 재시도에는 같은 값, 새 글에는 새 값.
 - `boardType`: `FREE` 또는 `VERIFICATION`. 생략/null은 구버전 호환을 위해 `VERIFICATION`. 다른 값은 400.
-- `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 사진이 있으면 생략/null/빈 문자열 허용.
-- `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 필수 1–10개. 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
+- `content`: 최대 2,000자, 앞뒤 공백 제거. 사진 없는 자유글은 비어 있지 않은 본문 필수. 인증게시판이거나 사진이 있으면 생략/null/빈 문자열 허용.
+- `imageIds`: 자유게시판 0–10개(생략/null은 빈 배열로 처리), 인증게시판 0–10개(선택). 양수, 중복 불가. 본인이 업로드한 미게시·미만료 사진만 허용.
 - `routineCompletion`: 인증게시판 **필수**, 자유게시판 **금지**(보내면 400 `FEED_INPUT_INVALID`). 아래 [루틴 완료 연결](#루틴-완료-연결) 규칙을 따른다.
 - 동일 사용자·UUID에 같은 게시판·정규화 본문·사진 순서·연결 루틴(`routineId`+`date`)이면 기존 글을 반환한다. 다른 요청 또는 삭제된 글이면 409 `FEED_REQUEST_CONFLICT`. 재시도 판정이 연결 필수 검사보다 먼저이므로, 이 규칙 이전에 연결 없이 등록된 인증글의 재시도도 원래 글을 돌려받는다.
 
@@ -131,8 +131,8 @@ PATCH `/posts/{postId}`의 모든 필드는 선택이며 **생략한 필드는 �
 ```
 
 - `content`: 최대 2,000자. 결과 게시판이 인증게시판이거나 사진이 있는 글에만 빈 문자열을 허용한다. 세 필드를 모두 생략하면 400 `FEED_INPUT_INVALID`.
-- `boardType` → `VERIFICATION`(자유글에서 전환): 사진이 1장 이상 있는 글만 가능하다(사진은 수정 불가, 없으면 400 `FEED_INPUT_INVALID`). 유효한 `routineCompletion`이 필요하다(없으면 400 `FEED_ROUTINE_COMPLETION_REQUIRED`).
-- `boardType` → `FREE`(인증글에서 전환): 루틴 연결을 해제하고 응답 `routine`이 null이 된다. 사진 없는 글이 되는 경우는 없지만, 결과가 사진 없는 자유글이면 비어 있지 않은 본문이 필요하다.
+- `boardType` → `VERIFICATION`(자유글에서 전환): 유효한 `routineCompletion`이 필요하다(없으면 400 `FEED_ROUTINE_COMPLETION_REQUIRED`).
+- `boardType` → `FREE`(인증글에서 전환): 루틴 연결을 해제하고 응답 `routine`이 null이 된다. 결과가 사진 없는 자유글이면 비어 있지 않은 본문이 필요하다.
 - 인증글로 남는 수정: `routineCompletion`을 보내면 검증 후 교체, 생략하면 기존 연결(또는 연결 없음)을 유지한다. 기간 제한은 수정 요청 시점 KST 기준이다.
 - 결과가 자유게시판인데 `routineCompletion`을 보내면 400 `FEED_INPUT_INVALID`.
 - 게시판을 바꾼 글에 원래 등록 요청을 같은 `clientPostId`로 재전송하면 게시판이 달라 409다. 본문·연결 루틴만 바꾼 경우는 기존처럼 현재 글을 반환한다.
@@ -258,7 +258,7 @@ Comment:
 | HTTP | code | 의미 |
 | --- | --- | --- |
 | 401 | `AUTH_INVALID_TOKEN` 등 인증 코드 | 미인증·탈퇴·봇 접근 불가 |
-| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 사진 없는 글의 인증게시판 전환, 빈 수정 요청, 인증글·루틴 연결과 함께 보낸 미니게임 기록, 기록 있는 글의 인증게시판 전환 |
+| 400 | `FEED_INPUT_INVALID` | 본문/사진 수/중복 사진/커서/목록 크기 오류, 자유글에 루틴 연결, 빈 수정 요청, 인증글·루틴 연결과 함께 보낸 미니게임 기록, 기록 있는 글의 인증게시판 전환 |
 | 400 | `FEED_ROUTINE_COMPLETION_REQUIRED` | 인증게시판 등록·전환에 `routineCompletion` 누락 |
 | 400 | `FEED_ROUTINE_COMPLETION_INVALID` | 본인 루틴이 아님·없음, 그 날짜 완료 기록 없음, KST 오늘~6일 전 밖·미래 날짜 |
 | 400 | `FEED_MINIGAME_RECORD_INVALID` | 붙인 미니게임 판이 없음·남의 판·미완료(검증 전) |
