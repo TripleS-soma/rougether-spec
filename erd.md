@@ -33,6 +33,9 @@
   - `source_type`/`source_id`는 발생 원본 논리 참조(`ROUTINE_LOG`/`TODO`/`GACHA`/`ITEM`/`ROOM_COBWEB`/`ATTENDANCE_CHECK_IN`/`MARKET_COMMAND`/`MARKET_ORDER`/`MARKET_TRADE` + 해당 id). 출석 보상은 `attendance_check_ins.id`를 기록한다. 거래소 매수 에스크로 차감(`MARKET_ORDER_ESCROW`)은 주문 row가 엔진 처리 때 생기므로 `MARKET_COMMAND` + `market_commands.id`를 기록한다. 거래소 환불(`MARKET_ESCROW_REFUND`)은 주문 생성 전 거절이면 `MARKET_COMMAND` + `market_commands.id`, 주문 생성 후(체결 차액·취소·만료)면 `MARKET_ORDER` + `market_orders.id`를 기록한다. 판매 대금(`MARKET_SALE`)·로열티(`MARKET_ROYALTY`)는 `MARKET_TRADE` + `market_trades.id`를 기록한다. 가입 보너스·초대 보상은 원본 참조 없음(null). AI 가구 코인 결제와 환급은 `source_type=FURNITURE_GENERATION`, `source_id=null`이다. 작업의 문자열 UUID와 결제 수단, 금액은 `furniture_credit_reservations`에 저장한다.
   - 루틴/투두 완료 취소는 회수 row를 남기지 않고 **원 획득 row를 삭제**한다(`user_id`+`reason`+`source_type`/`source_id`로 특정 — `source_id`는 GACHA/ITEM에선 유일하지 않아 user 스코프 필수).
   - `balance_after`는 증감 직후 잔액 스냅샷으로 지갑 갱신과 **같은 트랜잭션**에서 기록한다. 위 삭제 정책과 조합하면 이후 row의 스냅샷이 사후 재계산과 다를 수 있다(허용 사양).
+- **withdrawal_feedback**: id* | reason VARCHAR(30)? | response_date DATE | index (response_date)
+  - 탈퇴 확인창의 선택형 사유. `INCONVENIENT`, `MISSING_FEATURE`, `OTHER`를 저장하고 미선택은 null로 집계합니다. `response_date`는 KST 날짜입니다.
+  - 계정 FK, 이메일, 닉네임, 자유 입력, 정확한 시각 없이 서비스 개선 통계만 보관합니다. 탈퇴와 같은 트랜잭션에서 저장하며 봇과 AI는 제외합니다. 과거 탈퇴 자료는 소급하지 않습니다.
 - **user_invite_codes**: id* | user_id→users | invite_code VARCHAR | created_at | unique (user_id), unique (invite_code)
   - 개인 친구 초대코드(집 초대코드 `house.invite_code`와 별개). 첫 조회 시 발급.
 - **invite_rewards**: id* | inviter_user_id→users | invitee_user_id→users | inviter_amount INT | invitee_amount INT | created_at | unique (invitee_user_id)
