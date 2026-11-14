@@ -280,11 +280,12 @@ erDiagram
 
 ## 채팅 모델
 
-기존 확정 table 수와 별개인 신규 4개 table입니다. 상세는 [채팅 데이터](domains/chat/data.md), 동작은 [채팅 API](domains/chat/api.md)를 따릅니다.
+기존 확정 table 수와 별개인 신규 5개 table입니다. 상세는 [채팅 데이터](domains/chat/data.md), 동작은 [채팅 API](domains/chat/api.md)를 따릅니다.
 
 - **chat_rooms**: id* | room_type VARCHAR(20) | house_id? →house, UNIQUE | last_sequence BIGINT default 0
-- **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6) | message_type VARCHAR(20) default 'TEXT' | deleted_at TIMESTAMP(6)?. UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id). `message_type`은 `TEXT`/`IMAGE`, `deleted_at`은 운영자 삭제 시각.
-- **chat_images**: id* | room_id →chat_rooms | owner_id →users | message_id? →chat_messages, UNIQUE | storage_key VARCHAR(255), UNIQUE | width INT | height INT | ready BOOLEAN default false | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6). INDEX(owner_id,created_at), INDEX(room_id), INDEX(expires_at,id). 비공개 JPEG key와 변환 후 치수. `message_id`가 null이면 미전송 업로드이며 `expires_at`은 미전송 사진에만 적용.
+- **chat_messages**: id* | room_id →chat_rooms | message_sequence BIGINT | sender_user_id →users | client_message_id VARCHAR(36) | content VARCHAR(2000) | created_at TIMESTAMP(6) | message_type VARCHAR(20) default 'TEXT' | deleted_at TIMESTAMP(6)? | caption VARCHAR(2000)? | emoticon_key VARCHAR(64)?. UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id). `message_type`은 `TEXT`/`IMAGE`/`EMOTICON`, `deleted_at`은 운영자 삭제 시각. `caption`은 사진 메시지에 함께 보낸 글, `emoticon_key`는 이모티콘 메시지의 key.
+- **chat_images**: id* | room_id →chat_rooms | owner_id →users | message_id? →chat_messages | sort_order INT default 0 | storage_key VARCHAR(255), UNIQUE | width INT | height INT | ready BOOLEAN default false | expires_at TIMESTAMP(6) | created_at TIMESTAMP(6). INDEX(message_id,sort_order), INDEX(owner_id,created_at), INDEX(room_id), INDEX(expires_at,id). 비공개 JPEG key와 변환 후 치수. `message_id`가 null이면 미전송 업로드이며 `expires_at`은 미전송 사진에만 적용. 메시지 하나에 최대 10장을 연결하고 `sort_order`는 메시지 안에서의 순서(0부터).
+- **chat_message_reactions**: id* | message_id →chat_messages | room_id BIGINT | user_id →users | reaction_type VARCHAR(20) | created_at TIMESTAMP(6). UNIQUE(message_id,user_id), INDEX(room_id). 메시지 공감. 한 사람이 메시지당 하나이며 `reaction_type`은 `HEART`/`LIKE`/`CHECK`/`LAUGH`/`SURPRISE`/`SAD`.
 - **chat_read_states**: id* | room_id →chat_rooms | user_id →users | last_read_sequence BIGINT default 0 | push_muted BOOLEAN default false. UNIQUE(room_id,user_id). `push_muted`는 사용자별 방 푸시 음소거 여부.
 
 ## 다국어·개인 알림 시간대 확장
