@@ -12,7 +12,7 @@
 
 채팅방은 집 기능과 별도 식별자를 사용합니다. `house_id`는 HOUSE 유형의 소유 맥락이며, 미래 전체 채팅을 위한 nullable 컬럼입니다. 현재 허용 유형은 HOUSE뿐이고 GLOBAL은 활성화하지 않습니다. 메시지는 house_id 대신 room_id에 속합니다.
 
-`chat_messages.message_type`은 `TEXT`, `IMAGE`, `EMOTICON`이고 기본값은 `TEXT`입니다. `content`는 계속 NOT NULL이며 `IMAGE`·`EMOTICON`에는 구버전 앱 표시용 문구를 저장합니다(`IMAGE`는 함께 보낸 글이 있으면 그 글). nullable `caption`(VARCHAR(2000))은 사진 메시지에 함께 보낸 글 원문이고 없으면 null입니다. nullable `emoticon_key`(VARCHAR(64))는 이모티콘 메시지의 key이며 그림은 앱 번들에 있습니다. nullable `deleted_at`은 운영자 삭제 시 설정합니다. `content`·`caption`·`emoticon_key` 원문은 DB에 남고 응답에서만 삭제 문구로 바꾸거나 비웁니다. 새 컬럼은 NULL 허용이거나 DEFAULT가 있어 배포 전환 중 구버전 코드의 INSERT가 그대로 동작합니다.
+`chat_messages.message_type`은 `TEXT`, `IMAGE`, `EMOTICON`이고 기본값은 `TEXT`입니다. `content`는 계속 NOT NULL이며 `IMAGE`·`EMOTICON`에는 구버전 앱 표시용 문구를 저장합니다(`IMAGE`·`EMOTICON`은 함께 보낸 글이 있으면 그 글). nullable `caption`(VARCHAR(2000))은 사진·이모티콘 메시지에 함께 보낸 글 원문이고 없으면 null입니다. nullable `emoticon_key`(VARCHAR(64))는 이모티콘 메시지의 key이며 그림은 앱 번들에 있습니다. nullable `deleted_at`은 운영자 삭제 시 설정합니다. `content`·`caption`·`emoticon_key` 원문은 DB에 남고 응답에서만 삭제 문구로 바꾸거나 비웁니다. 새 컬럼은 NULL 허용이거나 DEFAULT가 있어 배포 전환 중 구버전 코드의 INSERT가 그대로 동작합니다.
 
 `chat_images`는 업로드부터 메시지 연결까지 한 행으로 관리합니다. `message_id`는 nullable이며 null이면 미전송 업로드입니다. 메시지 하나에 사진을 최대 10장까지 연결하므로 `message_id`의 UNIQUE(`uk_chat_image_message`)는 제거하고 INDEX(message_id,sort_order)(`idx_chat_image_message_order`)로 바꿉니다. `sort_order`(INT NOT NULL DEFAULT 0)는 메시지 안에서의 순서로, 전송 요청에 적힌 순서를 0부터 저장합니다. 사진 하나는 메시지 하나에만 연결합니다. `storage_key`는 비공개 `private/chat/<uuid>.jpg`이고 `width`·`height`는 변환 후 치수입니다. 업로드 시 행을 먼저 커밋하고 S3 저장이 끝나면 `ready=true`가 됩니다. `expires_at`은 미전송 사진에만 적용합니다. 정리 조건은 [api.md](api.md#사진-보관과-정리)를 따릅니다.
 
@@ -31,3 +31,5 @@ Redis에는 채팅방 ID 변경 알림과 공감 변경 알림(방 ID·메시지
 ## 후속 결정 항목
 
 정책 미정값과 알림 도메인 의존성은 [open-questions.md](../../open-questions.md#채팅)에서 통합 관리합니다.
+
+2026-11-15 사용자 결정으로 이모티콘에도 기존 `caption` 컬럼을 사용합니다. 추가 migration 없이 글과 key를 같은 메시지 행에 저장하고, 재시도 비교에도 둘을 포함합니다. 서버 반영 후 앱을 반영합니다.
