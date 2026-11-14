@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | chat_rooms | id, room_type, house_id, last_sequence | house_id UNIQUE, house FK |
 | chat_messages | id, room_id, message_sequence, sender_user_id, client_message_id, content, created_at, message_type, deleted_at, caption, emoticon_key | UNIQUE(room_id,message_sequence), UNIQUE(room_id,sender_user_id,client_message_id), CHECK(message_type IN TEXT/IMAGE/EMOTICON), room/user FK |
-| chat_images | id, room_id, owner_id, message_id, sort_order, storage_key, width, height, ready, expires_at, created_at | UNIQUE(storage_key), INDEX(message_id,sort_order), INDEX(owner_id,created_at), INDEX(room_id), INDEX(expires_at,id), room/user/message FK |
+| chat_images | id, room_id, owner_id, message_id, sort_order, storage_key, width, height, ready, expires_at, purged_at, created_at | UNIQUE(storage_key), INDEX(message_id,sort_order), INDEX(owner_id,created_at), INDEX(room_id), INDEX(expires_at,id), room/user/message FK |
 | chat_message_reactions | id, message_id, room_id, user_id, reaction_type, created_at | UNIQUE(message_id,user_id), INDEX(room_id), CHECK(reaction_type IN HEART/LIKE/CHECK/LAUGH/SURPRISE/SAD), message/user FK |
 | chat_read_states | id, room_id, user_id, last_read_sequence, push_muted | UNIQUE(room_id,user_id), room/user FK |
 
@@ -14,7 +14,7 @@
 
 `chat_messages.message_type`은 `TEXT`, `IMAGE`, `EMOTICON`이고 기본값은 `TEXT`입니다. `content`는 계속 NOT NULL이며 `IMAGE`·`EMOTICON`에는 구버전 앱 표시용 문구를 저장합니다(`IMAGE`는 함께 보낸 글이 있으면 그 글). nullable `caption`(VARCHAR(2000))은 사진 메시지에 함께 보낸 글 원문이고 없으면 null입니다. nullable `emoticon_key`(VARCHAR(64))는 이모티콘 메시지의 key이며 그림은 앱 번들에 있습니다. nullable `deleted_at`은 운영자 삭제 시 설정합니다. `content`·`caption`·`emoticon_key` 원문은 DB에 남고 응답에서만 삭제 문구로 바꾸거나 비웁니다. 새 컬럼은 NULL 허용이거나 DEFAULT가 있어 배포 전환 중 구버전 코드의 INSERT가 그대로 동작합니다.
 
-`chat_images`는 업로드부터 메시지 연결까지 한 행으로 관리합니다. `message_id`는 nullable이며 null이면 미전송 업로드입니다. 메시지 하나에 사진을 최대 10장까지 연결하므로 `message_id`의 UNIQUE(`uk_chat_image_message`)는 제거하고 INDEX(message_id,sort_order)(`idx_chat_image_message_order`)로 바꿉니다. `sort_order`(INT NOT NULL DEFAULT 0)는 메시지 안에서의 순서로, 전송 요청에 적힌 순서를 0부터 저장합니다. 사진 하나는 메시지 하나에만 연결합니다. `storage_key`는 비공개 `private/chat/<uuid>.jpg`이고 `width`·`height`는 변환 후 치수입니다. 업로드 시 행을 먼저 커밋하고 S3 저장이 끝나면 `ready=true`가 됩니다. `expires_at`은 미전송 사진에만 적용합니다. 정리 조건은 [api.md](api.md#사진-보관과-정리)를 따릅니다.
+`chat_images`는 업로드부터 메시지 연결까지 한 행으로 관리합니다. `message_id`는 nullable이며 null이면 미전송 업로드입니다. 메시지 하나에 사진을 최대 10장까지 연결하므로 `message_id`의 UNIQUE(`uk_chat_image_message`)는 제거하고 INDEX(message_id,sort_order)(`idx_chat_image_message_order`)로 바꿉니다. `sort_order`(INT NOT NULL DEFAULT 0)는 메시지 안에서의 순서로, 전송 요청에 적힌 순서를 0부터 저장합니다. 사진 하나는 메시지 하나에만 연결합니다. `storage_key`는 비공개 `private/chat/<uuid>.jpg`이고 `width`·`height`는 변환 후 치수입니다. 업로드 시 행을 먼저 커밋하고 S3 저장이 끝나면 `ready=true`가 됩니다. `expires_at`은 미전송 업로드의 만료 시각이며 새 서버는 전송 시각+30일로 갱신합니다. 구버전 writer와 공존할 수 있으므로 보낸 사진의 만료 판정과 응답은 `chat_messages.created_at+30일`이 정본입니다. `purged_at`은 만료 파일의 삭제가 성공한 시각으로, 이후 파일 정리 후보에서 제외합니다. 보낸 사진은 만료 파일 정리 후에도 메타데이터를 유지합니다. 정리 조건은 [api.md](api.md#사진-보관과-정리)를 따릅니다.
 
 `chat_message_reactions`는 메시지 공감을 사람별 한 행으로 저장합니다. UNIQUE(message_id,user_id)(`uk_chat_reaction_message_user`)로 한 사람이 메시지당 하나만 가지며, 유형을 바꾸면 같은 행의 `reaction_type`과 `created_at`을 고칩니다. 취소하면 행을 지웁니다. `reaction_type`(VARCHAR(20))은 `HEART`, `LIKE`, `CHECK`, `LAUGH`, `SURPRISE`, `SAD`입니다. 응답의 누른 순서는 `created_at`, `id` 오름차순입니다. `room_id`는 메시지의 방을 함께 저장한 값이며 INDEX(`idx_chat_reaction_room`)를 둡니다. 탈퇴한 회원과 운영자가 삭제한 메시지의 공감 행은 지우지 않고 응답에서만 뺍니다.
 
