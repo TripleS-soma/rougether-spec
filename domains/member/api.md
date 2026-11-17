@@ -132,6 +132,11 @@
 
 ## 회원탈퇴
 
+- `DELETE /api/v1/me`는 JSON 본문을 선택적으로 받습니다. `reason`은 `INCONVENIENT`(사용이 불편해요), `MISSING_FEATURE`(원하는 기능이 없어요), `OTHER`(기타) 중 하나이며 단일 선택입니다. 본문 생략, `{}`, `reason: null`도 기존처럼 204로 탈퇴할 수 있습니다. 정의하지 않은 사유는 400입니다.
+- 탈퇴 확인창 안에서 선택하며 기본 선택은 없습니다. 같은 항목을 다시 누르면 선택을 해제할 수 있고, 취소 후 다시 열면 미선택으로 시작합니다. 테스트, 재가입 항목과 자유 입력은 제공하지 않습니다.
+- 성공한 탈퇴와 같은 트랜잭션에서 `withdrawal_feedback`에 사유(미선택은 null)와 KST 집계일을 한 번 저장합니다. 계정 식별자, 이메일, 닉네임, 정확한 응답 시각은 이 테이블에 저장하지 않습니다. 봇과 AI는 제외하며 재시도나 후속 데이터 정리 배치에서 중복 기록하지 않습니다.
+- 사유와 날짜별 통계는 탈퇴 후에도 계정과 연결하지 않는 서비스 개선 자료로 보관합니다. 기존 탈퇴 계정의 사유는 소급 생성하지 않습니다.
+
 | method · path | 목적 | 핵심 필드 | 관련 table |
 | --- | --- | --- | --- |
 | `DELETE /api/v1/me` | 회원탈퇴 — soft delete + 개인정보 즉시 익명화 + 소셜 로그인 연동 해제(revoke) + 집 멤버십 정리·소유권 승계 | res: 204. 이미 탈퇴한 사용자는 404 `USER_NOT_FOUND` | `users`, `oauth_accounts`, `refresh_tokens`, `user_device_token`, `routines`, `todos`, `categories`, `house_members`, `house`, `house_join_requests` |
@@ -172,6 +177,13 @@
 - 선택한 대표 캐릭터 → 개인 방 배치는 **방 도메인** (`GET /api/v1/rooms/me`).
 - 선택한 목표 → 초기 루틴 추천은 **루틴/투두 도메인**, 집 탐색 필터는 **집 도메인**.
 - 재화/지갑(`user_wallets`)은 이 도메인 비범위.
+
+## 관리자 탈퇴 사유 집계
+
+- `GET /admin/users/withdrawal-feedback`는 어드민 인증이 필요합니다.
+- 오늘을 포함한 최근 30개 KST 일자의 수집분만 집계합니다. 가입 기간 기준 퍼널이나 과거 누적 탈퇴 수와 구분합니다.
+- 응답: `fromDate`, `toDate`, `recordedWithdrawals`(수집된 탈퇴 수), `answeredWithdrawals`(선택 응답 수), `skippedWithdrawals`(미선택 수), `items[]`의 `reason`, `count`. 세 사유는 0건이어도 고정 순서로 포함합니다.
+- 유저 관리 화면에서 세 사유와 미선택 건수를 표시하며, 수집 시작 이후의 자료라는 기준을 함께 안내합니다.
 
 ## 미정
 
