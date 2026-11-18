@@ -75,6 +75,7 @@
 | `DELETE /api/v1/todos/{id}` | 삭제(soft) | — | 204. `deleted_at`만 세팅 — 완료 상태·보상 기록(`reward_amount`)은 그대로 보존된다(일일 상한 집계에 계속 포함, features.md 참고) |
 | `POST /api/v1/todos/{id}/complete` | 완료 체크(미래 `dueDate` 불가) | — | 201. `status`, `completedAt`, `rewardCurrencyType`, `rewardAmount` (코인 지급, 트랜잭션) |
 | `DELETE /api/v1/todos/{id}/complete` | 완료 취소(완료 시점 제한 없음) | — | 200. 롤백 반영된 todo 전체(코인 롤백) |
+| `POST /api/v1/todos/{id}/convert-to-routine` | 미완료 투두를 반복 루틴으로 전환(루틴 생성 + 투두 soft delete, 한 트랜잭션) | 루틴 등록과 같은 필드·검증: `title`, `categoryId?`, `authType`, `repeatType`, `repeatDays?`, `scheduledTime?`(5분 단위), `startsOn?`, `endsOn?`. `houseMissionId`·`externalSource`·`externalId`는 받지 않는다 | 201. 생성된 routine(`POST /routines` 응답과 동일 필드). 아래 "투두 → 반복 루틴 전환" 참고 |
 
 > **기기 캘린더 일정 임포트** (모바일 #844): 앱이 기기 캘린더(구글 캘린더 등)의 **오늘 이후** 일정을 읽어 투두로 만든다. 서버는 OAuth를 하지 않는다 — 읽기는 전적으로 앱이 OS 권한으로 하고, 서버는 만들어진 투두를 받을 뿐이다.
 > - `POST /todos`에 `externalSource`(`GOOGLE_CALENDAR` 등)·`externalId`(그 캘린더의 이벤트 id)를 함께 받아 `todos`에 저장한다. **`unique (user_id, external_source, external_id)`가 중복 임포트의 유일한 방어선**이다 — 동기화는 앱을 열 때마다 돌므로 이 값이 없으면 같은 일정이 계속 복제된다.
@@ -83,6 +84,7 @@
 > - **soft delete 된 임포트 투두도 중복 판정에 포함**한다(unique가 `deleted_at`을 보지 않음) — 사용자가 지운 일정은 다음 동기화에서 되살아나지 않는다. 다른 회원의 같은 `externalId`는 서로 무관하다.
 > - 응답(`GET` 목록·단건, `POST`, `PUT` 공통)에 `externalSource`·`externalId`를 그대로 노출한다 — 일반 투두는 둘 다 null. `PUT /todos/{id}`는 이 두 필드를 받지 않는다(생성 후 불변).
 > - 임포트된 투두는 그 뒤로 **일반 투두와 완전히 동일**하다. 사용자가 카테고리를 옮기고 제목을 고치고 지울 수 있으며, 원본 일정이 바뀌거나 지워져도 서버는 이 투두를 건드리지 않는다(사용자가 이미 손댔을 수 있다).
+> - 임포트된 단발 일정에 반복을 붙이려면 `POST /todos/{id}/convert-to-routine`으로 루틴으로 바꾼다(아래 "투두 → 반복 루틴 전환"). 새 루틴에는 외부 참조를 옮기지 않으며, 지운 투두가 참조를 계속 점유하므로 같은 일정은 다시 임포트되지 않는다(409 `TODO_EXTERNAL_DUPLICATE`로 건너뜀).
 > - 보상 규칙도 그대로다 — `dueDate`가 오늘인 완료만 코인 10, 일일 원금 상한 100코인 합산(이벤트 보너스는 상한 밖). 미래 마감은 완료 불가라 미리 체크할 수 없다.
 > - 가져오기 전 미리보기에서 "비슷한 루틴·투두가 이미 있어요" 힌트를 보여주려면 `POST /api/v1/routines/similarity`(아래 유사 루틴·투두 비교 절)를 쓴다. 이 힌트는 안내용이며 중복 방지의 정본은 위 `externalId` unique다.
 
@@ -95,6 +97,14 @@
 > - **버전 분기와 외부 참조**: 외부 참조는 임포트로 만들어진 **원본 row에만** 기록되며, 반복 스케줄 수정으로 새 버전 row가 생겨도(아래 "루틴 시간버전" 참고) 새 row에는 **복사되지 않는다** — 복사하면 닫힌 옛 row와 unique가 충돌해 스케줄 수정 자체가 실패하고, 복사하지 않아도 옛 row가 unique를 점유한 채 남아 재임포트 차단은 그대로 유지된다. 대신 응답의 `externalSource`·`externalId`는 **계보 원본(`originRoutineId`) row의 값을 그대로 보여준다** — 스케줄을 바꿔 `id`가 바뀌어도 "캘린더에서 온 루틴" 표시가 유지된다. 제목·카테고리·시각 등 제자리 수정에서는 당연히 값이 유지된다.
 > - 응답(`GET` 목록·단건, `POST`, `PUT` 공통)에 `externalSource`·`externalId`를 노출한다 — 일반 루틴은 둘 다 null. `PUT /routines/{id}`는 이 두 필드를 받지 않는다(보내도 무시, 생성 후 불변). 오늘 현황·캘린더(`/today`, `/calendar`) 응답의 루틴 항목에는 노출하지 않는다(목록·단건만).
 > - 임포트된 루틴도 그 뒤로 **일반 루틴과 완전히 동일**하다. 완료 시 코인·스트릭·주간 회고·집 미션 기여에 그대로 반영된다 — 회의 같은 의무가 습관 통계에 섞이는 건 인지된 트레이드오프다(모바일 #844 논의). 원본 일정이 바뀌거나 지워져도 서버는 이 루틴을 건드리지 않는다.
+
+> **투두 → 반복 루틴 전환** (`POST /api/v1/todos/{id}/convert-to-routine`): 투두에는 반복 개념이 없으므로(기기 캘린더에서 가져온 단발 일정 포함) 반복을 붙이려면 루틴을 새로 만들고 투두를 지워야 한다. 앱이 두 호출로 나누면 중간 실패 시 둘 다 남거나 둘 다 사라지므로 서버가 한 트랜잭션으로 묶는다.
+> - **대상**: 인증된 사용자가 소유한 살아있는(미삭제) **미완료(`PENDING`)** 투두. 캘린더 임포트 투두도 포함한다. 없거나 남의 것이거나 이미 삭제된 투두는 404 `TODO_NOT_FOUND`.
+> - **완료한 투두는 409 `TODO_COMPLETED_NOT_CONVERTIBLE`**로 거절한다 — 완료 보상이 남은 채 같은 날 루틴을 다시 완료해 보상을 두 번 받는 경로를 막는다. 앱은 완료 취소(`DELETE /todos/{id}/complete`) 뒤 다시 요청한다.
+> - **본문**: 루틴 등록(`POST /routines`)과 같은 필드·검증 규칙(반복 유형별 `repeatDays` 필수 검증, `startsOn`/`endsOn` 검증, `scheduledTime` 5분 단위, 카테고리 소유권 등)을 그대로 적용하고 에러코드도 같다. `startsOn`은 오늘 이전 과거일을 보낼 수 없으므로 마감이 지난 투두를 바꿀 때는 생략(오늘로 기본 지정)하거나 오늘 이후로 보낸다. 투두의 제목·카테고리 등은 서버가 자동으로 옮기지 않는다 — 앱이 본문에 채워 보낸다. 단체미션 연동(`houseMissionId`)과 외부 참조(`externalSource`·`externalId`)는 받지 않는다.
+> - **처리 순서·원자성**: 루틴 생성(검증 포함)을 먼저 하고 성공하면 투두를 soft delete(`deleted_at`만 세팅, `DELETE /todos/{id}`와 같음)한다. 검증 실패 등 어느 단계든 실패하면 전체가 롤백되어 **투두는 그대로 남는다**. 성공 응답은 201 + 생성된 routine이다.
+> - **외부 참조는 옮기지 않는다**: 캘린더 임포트 투두를 바꿔도 새 루틴의 `externalSource`·`externalId`는 null이다. 지운 투두가 참조를 계속 갖고 있어 `unique (user_id, external_source, external_id)`를 점유하므로, 같은 일정을 다시 임포트하면 409 `TODO_EXTERNAL_DUPLICATE`로 건너뛴다(soft delete 된 임포트 투두도 중복 판정에 포함 — 위 임포트 블록).
+> - 동시성: 같은 투두의 완료/완료 취소와 전환은 서로 직렬화된다 — 동시 완료가 지운 투두를 되살리거나 같은 투두가 두 번 전환되지 않는다.
 
 > 완료/취소는 `/complete`(POST/DELETE)로 확정. `dueDate`가 미래(KST)인 투두는 완료 불가. 완료 보상은 **`dueDate` = 오늘인 완료만 COIN 10**(루틴과 동일 금액) — 마감일이 지났거나 없는(`dueDate` null) 완료는 `rewardAmount=0`이고, 당일이라도 루틴+투두 합산 **일일 원금 상한 100코인**의 잔여가 정가보다 적으면 원금 잔여만큼만 지급한다(`baseRewardAmount = min(10, 100 − 오늘 누적 원금)`, 잔여 0이면 `rewardAmount=0` — 완료는 정상 성공, 지갑 불변). 응답 `rewardAmount`는 이 원금에 해당하는 이벤트 보너스를 더한 실제 지급액이다(아래 크리스마스 보너스 절). 완료/취소는 코인 지급·차감을 한 트랜잭션으로 묶는다. 완료 취소는 완료 시점 제한 없이 허용(과거에 완료한 투두 포함), 환불은 완료 시 기록된 `rewardAmount`. 투두는 스트릭에 포함하지 않는다.
 
