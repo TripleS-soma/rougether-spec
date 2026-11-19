@@ -17,7 +17,7 @@
 
 - **온보딩 첫 루틴 추천**(2026-09-06): 앱의 관심사별 템플릿에서 사용자가 한 개를 골라 기존 등록 API로 생성합니다. `CHECK`·`DAILY`·서버 KST 오늘 기본 시작일·알림 시각 없음·종료일 없음이 기본이며, 카테고리는 기존 계약대로 선택입니다. 추천 목록은 앱에서 구성합니다. 신규 추천 수락 API·AI 호출·추천 이력 테이블은 추가하지 않습니다. 이 기능은 아래 실패 패턴 기반 AI 조정 추천과 별개입니다. 흐름은 [회원/온보딩](../member/features.md)의 첫 루틴 시작 절을 따릅니다.
 
-- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`만 유효(등록 시 `ACTIVE`. 필드·필터는 유지).
+- **등록**: 이름(`title`)·카테고리(`category_id`, 선택)·인증 방식(`auth_type`)·반복 조건·수행 시간(`scheduled_time`)·지속 기간(`starts_on`/`ends_on`)을 입력한다. **공개 범위는 카테고리를 따른다**(루틴 개별 설정 없음, `routines`에 `visibility` 없음). **미분류(카테고리 없음) 루틴·투두는 같은 집 구성원에게 공개**된다(집 공개와 같은 취급). 소유자는 `user_id`. 상태(`status`)는 `ACTIVE`만 유효(등록 시 `ACTIVE`. 필드·필터는 유지).
 - **인증 방식 선택** (`auth_type`): **체크형(`CHECK`)** / **사진 인증형(`PHOTO`)** 중 선택. (사진 인증형의 AI 분석은 현재 범위에서 제외 — 사진 인증 항목 참고)
 - **반복 조건** (`repeat_type`, `repeat_days` JSON):
   - `repeat_type`: `DAILY`(매일) / `WEEKLY`(매주 특정 요일) / `BIWEEKLY`(격주 특정 요일) / `MONTHLY`(매월 특정 일) / `YEARLY`(매년 특정 월일).
