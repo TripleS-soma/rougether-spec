@@ -188,14 +188,14 @@
 - query: `date?`(YYYY-MM-DD, 미지정 시 오늘 KST)
 - res: `date`, `routines[]`(`id`, `originRoutineId`, `title`, `scheduledTime?`, `authType`, `categoryId`, `completed`), `todos[]`(`id`, `title`, `status`, `completedAt?`, `categoryId`), `categories[]`(`id`, `name`, `colorHex`, `iconKey` — 노출 루틴·투두가 참조하는 카테고리 표시 정보, `sortOrder` 오름차순)
 - 정렬: 루틴 수행 예정 시각 오름차순, 투두 id 오름차순
-- 공개 범위: 카테고리 `visibility`가 HOUSE/PUBLIC 인 루틴·투두만 노출. PRIVATE/FRIENDS·미분류는 제외(본인 조회에도 동일 적용 — 내 화면은 `GET /api/v1/today` 사용)
+- 공개 범위: 카테고리 `visibility`가 HOUSE/PUBLIC 인 루틴·투두와 **미분류**(`categoryId` null) 루틴·투두를 노출. PRIVATE/FRIENDS 카테고리와 삭제된 카테고리의 항목은 제외(본인 조회에도 동일 적용 — 내 화면은 `GET /api/v1/today` 사용). 미분류 항목은 `categories[]`에 대응 항목이 없다
 - table: `house_members` (+ 루틴/투두 도메인 의존)
 
 ### GET /api/v1/houses/{houseId}/members/{membershipId}/routine-completions
 구성원 루틴 완료 내역 기간 조회.
 - query: `from?`, `to?`(YYYY-MM-DD) — `to` 미지정 시 오늘(KST), `from` 미지정 시 `to` 기준 최근 14일. 기간 최대 92일, `from` > `to`는 400 `HOUSE_ACTIVITY_PERIOD_INVALID`
 - res: `from`, `to`(실제 적용된 기간), `items[]`(`routineDate`(완료 날짜), `completedAt`, `routineId`, `originRoutineId`, `title`, `categoryId`)
-- 정렬: 완료 날짜 내림차순(같은 날짜는 완료 시각 내림차순). 공개 범위 필터는 `/day`와 동일(HOUSE/PUBLIC만)
+- 정렬: 완료 날짜 내림차순(같은 날짜는 완료 시각 내림차순). 공개 범위 필터는 `/day`와 동일(HOUSE/PUBLIC과 미분류)
 - 비고: 스케줄 수정으로 루틴 버전이 갈려도 과거 완료는 포함 — 같은 루틴 묶음 판별은 `originRoutineId` 사용
 - table: `house_members` (+ 루틴/투두 도메인 의존)
 
